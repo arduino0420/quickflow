@@ -20,7 +20,7 @@ QuickFlowでは、教師が普段使用しているPDF教材をそのまま活�
 
 ## 開発環境
 
-- Ruby 4.0.5
+- Ruby 4.0.6
 - Ruby on Rails 8.1.4
 - PostgreSQL
 - Git
