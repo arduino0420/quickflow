@@ -14,6 +14,15 @@ RSpec.describe Assignment, type: :model do
     expect(assignment.published_at).to be_nil
   end
 
+  it "returns its questions" do
+    assignment = described_class.create!(attributes)
+    question = Question.create!(assignment: assignment, question_label: "1", position: 1,
+      question_text: "1 + 1", correct_answer: "2", answer_generation_model: "test-model",
+      answer_generation_prompt_version: "v1", answer_generated_at: Time.current)
+
+    expect(assignment.questions).to contain_exactly(question)
+  end
+
   it "requires a teacher" do
     assignment = described_class.new(attributes.merge(teacher: nil))
 

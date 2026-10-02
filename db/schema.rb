@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_070915) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_080000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -74,6 +74,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_070915) do
     t.index ["teacher_id"], name: "index_classrooms_on_teacher_id"
   end
 
+  create_table "questions", force: :cascade do |t|
+    t.bigint "assignment_id", null: false
+    t.string "question_label", null: false
+    t.integer "position", null: false
+    t.text "question_text", null: false
+    t.text "correct_answer", null: false
+    t.text "grading_rule"
+    t.string "answer_generation_model", null: false
+    t.string "answer_generation_prompt_version", null: false
+    t.datetime "answer_generated_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "position"], name: "index_questions_on_assignment_id_and_position", unique: true
+  end
+
   create_table "schools", force: :cascade do |t|
     t.string "school_code", null: false
     t.datetime "created_at", null: false
@@ -108,6 +123,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_070915) do
   add_foreign_key "assignments", "teachers"
   add_foreign_key "classrooms", "schools"
   add_foreign_key "classrooms", "teachers"
+  add_foreign_key "questions", "assignments"
   add_foreign_key "students", "classrooms"
   add_foreign_key "teachers", "schools"
 end
