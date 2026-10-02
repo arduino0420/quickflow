@@ -28,6 +28,13 @@ RSpec.describe Teacher, type: :model do
     expect(duplicate.errors[:user_id]).to be_present
   end
 
+  it "returns its classrooms" do
+    teacher = described_class.create!(attributes)
+    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+
+    expect(teacher.classrooms).to contain_exactly(classroom)
+  end
+
   it "requires a school" do
     teacher = described_class.new(attributes.merge(school: nil))
 
