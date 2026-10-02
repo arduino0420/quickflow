@@ -10,15 +10,37 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_070001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_070001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "classrooms", force: :cascade do |t|
+    t.bigint "school_id", null: false
+    t.bigint "teacher_id", null: false
+    t.integer "grade", null: false
+    t.integer "class_number", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["school_id", "grade", "class_number"], name: "index_classrooms_on_school_id_and_grade_and_class_number", unique: true
+    t.index ["school_id"], name: "index_classrooms_on_school_id"
+    t.index ["teacher_id"], name: "index_classrooms_on_teacher_id"
+  end
 
   create_table "schools", force: :cascade do |t|
     t.string "school_code", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["school_code"], name: "index_schools_on_school_code", unique: true
+  end
+
+  create_table "students", force: :cascade do |t|
+    t.bigint "classroom_id", null: false
+    t.integer "attendance_number", null: false
+    t.string "password_digest", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["classroom_id", "attendance_number"], name: "index_students_on_classroom_id_and_attendance_number", unique: true
+    t.index ["classroom_id"], name: "index_students_on_classroom_id"
   end
 
   create_table "teachers", force: :cascade do |t|
@@ -31,5 +53,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_070001) do
     t.index ["user_id"], name: "index_teachers_on_user_id", unique: true
   end
 
+  add_foreign_key "classrooms", "schools"
+  add_foreign_key "classrooms", "teachers"
+  add_foreign_key "students", "classrooms"
   add_foreign_key "teachers", "schools"
 end
