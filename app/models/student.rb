@@ -1,5 +1,6 @@
 class Student < ApplicationRecord
   belongs_to :classroom
+  has_many :submissions
 
   has_secure_password reset_token: false
 

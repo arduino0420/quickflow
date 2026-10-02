@@ -1,6 +1,7 @@
 class Teacher < ApplicationRecord
   belongs_to :school
   has_many :classrooms
+  has_many :assignments
 
   has_secure_password reset_token: false
 

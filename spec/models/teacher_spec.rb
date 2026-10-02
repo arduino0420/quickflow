@@ -4,6 +4,13 @@ RSpec.describe Teacher, type: :model do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:attributes) { { school: school, user_id: "teacher1", password: "password123" } }
 
+  it "returns its assignments" do
+    teacher = described_class.create!(attributes)
+    assignment = Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5)
+
+    expect(teacher.assignments).to contain_exactly(assignment)
+  end
+
   it "persists a teacher belonging to its school" do
     teacher = described_class.create!(attributes)
 

@@ -10,9 +10,57 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_070001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "active_storage_attachments", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "record_type", null: false
+    t.bigint "record_id", null: false
+    t.bigint "blob_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
+    t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
+  end
+
+  create_table "active_storage_blobs", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "filename", null: false
+    t.string "content_type"
+    t.text "metadata"
+    t.string "service_name", null: false
+    t.bigint "byte_size", null: false
+    t.string "checksum"
+    t.datetime "created_at", null: false
+    t.index ["key"], name: "index_active_storage_blobs_on_key", unique: true
+  end
+
+  create_table "active_storage_variant_records", force: :cascade do |t|
+    t.bigint "blob_id", null: false
+    t.string "variation_digest", null: false
+    t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "assignment_classrooms", force: :cascade do |t|
+    t.bigint "assignment_id", null: false
+    t.bigint "classroom_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "classroom_id"], name: "index_assignment_classrooms_on_assignment_id_and_classroom_id", unique: true
+    t.index ["assignment_id"], name: "index_assignment_classrooms_on_assignment_id"
+    t.index ["classroom_id"], name: "index_assignment_classrooms_on_classroom_id"
+  end
+
+  create_table "assignments", force: :cascade do |t|
+    t.bigint "teacher_id", null: false
+    t.string "title", null: false
+    t.integer "point_per_question", null: false
+    t.datetime "published_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["teacher_id"], name: "index_assignments_on_teacher_id"
+  end
 
   create_table "classrooms", force: :cascade do |t|
     t.bigint "school_id", null: false
@@ -24,6 +72,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_070001) do
     t.index ["school_id", "grade", "class_number"], name: "index_classrooms_on_school_id_and_grade_and_class_number", unique: true
     t.index ["school_id"], name: "index_classrooms_on_school_id"
     t.index ["teacher_id"], name: "index_classrooms_on_teacher_id"
+  end
+
+  create_table "grading_results", force: :cascade do |t|
+    t.bigint "submission_id", null: false
+    t.bigint "question_id", null: false
+    t.text "student_answer"
+    t.integer "reading_confidence"
+    t.integer "ai_judgment", null: false
+    t.integer "teacher_judgment"
+    t.text "error_point"
+    t.text "feedback"
+    t.text "review_reason"
+    t.string "ai_model_name", limit: 255, null: false
+    t.string "prompt_version", limit: 50, null: false
+    t.datetime "graded_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["question_id"], name: "index_grading_results_on_question_id"
+    t.index ["submission_id", "question_id"], name: "index_grading_results_on_submission_id_and_question_id", unique: true
+    t.index ["submission_id"], name: "index_grading_results_on_submission_id"
+  end
+
+  create_table "questions", force: :cascade do |t|
+    t.bigint "assignment_id", null: false
+    t.string "question_label", null: false
+    t.integer "position", null: false
+    t.text "question_text", null: false
+    t.text "correct_answer", null: false
+    t.text "grading_rule"
+    t.string "answer_generation_model", null: false
+    t.string "answer_generation_prompt_version", null: false
+    t.datetime "answer_generated_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "position"], name: "index_questions_on_assignment_id_and_position", unique: true
   end
 
   create_table "schools", force: :cascade do |t|
@@ -43,6 +126,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_070001) do
     t.index ["classroom_id"], name: "index_students_on_classroom_id"
   end
 
+  create_table "submissions", force: :cascade do |t|
+    t.bigint "assignment_id", null: false
+    t.bigint "student_id", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "submitted_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "student_id"], name: "index_submissions_on_assignment_id_and_student_id", unique: true
+    t.index ["student_id"], name: "index_submissions_on_student_id"
+  end
+
   create_table "teachers", force: :cascade do |t|
     t.bigint "school_id", null: false
     t.string "user_id", null: false
@@ -53,8 +147,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_070001) do
     t.index ["user_id"], name: "index_teachers_on_user_id", unique: true
   end
 
+  add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "assignment_classrooms", "assignments"
+  add_foreign_key "assignment_classrooms", "classrooms"
+  add_foreign_key "assignments", "teachers"
   add_foreign_key "classrooms", "schools"
   add_foreign_key "classrooms", "teachers"
+  add_foreign_key "grading_results", "questions"
+  add_foreign_key "grading_results", "submissions"
+  add_foreign_key "questions", "assignments"
   add_foreign_key "students", "classrooms"
+  add_foreign_key "submissions", "assignments"
+  add_foreign_key "submissions", "students"
   add_foreign_key "teachers", "schools"
 end
