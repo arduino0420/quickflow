@@ -5,6 +5,15 @@ RSpec.describe Classroom, type: :model do
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
   let(:attributes) { { school: school, teacher: teacher, grade: 1, class_number: 1 } }
 
+  it "returns its assignment classrooms and assignments" do
+    classroom = described_class.create!(attributes)
+    assignment = Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5)
+    distribution = AssignmentClassroom.create!(assignment: assignment, classroom: classroom)
+
+    expect(classroom.assignment_classrooms).to contain_exactly(distribution)
+    expect(classroom.assignments).to contain_exactly(assignment)
+  end
+
   it "persists its school and teacher" do
     classroom = described_class.create!(attributes).reload
 
