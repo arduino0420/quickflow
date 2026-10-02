@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_080000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -106,6 +106,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_080000) do
     t.index ["classroom_id"], name: "index_students_on_classroom_id"
   end
 
+  create_table "submissions", force: :cascade do |t|
+    t.bigint "assignment_id", null: false
+    t.bigint "student_id", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "submitted_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "student_id"], name: "index_submissions_on_assignment_id_and_student_id", unique: true
+    t.index ["student_id"], name: "index_submissions_on_student_id"
+  end
+
   create_table "teachers", force: :cascade do |t|
     t.bigint "school_id", null: false
     t.string "user_id", null: false
@@ -125,5 +136,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_080000) do
   add_foreign_key "classrooms", "teachers"
   add_foreign_key "questions", "assignments"
   add_foreign_key "students", "classrooms"
+  add_foreign_key "submissions", "assignments"
+  add_foreign_key "submissions", "students"
   add_foreign_key "teachers", "schools"
 end

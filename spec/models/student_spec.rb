@@ -12,6 +12,14 @@ RSpec.describe Student, type: :model do
     expect(student.reload.classroom).to eq(classroom)
   end
 
+  it "returns its submissions" do
+    student = described_class.create!(attributes)
+    assignment = Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5)
+    submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
+
+    expect(student.submissions).to contain_exactly(submission)
+  end
+
   it "requires a classroom" do
     student = described_class.new(attributes.merge(classroom: nil))
 

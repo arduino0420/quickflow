@@ -23,6 +23,15 @@ RSpec.describe Assignment, type: :model do
     expect(assignment.questions).to contain_exactly(question)
   end
 
+  it "returns its submissions" do
+    assignment = described_class.create!(attributes)
+    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    student = Student.create!(classroom: classroom, attendance_number: 1, password: "password123")
+    submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
+
+    expect(assignment.submissions).to contain_exactly(submission)
+  end
+
   it "requires a teacher" do
     assignment = described_class.new(attributes.merge(teacher: nil))
 

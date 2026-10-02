@@ -1,5 +1,6 @@
 class Assignment < ApplicationRecord
   belongs_to :teacher
+  has_many :submissions
   has_many :questions
   has_many :assignment_classrooms
   has_many :classrooms, through: :assignment_classrooms
