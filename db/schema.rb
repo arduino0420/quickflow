@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -74,6 +74,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_090000) do
     t.index ["teacher_id"], name: "index_classrooms_on_teacher_id"
   end
 
+  create_table "grading_results", force: :cascade do |t|
+    t.bigint "submission_id", null: false
+    t.bigint "question_id", null: false
+    t.text "student_answer"
+    t.integer "reading_confidence"
+    t.integer "ai_judgment", null: false
+    t.integer "teacher_judgment"
+    t.text "error_point"
+    t.text "feedback"
+    t.text "review_reason"
+    t.string "ai_model_name", limit: 255, null: false
+    t.string "prompt_version", limit: 50, null: false
+    t.datetime "graded_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["question_id"], name: "index_grading_results_on_question_id"
+    t.index ["submission_id", "question_id"], name: "index_grading_results_on_submission_id_and_question_id", unique: true
+    t.index ["submission_id"], name: "index_grading_results_on_submission_id"
+  end
+
   create_table "questions", force: :cascade do |t|
     t.bigint "assignment_id", null: false
     t.string "question_label", null: false
@@ -134,6 +154,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_090000) do
   add_foreign_key "assignments", "teachers"
   add_foreign_key "classrooms", "schools"
   add_foreign_key "classrooms", "teachers"
+  add_foreign_key "grading_results", "questions"
+  add_foreign_key "grading_results", "submissions"
   add_foreign_key "questions", "assignments"
   add_foreign_key "students", "classrooms"
   add_foreign_key "submissions", "assignments"

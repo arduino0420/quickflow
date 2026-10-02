@@ -10,6 +10,17 @@ RSpec.describe Question, type: :model do
       answer_generation_prompt_version: "v1", answer_generated_at: Time.current }
   end
 
+  it "returns its grading results" do
+    question = described_class.create!(attributes)
+    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    student = Student.create!(classroom: classroom, attendance_number: 1, password: "password123")
+    submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
+    result = GradingResult.create!(submission: submission, question: question, ai_judgment: :correct,
+      ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+
+    expect(question.grading_results).to contain_exactly(result)
+  end
+
   it "persists its assignment and allows a NULL grading rule" do
     question = described_class.create!(attributes).reload
 

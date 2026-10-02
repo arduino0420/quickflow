@@ -8,6 +8,17 @@ RSpec.describe Submission, type: :model do
   let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5) }
   let(:attributes) { { assignment: assignment, student: student, submitted_at: Time.zone.local(2026, 10, 2, 9) } }
 
+  it "returns its grading results" do
+    submission = described_class.create!(attributes)
+    question = Question.create!(assignment: assignment, question_label: "1", position: 1,
+      question_text: "1 + 1", correct_answer: "2", answer_generation_model: "test-model",
+      answer_generation_prompt_version: "v1", answer_generated_at: Time.current)
+    result = GradingResult.create!(submission: submission, question: question, ai_judgment: :correct,
+      ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+
+    expect(submission.grading_results).to contain_exactly(result)
+  end
+
   it "persists its associations and submitted date without an answer file" do
     submission = described_class.create!(attributes).reload
 

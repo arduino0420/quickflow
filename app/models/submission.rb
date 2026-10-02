@@ -1,5 +1,6 @@
 class Submission < ApplicationRecord
   belongs_to :assignment
+  has_many :grading_results
   belongs_to :student
 
   has_one_attached :answer_file
