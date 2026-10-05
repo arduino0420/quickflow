@@ -1,0 +1,31 @@
+<h1>小テスト登録</h1>
+
+<% if flash[:notice].present? %>
+  <p role="status"><%= flash[:notice] %></p>
+<% end %>
+
+<% if @assignment.errors.any? %>
+  <div role="alert">
+    <ul>
+      <% @assignment.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<%= form_with model: @assignment do |form| %>
+  <div>
+    <%= form.label :title, "タイトル" %>
+    <%= form.text_field :title %>
+  </div>
+  <div>
+    <%= form.label :point_per_question, "1問あたりの点数" %>
+    <%= form.number_field :point_per_question, min: 1, step: 1 %>
+  </div>
+  <div>
+    <%= form.label :material_file, "教材ファイル（任意）" %>
+    <%= form.file_field :material_file %>
+  </div>
+  <%= form.submit "登録" %>
+<% end %>
