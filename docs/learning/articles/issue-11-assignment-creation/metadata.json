@@ -1,0 +1,26 @@
+{
+  "id": "issue-11-assignment-creation",
+  "title": "教師の小テスト登録は、どう動く？",
+  "summary": "routes・教師認証・フォーム・Strong Parameters・添付・保存・request specをつなげる解説。",
+  "issue": 11,
+  "updatedAt": "2026-10-05",
+  "sourceCommit": "cc1287506974caaa501e110fa3b5b39a31b88b34",
+  "sourceDirty": false,
+  "sourceFiles": [
+    "config/routes.rb",
+    "app/controllers/assignments_controller.rb",
+    "app/views/assignments/new.html.erb",
+    "spec/requests/assignments_spec.rb",
+    "app/controllers/application_controller.rb",
+    "app/models/assignment.rb",
+    "app/models/teacher.rb"
+  ],
+  "verification": {
+    "status": "limited",
+    "summary": "移行時に対象コードを読み直し、原稿とHTMLの構造・コード照合・リンクを確認。PC幅1280pxとモバイル幅390pxでブラウザ表示と記事の移動を検証しました。Railsテストは再実行していません。",
+    "limitations": [
+      "15件成功という記述は、先の実装時に実行したAssignment request specの結果です。",
+      "学習サイトの構造検査は、Railsの動作を保証するものではありません。"
+    ]
+  }
+}

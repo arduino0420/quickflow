@@ -1,0 +1,37 @@
+{
+  "sourceHashes": {
+    "config/routes.rb": "0cc3195124a5a871d66a6d463914dce36d85a77c6d1efa49a3038ef9655ce5e9",
+    "app/controllers/assignments_controller.rb": "411d30bf51de1d1d0934dda211c37848b566dd610a75bc49a56135d9bd54fdef",
+    "app/views/assignments/new.html.erb": "51f452127b8a0a268451ffb9b1d8b7218df0a5666f3d31a97079a5bc41922a0e",
+    "spec/requests/assignments_spec.rb": "f7bd31672d45df53b516d2b234d2654ec7f0c8e3501e4ee2caebccecd4a6af92",
+    "app/controllers/application_controller.rb": "270b3bb931fd21c4627d85e99bf6dc1aae48785aea4bd20ccf99d5455fb59d49",
+    "app/models/assignment.rb": "44a9c4ec878511aad8e4aec34910793e8439e90589cd09dd1fdc16284f8cbbe3",
+    "app/models/teacher.rb": "12552c53d4bccfe26a171445779c846750e573fac13ba26a0b80a94197db34e7"
+  },
+  "snippets": [
+    {
+      "path": "config/routes.rb",
+      "text": "resources :assignments, only: [ :new, :create ]"
+    },
+    {
+      "path": "app/controllers/assignments_controller.rb",
+      "text": "before_action :require_teacher_login"
+    },
+    {
+      "path": "app/views/assignments/new.html.erb",
+      "text": "<%= form_with model: @assignment do |form| %>"
+    },
+    {
+      "path": "app/controllers/assignments_controller.rb",
+      "text": "@assignment = current_teacher.assignments.build(assignment_params)"
+    },
+    {
+      "path": "app/controllers/assignments_controller.rb",
+      "text": "params.require(:assignment).permit(:title, :point_per_question, :material_file)"
+    },
+    {
+      "path": "app/models/assignment.rb",
+      "text": "has_one_attached :material_file"
+    }
+  ]
+}
