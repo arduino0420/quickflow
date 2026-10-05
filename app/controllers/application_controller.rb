@@ -6,10 +6,15 @@ class ApplicationController < ActionController::Base
   stale_when_importmap_changes
 
   helper_method :current_teacher
+  helper_method :current_student
 
   private
 
   def current_teacher
     Teacher.find_by(id: session[:teacher_id])
+  end
+
+  def current_student
+    Student.find_by(id: session[:student_id])
   end
 end
