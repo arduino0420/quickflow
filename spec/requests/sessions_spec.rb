@@ -3,6 +3,15 @@ require "rails_helper"
 RSpec.describe "Teacher sessions", type: :request do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
+  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "student-password") }
+
+  def student_login
+    post student_login_path, params: { student_session: {
+      school_code: school.school_code, grade: classroom.grade, class_number: classroom.class_number,
+      attendance_number: student.attendance_number, password: "student-password"
+    } }
+  end
 
   def login
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
@@ -92,5 +101,37 @@ RSpec.describe "Teacher sessions", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect_login_form
+  end
+
+  it "replaces a student session after successful teacher authentication" do
+    student_login
+    get login_path
+    expect_login_form
+    get student_login_path
+    expect(response.body).to include("ログイン中: 1年 1組 出席番号 1")
+
+    login
+    follow_redirect!
+    expect(response.body).to include("ログイン中のユーザーID: #{teacher.user_id}")
+    get student_login_path
+    expect(response.body).not_to include("ログイン中:")
+    expect(Nokogiri::HTML(response.body).at_css('form[action="/student/login"]')).to be_present
+  end
+
+  it "retains a student session after failed teacher authentication" do
+    student_login
+    post login_path, params: { session: { user_id: teacher.user_id, password: "wrong-password" } }
+
+    expect(response).to have_http_status(422)
+    get student_login_path
+    expect(response.body).to include("ログイン中: 1年 1組 出席番号 1")
+  end
+
+  it "clears a student session when using teacher logout" do
+    student_login
+    delete logout_path
+
+    get student_login_path
+    expect(response.body).not_to include("ログイン中:")
   end
 end

@@ -3,6 +3,10 @@ Rails.application.routes.draw do
   post "/login", to: "sessions#create"
   delete "/logout", to: "sessions#destroy", as: :logout
 
+  get "/student/login", to: "student_sessions#new", as: :student_login
+  post "/student/login", to: "student_sessions#create"
+  delete "/student/logout", to: "student_sessions#destroy", as: :student_logout
+
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
