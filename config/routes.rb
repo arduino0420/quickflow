@@ -7,6 +7,8 @@ Rails.application.routes.draw do
   post "/student/login", to: "student_sessions#create"
   delete "/student/logout", to: "student_sessions#destroy", as: :student_logout
 
+  resources :assignments, only: [ :new, :create ]
+
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
