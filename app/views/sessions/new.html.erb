@@ -1,0 +1,22 @@
+<h1>教師ログイン</h1>
+
+<% if flash[:alert].present? %>
+  <p role="alert"><%= flash[:alert] %></p>
+<% end %>
+
+<% if current_teacher %>
+  <p>ログイン中のユーザーID: <%= current_teacher.user_id %></p>
+  <%= button_to "ログアウト", logout_path, method: :delete %>
+<% else %>
+  <%= form_with scope: :session, url: login_path do |form| %>
+    <div>
+      <%= form.label :user_id, "ユーザーID" %>
+      <%= form.text_field :user_id, autocomplete: "username" %>
+    </div>
+    <div>
+      <%= form.label :password, "パスワード" %>
+      <%= form.password_field :password, autocomplete: "current-password" %>
+    </div>
+    <%= form.submit "ログイン" %>
+  <% end %>
+<% end %>
