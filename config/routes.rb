@@ -12,6 +12,7 @@ Rails.application.routes.draw do
   namespace :student do
     resources :assignments, only: [ :index, :show ] do
       get :material, on: :member
+      resource :submission, only: [ :create ]
     end
   end
 

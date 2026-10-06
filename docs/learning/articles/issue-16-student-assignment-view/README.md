@@ -42,6 +42,7 @@
   namespace :student do
     resources :assignments, only: [ :index, :show ] do
       get :material, on: :member
+      resource :submission, only: [ :create ]
     end
   end
 ```
@@ -114,6 +115,8 @@
   end
 
   def show
+    @submission = current_student.submissions.find_by(assignment: @assignment) ||
+      current_student.submissions.build(assignment: @assignment)
   end
 ```
 
@@ -121,7 +124,7 @@
 
 indexは新しい登録順に並べます。同じ登録日時ならIDが大きいものを先にし、Viewがタイトルと「詳細」リンクを表示します。0件なら「配信された小テストはありません。」です。
 
-showが空でも、事前の`set_assignment`が`@assignment`を用意し、Railsが対応する`show.html.erb`を表示します。詳細にはタイトル・1問あたりの点数・教材ファイル名・教材リンク・一覧への戻りリンクだけがあります。
+事前の`set_assignment`が`@assignment`を用意し、Railsが対応する`show.html.erb`を表示します。Issue #18ではshowが自分のSubmissionも用意します。Issue #16では詳細にタイトル・1問あたりの点数・教材ファイル名・教材リンク・一覧への戻りリンクを実装しました。Issue #18では、その下に未提出フォームまたは提出済み表示が追加されています。
 
 このGET処理では登録用validationやtransactionは実行しません。Issue #14が保存したAssignmentと配信の紐付けを読む機能です。
 
@@ -189,7 +192,7 @@ Active Storage自体を削除したわけではありません。通常のmultip
 | 認証 | 未ログイン・教師・ログアウト後・削除済み生徒は拒否 |
 | PDF取得 | 元ファイルとの内容一致、inline／attachment、ヘッダー |
 | 公開経路 | 有効な署名情報でも標準URLがrouteとして存在しない |
-| 閲覧専用 | GETで対象レコードを変更せず、提出等の操作を出さない |
+| 閲覧専用 | GETで対象レコードを変更しない。Issue #18から詳細には提出フォームを表示 |
 | 連携 | 教師の配信→生徒ログイン→一覧→詳細→教材 |
 
 </div>
@@ -225,7 +228,7 @@ Active Storage自体を削除したわけではありません。通常のmultip
 できません。current_student.classroom.assignmentsに含まれることが必要です。別クラスだけのIDではfindが見つけられず404になります。
 </details>
 
-<details><summary>3. showが空なら、詳細にも認可がない？</summary>
+<details><summary>3. showの前にも認可がある？</summary>
 認可はbefore_actionのset_assignmentで行っています。materialにも同じ処理が適用されます。
 </details>
 

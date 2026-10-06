@@ -1,0 +1,55 @@
+{
+  "sourceHashes": {
+    "app/controllers/student/submissions_controller.rb": "d5b9eb81974797f201a28443300fc62e73d5a150cc0aecadf1075cb2b2d23bad",
+    "app/controllers/student/assignments_controller.rb": "cfcb0172a1afa159a395b492582c42094aee0b178acd4893c33ee1184f0f2124",
+    "app/views/student/assignments/show.html.erb": "15e7747a19a484657c775052e06917f00625567eb046d2ac60ddfe83907a08b8",
+    "app/models/submission.rb": "fa42dbcfa140f5bfa4ade411acb52b94865cdd7d5dd378676cad797649c0b47e",
+    "config/routes.rb": "28059b8565c6a6380214e250a16c6e7f49c9b1fbc2c4745f39ebde2cf5683ad8",
+    "db/schema.rb": "3cf4717eb2fa8bc1817a02d4b855fd89d1b5a6bd147011912832b4a5e00cbce1",
+    "spec/requests/student_submissions_spec.rb": "ded7a81f5cb31f997d85180d8ad56e5d3112aef958826832c6528a4074bcdcaf",
+    "spec/requests/student_assignments_spec.rb": "5263143bdd9492409d293fbca7ca92cedea48a49c1961e2df631960c04c2a776",
+    "spec/models/submission_spec.rb": "9941be6932f8a9797f777db039a7ea6671ce96e537d75e4b94e272a43715f5ea"
+  },
+  "snippets": [
+    {
+      "path": "app/models/submission.rb",
+      "text": "  belongs_to :assignment\n  has_many :grading_results\n  belongs_to :student\n\n  has_one_attached :answer_file"
+    },
+    {
+      "path": "config/routes.rb",
+      "text": "      resource :submission, only: [ :create ]"
+    },
+    {
+      "path": "app/views/student/assignments/show.html.erb",
+      "text": "  <%= form_with model: @submission, url: student_assignment_submission_path(@assignment) do |form| %>\n    <%= form.label :answer_file, \"解答PDF\" %>\n    <%= form.file_field :answer_file, accept: \"application/pdf,.pdf\" %>\n    <%= form.submit \"提出\" %>\n  <% end %>"
+    },
+    {
+      "path": "app/controllers/student/submissions_controller.rb",
+      "text": "    @assignment = current_student.classroom.assignments.find(params[:assignment_id])\n    return redirect_already_submitted if existing_submission"
+    },
+    {
+      "path": "app/controllers/student/submissions_controller.rb",
+      "text": "    @submission = current_student.submissions.build(\n      assignment: @assignment, status: :submitted, submitted_at: Time.current\n    )\n    upload = params.fetch(:submission, ActionController::Parameters.new).permit(:answer_file)[:answer_file]"
+    },
+    {
+      "path": "app/controllers/student/submissions_controller.rb",
+      "text": "    upload.tempfile.rewind\n    pdf = File.extname(upload.original_filename).downcase == \".pdf\" &&\n      Marcel::MimeType.for(upload.tempfile) == \"application/pdf\""
+    },
+    {
+      "path": "app/controllers/student/submissions_controller.rb",
+      "text": "    @submission.answer_file = upload\n    Submission.transaction(requires_new: true) { @submission.save! }\n    redirect_to student_assignment_path(@assignment), notice: \"提出しました\", status: :see_other"
+    },
+    {
+      "path": "app/controllers/student/assignments_controller.rb",
+      "text": "    @submission = current_student.submissions.find_by(assignment: @assignment) ||\n      current_student.submissions.build(assignment: @assignment)"
+    },
+    {
+      "path": "app/models/submission.rb",
+      "text": "  validates :student_id, uniqueness: { scope: :assignment_id }"
+    },
+    {
+      "path": "app/controllers/student/submissions_controller.rb",
+      "text": "  rescue ActiveRecord::RecordInvalid\n    return redirect_already_submitted if existing_submission\n\n    render_errors\n  rescue ActiveRecord::RecordNotUnique\n    return redirect_already_submitted if existing_submission\n\n    raise"
+    }
+  ]
+}
