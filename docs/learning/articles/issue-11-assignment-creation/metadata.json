@@ -1,26 +1,31 @@
 {
   "id": "issue-11-assignment-creation",
-  "title": "教師の小テスト登録は、どう動く？",
-  "summary": "routes・教師認証・フォーム・Strong Parameters・添付・保存・request specをつなげる解説。",
-  "issue": 11,
-  "updatedAt": "2026-10-05",
-  "sourceCommit": "cc1287506974caaa501e110fa3b5b39a31b88b34",
-  "sourceDirty": false,
+  "title": "「配信」を押すと、登録・保存・一覧表示はどうつながる？",
+  "summary": "Issue #14の最終仕様：入力検証・学校内クラス選択・一括保存と、所有者に限定した配信済み一覧・詳細をつなげる解説。",
+  "issue": 14,
+  "updatedAt": "2026-10-06",
+  "sourceCommit": "029b1cd0f6da712a99c321a6a7a89f8e96224c6a",
+  "sourceDirty": true,
   "sourceFiles": [
     "config/routes.rb",
     "app/controllers/assignments_controller.rb",
-    "app/views/assignments/new.html.erb",
-    "spec/requests/assignments_spec.rb",
     "app/controllers/application_controller.rb",
     "app/models/assignment.rb",
-    "app/models/teacher.rb"
+    "app/models/assignment_classroom.rb",
+    "app/models/teacher.rb",
+    "app/models/classroom.rb",
+    "app/views/assignments/new.html.erb",
+    "app/views/assignments/index.html.erb",
+    "app/views/assignments/show.html.erb",
+    "spec/requests/assignments_spec.rb",
+    "db/schema.rb"
   ],
   "verification": {
     "status": "limited",
-    "summary": "移行時に対象コードを読み直し、原稿とHTMLの構造・コード照合・リンクを確認。PC幅1280pxとモバイル幅390pxでブラウザ表示と記事の移動を検証しました。Railsテストは再実行していません。",
+    "summary": "2026-10-06にAssignment request specを再実行：44 examples, 0 failures。学習サイトbuild・コード抜粋/ハッシュ/リンク照合・サイトテスト2件に成功。ローカルChromeで1280px/390pxの一覧→記事→一覧、理解度チェック展開、横はみ出し・ページエラーなしを確認。初見読者のskim確認も実施。Railsアプリのブラウザ確認完了はユーザーからの報告。",
     "limitations": [
-      "15件成功という記述は、先の実装時に実行したAssignment request specの結果です。",
-      "学習サイトの構造検査は、Railsの動作を保証するものではありません。"
+      "今回のエージェントによるRailsアプリのブラウザ再確認・全RSpec実行は行っていません。",
+      "first-readerは初見のskimのみ。時間制約付きの通読・翌日想定の想起検査、explainer専用の図・VLM検査は未実施。コード・HTML照合は学習サイトの既存検査を使用。"
     ]
   }
 }

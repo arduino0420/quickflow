@@ -1,0 +1,20 @@
+<h1>小テスト詳細</h1>
+
+<%= link_to "配信済み小テスト", assignments_path %>
+
+<dl>
+  <dt>タイトル</dt>
+  <dd><%= @assignment.title %></dd>
+  <dt>1問あたりの点数</dt>
+  <dd><%= @assignment.point_per_question %></dd>
+  <dt>配信先クラス</dt>
+  <dd>
+    <ul>
+      <% @classrooms.each do |classroom| %>
+        <li><%= "#{classroom.grade}年#{classroom.class_number}組" %></li>
+      <% end %>
+    </ul>
+  </dd>
+  <dt>教材ファイル名</dt>
+  <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
+</dl>
