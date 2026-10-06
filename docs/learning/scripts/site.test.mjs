@@ -15,6 +15,7 @@ function fixture() {
 }
 test('adding a topic creates a page and index link; updating it preserves article identity', () => {
   const root = fixture();
+  const initialCount = readArticles(root).length;
   const old = join(root, 'articles/issue-11-assignment-creation');
   const next = join(root, 'articles/teacher-login');
   cpSync(old, next, { recursive: true });
@@ -25,7 +26,7 @@ test('adding a topic creates a page and index link; updating it preserves articl
   assert(readFileSync(join(root, 'dist/index.html'), 'utf8').includes('articles/teacher-login.html'));
   writeFileSync(join(next, 'README.md'), '# 教師ログイン\n\n更新した解説です。');
   build(root); verify(root, repoRoot);
-  assert.equal(readArticles(root).length, 2);
+  assert.equal(readArticles(root).length, initialCount + 1);
   assert(readFileSync(join(root, 'dist/articles/teacher-login.html'), 'utf8').includes('更新した解説です。'));
 });
 test('verification rejects stale pages, broken links and source changes', () => {

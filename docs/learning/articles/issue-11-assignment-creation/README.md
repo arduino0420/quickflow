@@ -194,3 +194,7 @@ GETで見るだけなので保存処理はありません。再配信・追加�
 <details><summary>3. 同じ学校の他教師の小テストは、詳細で見られる？</summary><p>見られません。配信先選択は学校単位ですが、小テストの閲覧は所有教師単位です。</p></details>
 <details><summary>4. 配信済みの判定にpublished_atを使っている？</summary><p>使っていません。自分のAssignmentのうち、AssignmentClassroomが1件以上あるものを取得します。</p></details>
 <details><summary>5. request spec成功はブラウザの見た目まで保証する？</summary><p>しません。保存・応答・HTMLの確認と、実ブラウザでの表示や操作の確認は別です。</p></details>
+
+## Issue #16とのつながり
+
+教師側の配信・一覧・詳細は維持されています。生徒側には別の`/student/assignments`が追加され、所属クラスへの配信を根拠に取得します。教材取得の認可は生徒用Controllerが行い、標準Active Storage公開routesは無効です。

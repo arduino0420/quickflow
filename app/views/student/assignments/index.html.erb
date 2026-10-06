@@ -1,0 +1,14 @@
+<h1>配信された小テスト</h1>
+
+<% if @assignments.empty? %>
+  <p>配信された小テストはありません。</p>
+<% else %>
+  <ul>
+    <% @assignments.each do |assignment| %>
+      <li>
+        <%= assignment.title %>
+        <%= link_to "詳細", student_assignment_path(assignment) %>
+      </li>
+    <% end %>
+  </ul>
+<% end %>

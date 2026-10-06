@@ -1,0 +1,19 @@
+<h1>小テスト詳細</h1>
+
+<%= link_to "一覧へ戻る", student_assignments_path %>
+
+<dl>
+  <dt>タイトル</dt>
+  <dd><%= @assignment.title %></dd>
+  <dt>1問あたりの点数</dt>
+  <dd><%= @assignment.point_per_question %></dd>
+  <dt>教材ファイル名</dt>
+  <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
+</dl>
+
+<% if @assignment.material_file.attached? %>
+  <% if @assignment.material_file.content_type == "application/pdf" %>
+    <%= link_to "教材を開く", material_student_assignment_path(@assignment), data: { turbo: false } %>
+  <% end %>
+  <%= link_to "教材をダウンロード", material_student_assignment_path(@assignment, download: "1"), data: { turbo: false } %>
+<% end %>

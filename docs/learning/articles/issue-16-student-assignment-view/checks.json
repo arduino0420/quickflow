@@ -1,0 +1,52 @@
+{
+  "sourceHashes": {
+    "config/routes.rb": "0bfdc5dad718b4b3ebc56f896fa936bb397830d1fc7cf046178568ecbc09f52c",
+    "config/application.rb": "3511021e544fa05557afc25e9ed15659f9e729f1f7f480fc8fcb88aaadf509a5",
+    "config/storage.yml": "bb472986ec9dd77d0e30e840d8f2b21b9c435aa65e3096aa813e4bc2df658edb",
+    "app/controllers/application_controller.rb": "270b3bb931fd21c4627d85e99bf6dc1aae48785aea4bd20ccf99d5455fb59d49",
+    "app/controllers/student_sessions_controller.rb": "017c0cf41864239a58ce90be3924f3f833b8bb984cc77f7c223ab13c0f6573f8",
+    "app/controllers/student/assignments_controller.rb": "a130b98bbcdb2a739ab7226d3a214059658455dbf2a6210570e52a0514fbcdd4",
+    "app/models/student.rb": "c65a90510077b587af3f391596207e741832b05fdec84a74530263ff78da0333",
+    "app/models/classroom.rb": "548c147307e7dd4f3594708bca25f4329a224f44526b3e56f048243cd2ca4798",
+    "app/models/assignment.rb": "44a9c4ec878511aad8e4aec34910793e8439e90589cd09dd1fdc16284f8cbbe3",
+    "app/models/assignment_classroom.rb": "4c89a9000f5cee581578a18a651be0426b63e2d8a53500665e0e3ee55a4a726e",
+    "app/views/student/assignments/index.html.erb": "6135439b4cd65e6e016ff1081409e142b884d1ac92593aaeb05ab1c3bb88c1d7",
+    "app/views/student/assignments/show.html.erb": "89d6eedf37a8eb6e8b552639bf5764c6c9e5c311bad2ef23a53d8d60180909e5",
+    "spec/requests/student_assignments_spec.rb": "48321f6356d0671a6a65c4ceb723cb20d9bae63670e40ddbcb97eae9495488dc",
+    "spec/requests/student_sessions_spec.rb": "b261c82e1b34e5c29e7ff4653298ac63baa0c6c765227e639e1b1c11af93ae9b"
+  },
+  "snippets": [
+    {
+      "path": "app/controllers/student_sessions_controller.rb",
+      "text": "      reset_session\n      session[:student_id] = student.id\n      redirect_to student_assignments_path, status: :see_other"
+    },
+    {
+      "path": "config/routes.rb",
+      "text": "  namespace :student do\n    resources :assignments, only: [ :index, :show ] do\n      get :material, on: :member\n    end\n  end"
+    },
+    {
+      "path": "app/controllers/application_controller.rb",
+      "text": "  def current_student\n    Student.find_by(id: session[:student_id])\n  end"
+    },
+    {
+      "path": "app/controllers/student/assignments_controller.rb",
+      "text": "  def require_student_login\n    redirect_to student_login_path, status: :see_other unless current_student\n  end\n\n  def available_assignments\n    current_student.classroom.assignments\n  end\n\n  def set_assignment\n    @assignment = available_assignments.find(params[:id])\n  end"
+    },
+    {
+      "path": "app/models/classroom.rb",
+      "text": "  has_many :assignment_classrooms\n  has_many :assignments, through: :assignment_classrooms"
+    },
+    {
+      "path": "app/controllers/student/assignments_controller.rb",
+      "text": "  before_action :require_student_login\n  before_action :set_assignment, only: [ :show, :material ]\n\n  def index\n    @assignments = available_assignments.order(created_at: :desc, id: :desc)\n  end\n\n  def show\n  end"
+    },
+    {
+      "path": "app/controllers/student/assignments_controller.rb",
+      "text": "    file = @assignment.material_file\n    return head :not_found unless file.attached?\n\n    disposition = params[:download] == \"1\" || file.content_type != \"application/pdf\" ? :attachment : :inline\n    response.headers[\"Cache-Control\"] = \"private, no-store\"\n    response.headers[\"X-Content-Type-Options\"] = \"nosniff\"\n    send_data file.download, filename: file.filename.to_s,\n      type: file.content_type || \"application/octet-stream\", disposition: disposition"
+    },
+    {
+      "path": "config/application.rb",
+      "text": "    config.active_storage.draw_routes = false"
+    }
+  ]
+}

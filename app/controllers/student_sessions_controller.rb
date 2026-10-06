@@ -13,7 +13,7 @@ class StudentSessionsController < ApplicationController
     if student&.authenticate(credentials[:password])
       reset_session
       session[:student_id] = student.id
-      redirect_to student_login_path, status: :see_other
+      redirect_to student_assignments_path, status: :see_other
     else
       flash.now[:alert] = "ログイン情報またはパスワードが正しくありません。"
       render :new, status: :unprocessable_entity
