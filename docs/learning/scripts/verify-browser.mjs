@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { siteRoot } from './build-site.mjs';
 
 // Verify the current article using its metadata, without old migration assumptions.
-const metadata = JSON.parse(readFileSync(join(siteRoot, 'articles/issue-11-assignment-creation/metadata.json'), 'utf8'));
+const articleId = process.env.LEARNING_ARTICLE_ID ?? 'issue-11-assignment-creation';
+const metadata = JSON.parse(readFileSync(join(siteRoot, `articles/${articleId}/metadata.json`), 'utf8'));
 mkdirSync(join(siteRoot, '.tmp'), { recursive: true });
 const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const executablePath = process.env.LEARNING_BROWSER_EXECUTABLE ?? (existsSync(chromePath) ? chromePath : undefined);
@@ -23,7 +24,7 @@ try {
     assert.equal(await page.locator('details').count(), 5);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Page overflows viewport');
     await page.screenshot({ path: join(siteRoot, '.tmp', `article-top-${viewport.width}.png`) });
-    await page.getByRole('heading', { name: '保存と表示の一本道', exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole('heading', { name: articleId === 'issue-16-student-assignment-view' ? 'ログインから教材までの一本道' : '保存と表示の一本道', exact: true }).scrollIntoViewIfNeeded();
     await page.locator('details').first().locator('summary').click();
     await page.screenshot({ path: join(siteRoot, '.tmp', `article-${viewport.width}.png`), fullPage: true });
     await page.getByRole('link', { name: '← 記事一覧へ' }).click();

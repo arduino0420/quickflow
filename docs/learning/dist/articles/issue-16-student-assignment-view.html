@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>生徒はなぜ自分のクラスの小テストだけ見られる？ | QuickFlow学習サイト</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f3f6fa;color:#243247;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;line-height:1.9}header{background:#153550;color:white;padding:56px 24px}header>div,main,footer{max-width:960px;margin:auto}h1{font-size:clamp(26px,4vw,40px);line-height:1.5;margin:12px 0}header p{color:#dfebf5}.eyebrow{font-size:13px;letter-spacing:.16em;color:#a9dccf}main{padding:28px 20px 48px}section,.intro,.recap{background:white;border:1px solid #dce4ed;border-radius:16px;padding:28px 32px;margin-bottom:24px;box-shadow:0 5px 18px #15355006}h2{font-size:22px;line-height:1.6;margin:0 0 20px;display:flex;gap:12px;align-items:baseline}h2 span{flex-shrink:0;background:#e7f4f0;color:#146451;border-radius:8px;padding:0 10px;font-size:18px}h3{font-size:18px}p{margin:14px 0}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em;background:#edf2f7;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{background:#17283c;color:#eff6ff;padding:20px;border-radius:10px;overflow:auto;line-height:1.7}pre code{background:none;padding:0;overflow-wrap:normal}table{border-collapse:collapse;width:100%;font-size:15px}th,td{text-align:left;padding:14px 16px;border-bottom:1px solid #dae3ec;vertical-align:top}th{background:#eaf1f7;color:#153550}.table-wrap{overflow-x:auto;margin:20px 0}.note{border-left:4px solid #21866d;background:#eef8f4;padding:16px 20px;border-radius:0 8px 8px 0}li{margin:8px 0}nav{display:flex;flex-wrap:wrap;gap:10px}nav a{color:#155c78;text-decoration:none;border:1px solid #d3e2eb;border-radius:7px;padding:5px 12px;font-size:14px}a:hover{text-decoration:underline}a:focus-visible{outline:3px solid #21866d;outline-offset:3px}.flow{list-style:none;padding:0;counter-reset:steps}.flow li{counter-increment:steps;position:relative;padding:14px 18px 14px 54px;background:#f1f6fa;border-radius:8px;margin:0 0 18px;line-height:1.65}.flow li:before{content:counter(steps);position:absolute;left:16px;color:#146451;font-weight:bold}.flow li:not(:last-child):after{content:"↓";position:absolute;bottom:-23px;left:24px;color:#637c92}footer{font-size:13px;color:#53677a;padding:0 24px 36px}@media(max-width:600px){header{padding:32px 20px}main{padding:20px 12px}section,.intro,.recap{padding:22px 18px}h2{font-size:19px}th,td{padding:10px;min-width:120px}}@media print{body{background:white}header{background:white;color:#153550;padding:0}header p{color:#243247}main{padding:0}nav{display:none}section,.intro,.recap{box-shadow:none;break-inside:avoid}pre{white-space:pre-wrap}footer{padding:0}}
+.article-meta{font-size:14px;color:#53677a}.article-card{display:block;color:inherit;text-decoration:none}.article-card h2{color:#155c78}.article-card:hover{border-color:#21866d}.verification{border-left:4px solid #aa7500;background:#fff7e7;padding:16px 20px;border-radius:8px;margin:20px 0}
+</style></head><body><header><div><div class="eyebrow">QUICKFLOW · LEARNING</div><h1>生徒はなぜ自分のクラスの小テストだけ見られる？</h1><p><a href="../index.html" style="color:#dfebf5">← 記事一覧へ</a></p></div></header><main><p class="article-meta">更新 2026-10-06 · 対象コミット <code>5828bc9aff00</code>（対象コードに未commit変更あり）</p><aside class="verification" aria-label="検証状況"><strong>検証状況：未検証事項あり</strong><p>2026-10-06に関連request specを再実行：90 examples, 0 failures。ユーザーがログイン・一覧・詳細・PDF表示・ダウンロードをブラウザ確認済み。 学習サイトbuild・コード/ハッシュ/リンク照合・サイトテスト2件成功。ローカルChromeの1280px/390pxで一覧→記事→一覧、理解度チェック展開、横はみ出し・ページエラーなしを確認。初見読者のskimも実施。</p><ul><li>他クラスURL直アクセスはブラウザ未確認。request specで404を確認。</li><li>全RSpec・大容量教材の性能・専用VLM検査・first-reader通読/想起検査は未実施。</li></ul></aside><blockquote>
+<p>想定読者：QuickFlowを開発しながらRailsを学んでいる方。依頼で確認できたのは、ログインから教材取得までのつながりを理解したいことです。
+仮定：短い実コードと具体例を並べると理解しやすいと考えています。経験年数や既知の範囲は未確認です。
+省いたもの：解答提出・採点・一般的なRailsの導入手順。所要時間：約8分。</p>
+</blockquote>
+<p>伝えたいこと：一覧・詳細・教材のすべてで「ログイン生徒の所属クラス」を取得の出発点にすることで、URLを書き換えても他クラスの小テストを取得できません。</p>
+<p>読み終えたら、①ログイン後にどのControllerへ進むか、②他クラスのIDを指定するとどこで止まるか、③教材取得でも認可が必要な理由を説明できます。</p>
+<h2>一枚で：画面と内部処理</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>節</th>
+<th>役割</th>
+<th>見せるもの</th>
+<th>理解につながる点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ログインとroutes</td>
+<td>生徒用の入口を特定する</td>
+<td>redirect・namespace</td>
+<td>教師用との分離</td>
+</tr>
+<tr>
+<td>認証とassociation</td>
+<td>取得できる範囲を決める</td>
+<td>current_studentからの関連</td>
+<td>URL直アクセスの防止</td>
+</tr>
+<tr>
+<td>indexとshow</td>
+<td>HTMLを表示する</td>
+<td>before_action・View</td>
+<td>詳細にも同じ制限</td>
+</tr>
+<tr>
+<td>material</td>
+<td>教材内容を返す</td>
+<td>send_data・公開routes無効化</td>
+<td>ファイルへの迂回防止</td>
+</tr>
+<tr>
+<td>Request Spec</td>
+<td>何を確認できたかを区別する</td>
+<td>成功・404・回帰テスト</td>
+<td>ブラウザ確認との違い</td>
+</tr>
+</tbody></table>
+</div><h2>ログインすると、一覧への別リクエストが始まる</h2>
+<p>生徒ログインは学校コード→学年・組→出席番号で生徒を特定し、パスワードを確認します。成功すると既存セッションをリセットして生徒IDを保存します。</p>
+<!-- source: app/controllers/student_sessions_controller.rb -->
+<pre><code class="language-ruby">      reset_session
+      session[:student_id] = student.id
+      redirect_to student_assignments_path, status: :see_other
+</code></pre>
+<p><code>redirect_to</code>は一覧HTMLをここで作る命令ではありません。303の返答を受けたブラウザが、続いて<code>GET /student/assignments</code>を送ります。</p>
+<p>ログインのStrong Parametersは入力項目を限定する処理です。パスワードの確認と、教材を取得してよいかの確認は別の処理です。</p>
+<!-- source: config/routes.rb -->
+<pre><code class="language-ruby">  namespace :student do
+    resources :assignments, only: [ :index, :show ] do
+      get :material, on: :member
+    end
+  end
+</code></pre>
+<p><code>namespace :student</code>はURL・Controller・helperの名前を生徒用にまとめます。<code>Student::AssignmentsController</code>の<code>::</code>は名前空間の区切りで、Studentモデルが教材を返すactionを持つという意味ではありません。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>リクエスト</th>
+<th>action</th>
+<th>helper</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>GET /student/assignments</td>
+<td>index</td>
+<td>student_assignments_path</td>
+</tr>
+<tr>
+<td>GET /student/assignments/12</td>
+<td>show</td>
+<td>student_assignment_path(12)</td>
+</tr>
+<tr>
+<td>GET /student/assignments/12/material</td>
+<td>material</td>
+<td>material_student_assignment_path(12)</td>
+</tr>
+</tbody></table>
+</div><p><code>on: :member</code>は「特定のAssignment一件」を対象にする指定です。教師側の<code>/assignments</code>と生徒側の<code>/student/assignments</code>は別のControllerへ進みます。</p>
+<h2>認証の次に、所属クラスで範囲を限定する</h2>
+<p>認証は「誰がログインしているか」、認可は「その人がこの小テストを取得してよいか」の確認です。ログインできたことだけでは、全教材の閲覧許可にはなりません。</p>
+<!-- source: app/controllers/application_controller.rb -->
+<pre><code class="language-ruby">  def current_student
+    Student.find_by(id: session[:student_id])
+  end
+</code></pre>
+<p>生徒が未ログイン・削除済みなら<code>nil</code>です。教師ログインだけの場合も、生徒IDがないので生徒として扱いません。</p>
+<!-- source: app/controllers/student/assignments_controller.rb -->
+<pre><code class="language-ruby">  def require_student_login
+    redirect_to student_login_path, status: :see_other unless current_student
+  end
+
+  def available_assignments
+    current_student.classroom.assignments
+  end
+
+  def set_assignment
+    @assignment = available_assignments.find(params[:id])
+  end
+</code></pre>
+<p><code>current_student.classroom.assignments</code>は「その生徒の所属クラスへ配信されたAssignment」の検索範囲です。StudentはClassroomに所属し、Classroomの次のassociationがAssignmentClassroomを経由してAssignmentへつなぎます。</p>
+<!-- source: app/models/classroom.rb -->
+<pre><code class="language-ruby">  has_many :assignment_classrooms
+  has_many :assignments, through: :assignment_classrooms
+</code></pre>
+<p>たとえば1年1組の生徒が、1年2組だけに配信されたAssignmentのIDを指定しても、検索範囲にそのレコードがありません。<code>find</code>が<code>ActiveRecord::RecordNotFound</code>を起こし、Railsが404を返します。</p>
+<p>クラスIDはブラウザから受け取らず、ログイン生徒のDB上の所属から決めています。同じ学校というだけでは取得できず、自分のクラスへの紐付けが必要です。</p>
+<p>一方、自分のクラスと他クラスの両方へ配信された小テストは取得できます。作成教師や<code>Classroom.teacher_id</code>では制限せず、Issue #14で保存された配信先を使います。<code>published_at</code>の有無も条件にしていません。</p>
+<h2>indexは一覧、showは詳細のHTMLを作る</h2>
+<!-- source: app/controllers/student/assignments_controller.rb -->
+<pre><code class="language-ruby">  before_action :require_student_login
+  before_action :set_assignment, only: [ :show, :material ]
+
+  def index
+    @assignments = available_assignments.order(created_at: :desc, id: :desc)
+  end
+
+  def show
+  end
+</code></pre>
+<p><code>before_action</code>はactionより先に実行する処理です。全actionで生徒認証を行い、showとmaterialではその後に所属クラス内のAssignmentを取得します。</p>
+<p>indexは新しい登録順に並べます。同じ登録日時ならIDが大きいものを先にし、Viewがタイトルと「詳細」リンクを表示します。0件なら「配信された小テストはありません。」です。</p>
+<p>showが空でも、事前の<code>set_assignment</code>が<code>@assignment</code>を用意し、Railsが対応する<code>show.html.erb</code>を表示します。詳細にはタイトル・1問あたりの点数・教材ファイル名・教材リンク・一覧への戻りリンクだけがあります。</p>
+<p>このGET処理では登録用validationやtransactionは実行しません。Issue #14が保存したAssignmentと配信の紐付けを読む機能です。</p>
+<h2>materialは、認可した教材の中身を返す</h2>
+<p>教材のリンクを非表示にするだけでは、URL直アクセスを防げません。materialもshowと同じ<code>set_assignment</code>を通るため、<strong>ファイルを読む前に所属クラスでの確認が済みます。</strong></p>
+<!-- source: app/controllers/student/assignments_controller.rb -->
+<pre><code class="language-ruby">    file = @assignment.material_file
+    return head :not_found unless file.attached?
+
+    disposition = params[:download] == &quot;1&quot; || file.content_type != &quot;application/pdf&quot; ? :attachment : :inline
+    response.headers[&quot;Cache-Control&quot;] = &quot;private, no-store&quot;
+    response.headers[&quot;X-Content-Type-Options&quot;] = &quot;nosniff&quot;
+    send_data file.download, filename: file.filename.to_s,
+      type: file.content_type || &quot;application/octet-stream&quot;, disposition: disposition
+</code></pre>
+<p><code>file.download</code>はサーバーがActive Storageから教材内容を読む処理です。続く<code>send_data</code>は、その内容・ファイル名・種類・表示方法をHTTPレスポンスとしてブラウザへ返します。別の公開URLへredirectしていません。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>disposition</th>
+<th>ブラウザへの伝え方</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PDFの「教材を開く」</td>
+<td>inline</td>
+<td>ブラウザ内での表示を指定</td>
+</tr>
+<tr>
+<td>「教材をダウンロード」（download=1）</td>
+<td>attachment</td>
+<td>ファイル保存を指定</td>
+</tr>
+<tr>
+<td>PDF以外</td>
+<td>attachment</td>
+<td>ブラウザ内では開かず取得</td>
+</tr>
+</tbody></table>
+</div><p>どちらのリンクも同じmaterial actionを通り、認証・認可は同じです。PDF表示や保存画面の具体的な挙動は、ブラウザの設定にも依存します。</p>
+<p>Viewの<code>data: { turbo: false }</code>は、教材リンクを通常のページ移動として扱う指定です。HTMLの部分更新ではなく、PDFやファイルの返答をブラウザに扱わせます。</p>
+<p><code>private, no-store</code>はレスポンスを保存・再利用しないようキャッシュへ指示します。<code>nosniff</code>は指定したContent-Typeの扱いを促します。ダウンロード済みの利用者のファイルを削除する仕組みではありません。</p>
+<p>添付がなければリンクを表示せず、教材routeは404です。保存先のファイルが見つからない場合も<code>ActiveStorage::FileNotFoundError</code>を捕まえて404を返します。</p>
+<h2>Active Storageの公開routesを閉じた理由</h2>
+<p>標準のActive Storage Controllerは、署名付きURLを知る人にアプリの生徒認証・クラス確認を行いません。独自material routeを追加しても、標準URLが生きていれば認可を迂回する入口が残ります。</p>
+<!-- source: config/application.rb -->
+<pre><code class="language-ruby">    config.active_storage.draw_routes = false
+</code></pre>
+<p>この設定で標準blob・proxy・disk・representation・direct upload routesを無効にしています。認証付きの独自Controllerを使う場合の設定として、<a href="https://guides.rubyonrails.org/active_storage_overview.html#authenticated-controllers">Rails公式ガイド</a>にも説明があります。</p>
+<p>Active Storage自体を削除したわけではありません。通常のmultipartフォームでの教師アップロード、添付のDB保存、サーバー内部のdownloadは維持されています。未使用のDirect Uploadや標準プレビューURLも利用できなくなる点は設定の影響です。</p>
+<p>今回の保存先はDiskサービスの<code>storage</code>／<code>tmp/storage</code>で、<code>public</code>配下ではありません。将来保存先や公開配信設定を変える場合は、今回のroutes制限だけで十分か再確認が必要です。</p>
+<h2>Request Specで守っていること</h2>
+<p><code>spec/requests/student_assignments_spec.rb</code>は実際のGET・POSTを送り、認証・取得範囲・レスポンスを確認します。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>確認する境界</th>
+<th>テスト内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>一覧</td>
+<td>自分のクラスだけ、順番、0件、複数クラス配信でも重複なし</td>
+</tr>
+<tr>
+<td>詳細・教材</td>
+<td>他クラス・別学校・未配信・不存在IDは404</td>
+</tr>
+<tr>
+<td>認証</td>
+<td>未ログイン・教師・ログアウト後・削除済み生徒は拒否</td>
+</tr>
+<tr>
+<td>PDF取得</td>
+<td>元ファイルとの内容一致、inline／attachment、ヘッダー</td>
+</tr>
+<tr>
+<td>公開経路</td>
+<td>有効な署名情報でも標準URLがrouteとして存在しない</td>
+</tr>
+<tr>
+<td>閲覧専用</td>
+<td>GETで対象レコードを変更せず、提出等の操作を出さない</td>
+</tr>
+<tr>
+<td>連携</td>
+<td>教師の配信→生徒ログイン→一覧→詳細→教材</td>
+</tr>
+</tbody></table>
+</div><p>2026-10-06に、生徒閲覧・生徒認証・教師配信・教師認証のrequest specを再実行し、90 examples, 0 failuresでした。全RSpecを実行したという意味ではありません。</p>
+<p>ユーザーのブラウザ確認では、ログイン・一覧・詳細・PDF表示・ダウンロードが成功しています。他クラスの実データがなかったためURL直アクセスはブラウザ未確認ですが、request specでは詳細と教材が404になることを確認しました。</p>
+<p>教材は全体をメモリへ読み込む実装で、Range対応はありません。request specの成功だけで、大容量ファイルの性能や全ブラウザのPDF表示まで保証しません。</p>
+<h2>ログインから教材までの一本道</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>順番</th>
+<th>Railsとブラウザの動き</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>POST /student/loginでパスワード確認、生徒IDをセッションへ</td>
+</tr>
+<tr>
+<td>2</td>
+<td>303を受けたブラウザが一覧をGET</td>
+</tr>
+<tr>
+<td>3</td>
+<td>生徒認証→所属クラスのAssignment取得→一覧View</td>
+</tr>
+<tr>
+<td>4</td>
+<td>詳細をGET→生徒認証→範囲内でfind→詳細View</td>
+</tr>
+<tr>
+<td>5</td>
+<td>教材をGET→生徒認証→範囲内でfind→添付確認</td>
+</tr>
+<tr>
+<td>6</td>
+<td>downloadで内容取得→send_dataでPDF・ファイルを返す</td>
+</tr>
+</tbody></table>
+</div><h2>理解度チェック</h2>
+<details><summary>1. ログインControllerが一覧HTMLを作っている？</summary>
+いいえ。303で一覧URLを返し、ブラウザが新しいGETを送ります。そのGETをStudent::AssignmentsController#indexが受けます。
+</details><details><summary>2. 同じ学校なら他クラスのAssignmentも取得できる？</summary>
+できません。current_student.classroom.assignmentsに含まれることが必要です。別クラスだけのIDではfindが見つけられず404になります。
+</details><details><summary>3. showが空なら、詳細にも認可がない？</summary>
+認可はbefore_actionのset_assignmentで行っています。materialにも同じ処理が適用されます。
+</details><details><summary>4. PDFを開くリンクと保存リンクで、認可は違う？</summary>
+どちらも同じ認可付きmaterial routeです。違うのは返すContent-Dispositionで、inlineかattachmentかを決めます。
+</details><details><summary>5. 独自material routeだけ追加すれば、標準URLも安全になる？</summary>
+なりません。標準Controllerには所属クラスの確認がないため、公開routesを無効にして迂回経路を閉じています。教材の添付と内部downloadはそのまま使えます。
+</details>
+</main><footer>QuickFlowのコードを自分の言葉で説明するための学習資料。Railsから独立した静的サイトです。</footer></body></html>

@@ -42,10 +42,10 @@ RSpec.describe "Student sessions", type: :request do
     login
 
     expect(response).to have_http_status(:see_other)
-    expect(response).to redirect_to(student_login_path)
+    expect(response).to redirect_to(student_assignments_path)
     follow_redirect!
     expect(response).to have_http_status(:ok)
-    expect_logged_in
+    expect(response.body).to include("配信された小テスト")
 
     get student_login_path
     expect_logged_in
@@ -92,6 +92,8 @@ RSpec.describe "Student sessions", type: :request do
 
     login
     follow_redirect!
+    expect(response.body).to include("配信された小テスト")
+    get student_login_path
     expect_logged_in
     expect(response.request.session[:student_id]).to eq(student.id)
   end
@@ -105,6 +107,8 @@ RSpec.describe "Student sessions", type: :request do
 
     expect(response).to have_http_status(:see_other)
     follow_redirect!
+    expect(response.body).to include("配信された小テスト")
+    get student_login_path
     expect_logged_in
   end
 
@@ -148,6 +152,8 @@ RSpec.describe "Student sessions", type: :request do
 
     login
     follow_redirect!
+    expect(response.body).to include("配信された小テスト")
+    get student_login_path
     expect_logged_in
     get login_path
     expect(response.body).not_to include("ログイン中のユーザーID:")
