@@ -7,7 +7,7 @@ Rails.application.routes.draw do
   post "/student/login", to: "student_sessions#create"
   delete "/student/logout", to: "student_sessions#destroy", as: :student_logout
 
-  resources :assignments, only: [ :new, :create ]
+  resources :assignments, only: [ :index, :show, :new, :create ]
 
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
