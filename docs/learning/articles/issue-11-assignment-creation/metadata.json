@@ -4,7 +4,7 @@
   "summary": "Issue #14の最終仕様：入力検証・学校内クラス選択・一括保存と、所有者に限定した配信済み一覧・詳細をつなげる解説。",
   "issue": 14,
   "updatedAt": "2026-10-06",
-  "sourceCommit": "5828bc9aff001354f49d7161d50786ecd5108bda",
+  "sourceCommit": "01c978890f308119f05c08b2893ac945387c2d15",
   "sourceDirty": true,
   "sourceFiles": [
     "config/routes.rb",
@@ -22,7 +22,7 @@
   ],
   "verification": {
     "status": "limited",
-    "summary": "2026-10-06に生徒閲覧・生徒認証・教師配信・教師認証のrequest specを再実行：90 examples, 0 failures。Issue #16とのroutes共存を追記。",
+    "summary": "Issue #18追加後のroutes・詳細View・関連specを再READして照合情報を更新。過去の検証結果は本文の実行日を参照。",
     "limitations": [
       "今回のエージェントによるRailsアプリのブラウザ再確認・全RSpec実行は行っていません。",
       "first-readerは初見のskimのみ。時間制約付きの通読・翌日想定の想起検査、explainer専用の図・VLM検査は未実施。コード・HTML照合は学習サイトの既存検査を使用。"

@@ -17,3 +17,29 @@
   <% end %>
   <%= link_to "教材をダウンロード", material_student_assignment_path(@assignment, download: "1"), data: { turbo: false } %>
 <% end %>
+
+<% if flash[:notice].present? %>
+  <p role="status"><%= flash[:notice] %></p>
+<% end %>
+
+<% if @submission.persisted? %>
+  <h2>提出済み</h2>
+  <p>解答ファイル名: <%= @submission.answer_file.filename if @submission.answer_file.attached? %></p>
+  <p>提出日時: <%= @submission.submitted_at.strftime("%Y/%m/%d %H:%M") %></p>
+<% else %>
+  <h2>解答PDFの提出</h2>
+  <% if @submission.errors.any? %>
+    <div role="alert">
+      <ul>
+        <% @submission.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+  <%= form_with model: @submission, url: student_assignment_submission_path(@assignment) do |form| %>
+    <%= form.label :answer_file, "解答PDF" %>
+    <%= form.file_field :answer_file, accept: "application/pdf,.pdf" %>
+    <%= form.submit "提出" %>
+  <% end %>
+<% end %>

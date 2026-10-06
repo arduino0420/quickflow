@@ -7,6 +7,8 @@ class Student::AssignmentsController < ApplicationController
   end
 
   def show
+    @submission = current_student.submissions.find_by(assignment: @assignment) ||
+      current_student.submissions.build(assignment: @assignment)
   end
 
   def material

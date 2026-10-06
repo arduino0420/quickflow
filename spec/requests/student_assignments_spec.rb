@@ -72,8 +72,8 @@ RSpec.describe "Student assignments", type: :request do
     expect(document.css("a").map { |link| link[:href] }).to eq([
       student_assignments_path, material_student_assignment_path(item), material_student_assignment_path(item, download: "1")
     ])
-    expect(document.css("form, button, input")).to be_empty
-    expect(response.body).not_to include("/rails/active_storage", "再配信", "編集", "削除", "提出")
+    expect(document.at_css("form")[:action]).to eq(student_assignment_submission_path(item))
+    expect(response.body).not_to include("/rails/active_storage", "再配信", "編集", "削除")
     get material_student_assignment_path(item)
     expect(item.reload.attributes).to eq(before_attributes)
     expect(item.assignment_classrooms.map(&:attributes)).to eq(before_links)
