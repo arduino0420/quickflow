@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe "Student submissions", type: :request do
+  include ActiveJob::TestHelper
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
@@ -181,5 +182,15 @@ RSpec.describe "Student submissions", type: :request do
     expect(counts).to eq(before_counts)
     expect(document.at_css('input[type="file"]')[:value]).to be_blank
     expect(document.at_css('input[type="hidden"][name="submission[answer_file]"]')).to be_nil
+  end
+
+  it "enqueues answer reading after a successful PDF submission" do
+    login
+
+    expect {
+      submit
+    }.to have_enqueued_job(AnswerReadingJob).with(kind_of(Submission))
+
+    expect(response).to have_http_status(:see_other)
   end
 end

@@ -13,6 +13,9 @@ class Student::SubmissionsController < ApplicationController
 
     @submission.answer_file = upload
     Submission.transaction(requires_new: true) { @submission.save! }
+
+    AnswerReadingJob.perform_later(@submission)
+
     redirect_to student_assignment_path(@assignment), notice: "提出しました", status: :see_other
   rescue ActiveRecord::RecordInvalid
     return redirect_already_submitted if existing_submission
