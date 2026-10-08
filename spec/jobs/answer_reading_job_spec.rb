@@ -73,7 +73,7 @@ RSpec.describe AnswerReadingJob, type: :job do
     reader = instance_double(AnswerReader)
     allow(AnswerReader).to receive(:new).and_return(reader)
     allow(reader).to receive(:call).with(submission).and_return(
-      { problems: [{ question_label: "1(1)" }] }.to_json
+      { problems: [ { question_label: "1(1)" } ] }.to_json
     )
 
     described_class.perform_now(submission)
