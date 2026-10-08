@@ -53,6 +53,7 @@ RSpec.describe "Assignment creation", type: :request do
 
   it "creates and distributes a teacher's assignment and returns to an empty form with a notice" do
     teacher_login
+    expect(QuestionGenerator).not_to receive(:new)
 
     expect do
       post assignments_path, params: { assignment: attributes }
@@ -67,6 +68,7 @@ RSpec.describe "Assignment creation", type: :request do
     expect(assignment.published_at).to be_nil
     expect(assignment.classrooms).to contain_exactly(classroom)
     expect(assignment.questions).to be_empty
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).exactly(:once)
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(new_assignment_path)
     follow_redirect!
@@ -77,6 +79,34 @@ RSpec.describe "Assignment creation", type: :request do
 
     get new_assignment_path
     expect(response.body).not_to include("小テストを配信しました")
+  end
+
+  context "when question generation cannot be enqueued" do
+    around do |example|
+      original_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = original_cache
+    end
+
+    [ :exception, :rejected ].each do |failure|
+      it "keeps distribution successful and records a #{failure} enqueue failure" do
+        teacher_login
+        if failure == :exception
+          allow(QuestionGenerationJob).to receive(:perform_later).and_raise("Queue unavailable")
+        else
+          allow(QuestionGenerationJob).to receive(:perform_later).and_return(false)
+        end
+        allow(Rails.logger).to receive(:error)
+        expect { post assignments_path, params: { assignment: attributes } }.to change(Assignment, :count).by(1)
+        expect(response).to have_http_status(:see_other)
+        assignment = Assignment.last
+        expect(assignment.classrooms).to contain_exactly(classroom)
+        expect(QuestionGenerator.new.failed?(assignment)).to be(true)
+        expect(Rails.logger).to have_received(:error).with(/Question generation enqueue failed/).once
+      end
+    end
   end
 
   { "material.pdf" => "application/pdf", "material.txt" => "text/plain" }.each do |filename, content_type|
@@ -267,6 +297,7 @@ RSpec.describe "Assignment creation", type: :request do
       expect(response).to have_http_status(422)
       expect(document.at_css('[role="alert"] li')).to be_present
       expect(document.at_css('form[action="/assignments"][method="post"]')).to be_present
+      expect(QuestionGenerationJob).not_to have_been_enqueued
     end
 
     it "shows only school classrooms in grade order and a distribution button" do
@@ -289,6 +320,7 @@ RSpec.describe "Assignment creation", type: :request do
         .and change(AssignmentClassroom, :count).by(2)
       expect(response).to have_http_status(:see_other)
       expect(Assignment.last.classrooms).to contain_exactly(classroom, other_classroom)
+      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id).exactly(:once)
     end
 
     it "requires material without changing model validations" do

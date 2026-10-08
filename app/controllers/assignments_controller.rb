@@ -33,6 +33,7 @@ class AssignmentsController < ApplicationController
       end
     end
 
+    enqueue_question_generation
     redirect_to new_assignment_path, notice: "小テストを配信しました", status: :see_other
   rescue ActiveRecord::RecordInvalid => error
     @assignment.errors.add(:base, "配信先を保存できませんでした") unless error.record.equal?(@assignment)
@@ -40,6 +41,14 @@ class AssignmentsController < ApplicationController
   end
 
   private
+
+  def enqueue_question_generation
+    job = QuestionGenerationJob.perform_later(@assignment, @assignment.material_file.blob.id)
+    raise "Could not enqueue question generation" unless job
+  rescue StandardError => error
+    QuestionGenerator.new.record_failure(@assignment)
+    Rails.logger.error("Question generation enqueue failed: #{error.class}: #{error.message}")
+  end
 
   def distributed_assignments
     current_teacher.assignments.where(id: AssignmentClassroom.select(:assignment_id))

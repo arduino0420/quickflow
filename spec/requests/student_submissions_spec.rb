@@ -193,4 +193,52 @@ RSpec.describe "Student submissions", type: :request do
 
     expect(response).to have_http_status(:see_other)
   end
+
+  it "uses answers prepared before submission for reading and grading using only stubs" do
+    assignment.material_file.attach(pdf)
+    files = instance_double(OpenAI::Resources::Files)
+    responses = instance_double(OpenAI::Resources::Responses)
+    client = instance_double(OpenAI::Client, files: files, responses: responses)
+    allow(AiClient).to receive(:build).and_return(client)
+    allow(files).to receive(:create).and_return(double(id: "file-test"))
+    allow(responses).to receive(:create) do |request|
+      data = if request[:instructions].nil?
+        { problems: [ { question_label: "1", question_text: "3x+2x", student_answer: "5x",
+          reading_status: "readable", reading_reason: "明確" } ] }
+      elsif request[:instructions].include?("添付教材")
+        { questions: [ { question_label: "1", question_text: "3x+2x", correct_answer: "5x",
+          grading_rule: "同類項をまとめる。", requires_work: false } ] }
+      else
+        question_id = JSON.parse(request.fetch(:input)).fetch("problems").sole.fetch("question_id")
+        { results: [ { question_id: question_id, ai_judgment: "correct", error_point: nil, feedback: nil, review_reason: nil } ] }
+      end
+      instance_double(OpenAI::Models::Responses::Response, output_text: JSON.generate(data), model: "stub-model",
+        status: "completed", output: [])
+    end
+    QuestionGenerationJob.perform_now(assignment, assignment.material_file.blob.id)
+    question_id = assignment.questions.sole.id
+    expect_any_instance_of(QuestionGenerator).not_to receive(:call)
+    login
+    perform_enqueued_jobs(only: [ AnswerReadingJob, AnswerGradingJob ]) { submit }
+
+    expect(response).to have_http_status(:see_other)
+    item = Submission.last
+    expect(item).to be_completed
+    expect(JSON.parse(item.extracted_text)["problems"].sole["student_answer"]).to eq("5x")
+    expect(assignment.questions.sole.correct_answer).to eq("5x")
+    expect(assignment.questions.sole.id).to eq(question_id)
+    expect(item.grading_results.sole).to be_ai_judgment_correct
+    expect(responses).to have_received(:create).exactly(3).times
+    expect(files).to have_received(:create).twice
+  end
+
+  it "returns a successful submission response even when AI reading fails" do
+    allow(AnswerReader).to receive(:new).and_raise(StandardError, "AI failed")
+    login
+    perform_enqueued_jobs(only: [ AnswerReadingJob, AnswerGradingJob ]) { submit }
+
+    expect(response).to have_http_status(:see_other)
+    expect(Submission.last).to be_failed
+    expect(Submission.last.grading_results).to be_empty
+  end
 end
