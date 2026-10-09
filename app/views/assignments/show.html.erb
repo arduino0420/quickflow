@@ -18,3 +18,53 @@
   <dt>教材ファイル名</dt>
   <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
 </dl>
+
+<h2>採点結果の確認</h2>
+<p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
+<nav class="review-filters" aria-label="採点結果の表示切り替え">
+  <%= link_to "未確認の要確認のみ", assignment_path(@assignment), aria: { current: @show_all ? nil : "page" } %>
+  <%= link_to "すべて表示", assignment_path(@assignment, filter: "all"), aria: { current: @show_all ? "page" : nil } %>
+</nav>
+
+<% if @grading_results.empty? %>
+  <p><%= @show_all ? "採点結果はまだありません。" : "未確認の要確認問題はありません。" %></p>
+<% else %>
+  <div class="review-table-container">
+    <table class="review-table" id="grading-results">
+      <thead>
+        <tr><th scope="col">クラス</th><th scope="col">出席番号</th><th scope="col">問題番号</th><th scope="col">AI判定</th><th scope="col">最終判定</th><th scope="col">要確認理由</th><th scope="col">採点状態</th><th scope="col">答案</th></tr>
+      </thead>
+      <tbody>
+        <% @grading_results.each do |result| %>
+          <% submission = result.submission %>
+          <tr>
+            <td><%= classroom_label(submission.student.classroom) %></td>
+            <td><%= submission.student.attendance_number %>番</td>
+            <td><%= result.question.question_label %></td>
+            <td><%= judgment_label(result.ai_judgment) %></td>
+            <td><%= submission.completed? ? judgment_label(result.final_judgment) : "未完成" %></td>
+            <td><%= result.review_reason.presence || "—" %></td>
+            <td><%= submission_status_label(submission) %></td>
+            <td><%= link_to "答案詳細", assignment_submission_path(@assignment, submission, anchor: "question_#{result.question_id}") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<% if @unfinished_submissions.any? %>
+  <section aria-labelledby="unfinished-heading">
+    <h2 id="unfinished-heading">採点が完了していない答案</h2>
+    <p>採点結果は未完成です。要確認件数は現在保存されている結果に基づきます。</p>
+    <ul>
+      <% @unfinished_submissions.each do |submission| %>
+        <li>
+          <%= classroom_label(submission.student.classroom) %> <%= submission.student.attendance_number %>番：
+          <%= submission_status_label(submission) %>
+          <%= link_to "答案詳細", assignment_submission_path(@assignment, submission) %>
+        </li>
+      <% end %>
+    </ul>
+  </section>
+<% end %>

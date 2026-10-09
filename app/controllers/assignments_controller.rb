@@ -8,7 +8,17 @@ class AssignmentsController < ApplicationController
 
   def show
     @assignment = distributed_assignments.find(params[:id])
-    @classrooms = @assignment.classrooms.order(:grade, :class_number)
+    @classrooms = @assignment.classrooms.where(school_id: current_teacher.school_id).order(:grade, :class_number)
+    results = @assignment.reviewable_grading_results
+    @pending_review_count = results.pending_review.count
+    @show_all = params[:filter] == "all"
+    @grading_results = (@show_all ? results : results.pending_review)
+      .joins(:question, submission: { student: :classroom })
+      .includes(:question, submission: { student: :classroom })
+      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number", "questions.position")
+    @unfinished_submissions = @assignment.reviewable_submissions.where.not(status: :completed)
+      .joins(student: :classroom).includes(student: :classroom)
+      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
   end
 
   def new
@@ -51,7 +61,7 @@ class AssignmentsController < ApplicationController
   end
 
   def distributed_assignments
-    current_teacher.assignments.where(id: AssignmentClassroom.select(:assignment_id))
+    current_teacher.assignments.distributed_to_school(current_teacher.school_id)
   end
 
   def require_teacher_login

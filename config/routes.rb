@@ -7,7 +7,11 @@ Rails.application.routes.draw do
   post "/student/login", to: "student_sessions#create"
   delete "/student/logout", to: "student_sessions#destroy", as: :student_logout
 
-  resources :assignments, only: [ :index, :show, :new, :create ]
+  resources :assignments, only: [ :index, :show, :new, :create ] do
+    resources :submissions, only: [ :show, :update ] do
+      get :answer, on: :member
+    end
+  end
 
   namespace :student do
     resources :assignments, only: [ :index, :show ] do
