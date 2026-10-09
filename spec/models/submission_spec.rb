@@ -19,6 +19,21 @@ RSpec.describe Submission, type: :model do
     expect(submission.grading_results).to contain_exactly(result)
   end
 
+  it "rechecks the persisted grading status under the lock before saving teacher judgments" do
+    submission = described_class.create!(attributes.merge(status: :completed))
+    question = Question.create!(assignment: assignment, question_label: "1", position: 1,
+      question_text: "1 + 1", correct_answer: "2", answer_generation_model: "test-model",
+      answer_generation_prompt_version: "v1", answer_generated_at: Time.current)
+    result = submission.grading_results.create!(question: question, ai_judgment: :correct,
+      ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+    described_class.find(submission.id).update!(status: :failed)
+    expect(submission).to be_completed
+
+    expect { submission.update_teacher_judgments!(result.id.to_s => "incorrect") }
+      .to raise_error(Submission::InvalidTeacherJudgments)
+    expect(result.reload.teacher_judgment).to be_nil
+  end
+
   it "persists its associations and submitted date without an answer file" do
     submission = described_class.create!(attributes).reload
 

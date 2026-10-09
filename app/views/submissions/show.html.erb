@@ -1,0 +1,58 @@
+<h1>答案詳細</h1>
+<% if notice.present? %><p role="status"><%= notice %></p><% end %>
+<% if alert.present? %><p role="alert"><%= alert %></p><% end %>
+<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment) %>
+<p><%= @assignment.title %> ／ <%= classroom_label(@submission.student.classroom) %> <%= @submission.student.attendance_number %>番</p>
+<p>採点状態：<%= submission_status_label(@submission) %></p>
+<p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
+<% unless @submission.completed? %>
+  <p class="grading-state-notice">採点結果は未完成です。要確認件数は現在保存されている結果に基づく暫定件数です。</p>
+<% end %>
+
+<div class="teacher-review-layout">
+  <section aria-labelledby="answer-heading">
+    <h2 id="answer-heading">答案PDF</h2>
+    <% if @submission.answer_file.attached? %>
+      <% if @submission.answer_file.content_type == "application/pdf" %>
+        <iframe class="teacher-answer-pdf" title="生徒の答案PDF" src="<%= answer_assignment_submission_path(@assignment, @submission) %>"></iframe>
+        <p><%= link_to "答案PDFを開く", answer_assignment_submission_path(@assignment, @submission), target: "_blank", rel: "noopener" %></p>
+      <% end %>
+      <p>埋め込み表示できない場合は、<%= link_to "答案をダウンロード", answer_assignment_submission_path(@assignment, @submission, download: "1") %>してください。</p>
+    <% else %>
+      <p>答案PDFが添付されていません。</p>
+    <% end %>
+  </section>
+
+  <section aria-labelledby="results-heading">
+    <h2 id="results-heading">問題ごとの採点結果</h2>
+    <% if !@submission.completed? %>
+      <p>採点が完了すると、ここに結果が表示されます。</p>
+    <% elsif @grading_results.empty? %>
+      <p>採点結果がありません。</p>
+    <% else %>
+      <p>選択後に「保存」を押すと反映されます。「AIの判定に戻す」を保存すると教師判定を取り消せます。</p>
+      <%= form_with url: assignment_submission_path(@assignment, @submission), method: :patch, id: "teacher-judgments" do %>
+        <% @grading_results.each do |result| %>
+          <article class="grading-result" id="question_<%= result.question_id %>">
+            <h3>問題 <%= result.question.question_label %></h3>
+            <dl>
+              <dt>問題文</dt><dd><%= result.question.question_text %></dd>
+              <dt>生徒解答（AI読み取り）</dt><dd><%= result.student_answer.presence || "読み取り結果なし（答案PDFを確認してください）" %></dd>
+              <dt>正答</dt><dd><%= result.question.correct_answer %></dd>
+              <dt>AI判定</dt><dd><%= judgment_label(result.ai_judgment) %></dd>
+              <dt>要確認理由</dt><dd><%= result.review_reason.presence || "—" %></dd>
+              <dt>フィードバック</dt><dd><%= result.feedback.presence || "—" %></dd>
+              <dt>教師判定</dt><dd><%= judgment_label(result.teacher_judgment) %></dd>
+              <dt>最終判定</dt><dd><%= judgment_label(result.final_judgment) %></dd>
+            </dl>
+            <%= label_tag "judgment_#{result.id}", "問題#{result.question.question_label}の教師判定" %>
+            <%= select_tag "judgments[#{result.id}]",
+              options_for_select([ [ "AIの判定に戻す", "" ], [ "正解", "correct" ], [ "不正解", "incorrect" ] ], result.teacher_judgment.to_s),
+              id: "judgment_#{result.id}" %>
+          </article>
+        <% end %>
+        <%= submit_tag "保存" %>
+      <% end %>
+    <% end %>
+  </section>
+</div>

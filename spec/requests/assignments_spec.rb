@@ -248,7 +248,11 @@ RSpec.describe "Assignment creation", type: :request do
       expect(document.css("dt").map(&:text)).to eq([ "タイトル", "1問あたりの点数", "配信先クラス", "教材ファイル名" ])
       expect(document.css("dd").map { |node| node.text.strip }).to include(item.title, "7", "material.pdf")
       expect(document.css("dd li").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
-      expect(document.css("a").map { |link| [ link.text, link[:href] ] }).to eq([ [ "配信済み小テスト", assignments_path ] ])
+      expect(document.css("a").map { |link| [ link.text, link[:href] ] }).to eq([
+        [ "配信済み小テスト", assignments_path ],
+        [ "未確認の要確認のみ", assignment_path(item) ],
+        [ "すべて表示", assignment_path(item, filter: "all") ]
+      ])
       expect(document.css("form, button, input")).to be_empty
       expect(item.reload.attributes).to eq(before_attributes)
       expect(item.assignment_classrooms.order(:id).map(&:attributes)).to eq(before_links)

@@ -18,6 +18,25 @@ RSpec.describe GradingResult, type: :model do
       ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.zone.local(2026, 10, 2, 10) }
   end
 
+  [ :correct, :incorrect, :needs_review ].product([ nil, :correct, :incorrect ]).each do |ai, teacher|
+    it "derives the final judgment from AI #{ai} and teacher #{teacher.inspect}" do
+      result = described_class.new(attributes.merge(ai_judgment: ai, teacher_judgment: teacher))
+      expect(result.final_judgment).to eq((teacher || ai).to_s)
+      expect(result.ai_judgment).to eq(ai.to_s)
+    end
+  end
+
+  it "selects only needs_review results with no teacher judgment" do
+    pending = described_class.create!(attributes.merge(ai_judgment: :needs_review))
+    expect(described_class.pending_review).to include(pending)
+    pending.update!(teacher_judgment: :incorrect)
+    expect(described_class.pending_review).not_to include(pending)
+    pending.update!(teacher_judgment: nil, ai_judgment: :correct)
+    expect(described_class.pending_review).not_to include(pending)
+    pending.update!(ai_judgment: :incorrect)
+    expect(described_class.pending_review).not_to include(pending)
+  end
+
   it "persists its associations and traceability information" do
     result = described_class.create!(attributes).reload
 
