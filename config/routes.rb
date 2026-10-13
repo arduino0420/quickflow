@@ -8,6 +8,7 @@ Rails.application.routes.draw do
   delete "/student/logout", to: "student_sessions#destroy", as: :student_logout
 
   resources :assignments, only: [ :index, :show, :new, :create ] do
+    get :export, on: :member, defaults: { format: :xlsx }
     resources :submissions, only: [ :show, :update ] do
       get :answer, on: :member
     end

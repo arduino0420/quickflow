@@ -1,7 +1,7 @@
 <h1>答案詳細</h1>
 <% if notice.present? %><p role="status"><%= notice %></p><% end %>
 <% if alert.present? %><p role="alert"><%= alert %></p><% end %>
-<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment) %>
+<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment, classroom_id: @submission.student.classroom_id) %>
 <p><%= @assignment.title %> ／ <%= classroom_label(@submission.student.classroom) %> <%= @submission.student.attendance_number %>番</p>
 <p>採点状態：<%= submission_status_label(@submission) %></p>
 <p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>

@@ -39,6 +39,10 @@ RSpec.describe "Teacher grading reviews", type: :request do
       document.at_css("#submission-summary #student_#{item.id}").css("td").map { |cell| cell.text.strip }
     end
 
+    def grade_cells(item = student)
+      document.at_css("#grade_student_#{item.id}").css("td").map { |cell| cell.text.strip }
+    end
+
     it "includes unsubmitted students without creating submissions and links only submitted answers" do
       unsubmitted = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
       result_for(judgment: :correct)
@@ -49,13 +53,17 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(document.css("#submission-summary tbody tr").size).to eq(2)
       expect(summary_cells).to eq([ "1年1組", "1番", "採点完了", "5点", "なし", "答案詳細" ])
       expect(summary_cells(unsubmitted)).to eq([ "1年1組", "2番", "未提出", "—", "—", "—" ])
+      expect(document.css("#grade-summary th").map(&:text)).to eq([ "出席番号", "得点" ])
+      expect(document.css("#grade-summary tbody tr").size).to eq(2)
+      expect(grade_cells).to eq([ "1", "5点" ])
+      expect(grade_cells(unsubmitted)).to eq([ "2", "—" ])
       expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
       expect(document.css("#student_#{unsubmitted.id} a")).to be_empty
       expect(Submission.count).to eq(original_count)
       expect(unsubmitted.submissions).to be_empty
     end
 
-    it "orders all students by grade, classroom and attendance number across distributed classrooms" do
+    it "defaults to the first classroom and orders registered students within the selected classroom" do
       later_grade = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
       later_class = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
       [ later_grade, later_class ].each { |target| assignment.assignment_classrooms.create!(classroom: target) }
@@ -66,13 +74,19 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment)
 
-      identifiers = document.css("#submission-summary tbody tr").map do |row|
-        row.css("td").first(2).map { |cell| cell.text.strip }
+      expect(document.css("#classroom_id option").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(classroom.id.to_s)
+
+      { classroom => [ "1", "3" ], later_class => [ "1", "2" ], later_grade => [ "1" ] }.each do |target, numbers|
+        get assignment_path(assignment, classroom_id: target.id) unless target == classroom
+        expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(target.id.to_s)
+        expect(document.css("#grade-summary tbody tr").map { |row| row.at_css("td").text }).to eq(numbers)
+        identifiers = document.css("#submission-summary tbody tr").map do |row|
+          row.css("td").first(2).map { |cell| cell.text.strip }
+        end
+        label = "#{target.grade}年#{target.class_number}組"
+        expect(identifiers).to eq(numbers.map { |number| [ label, "#{number}番" ] })
       end
-      expect(identifiers).to eq([
-        [ "1年1組", "1番" ], [ "1年1組", "3番" ],
-        [ "1年2組", "1番" ], [ "1年2組", "2番" ], [ "2年1組", "1番" ]
-      ])
     end
 
     { submitted: "採点待ち", grading: "採点中", failed: "採点失敗" }.each do |state, label|
@@ -84,6 +98,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         get assignment_path(assignment)
 
         expect(summary_cells[2..4]).to eq([ label, "—", "—" ])
+        expect(grade_cells).to eq([ "1", "—" ])
         expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
         get detail_path
         expect(document.at_css("#submission-score").text).to eq("現在の得点：—")
@@ -95,6 +110,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment)
       expect(summary_cells[3]).to eq("0点")
+      expect(grade_cells).to eq([ "1", "0点" ])
 
       get detail_path
       expect(document.at_css("#submission-score").text).to eq("現在の得点：0点")
@@ -120,6 +136,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         login
         get assignment_path(assignment)
         expect(summary_cells[3..4]).to eq([ "#{points}点（暫定）", "#{expected_count}件" ])
+        expect(grade_cells).to eq([ "1", "#{points}点（暫定）" ])
         expect(response.body).to include("要確認は加点していません。")
 
         get detail_path
@@ -192,6 +209,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{corrected_label}")
         get assignment_path(assignment)
         expect(summary_cells[3]).to eq(corrected_label)
+        expect(grade_cells[1]).to eq(corrected_label)
         expect(summary_cells[4]).to eq("なし")
 
         patch detail_path, params: { judgments: { result.id.to_s => "" } }
@@ -199,6 +217,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{original_label}")
         get assignment_path(assignment)
         expect(summary_cells[3]).to eq(original_label)
+        expect(grade_cells[1]).to eq(original_label)
         expect(summary_cells[4]).to eq(ai == :needs_review ? "1件" : "なし")
       end
     end
@@ -271,6 +290,155 @@ RSpec.describe "Teacher grading reviews", type: :request do
       get assignment_path(assignment)
 
       expect(calls).to eq(submission.id => 1, other_submission.id => 1)
+    end
+  end
+
+  describe "classroom selection" do
+    let(:second_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
+    let(:second_student) { Student.create!(classroom: second_classroom, attendance_number: 1, password: "password123") }
+    let(:second_submission) do
+      Submission.create!(assignment: assignment, student: second_student, status: :completed, submitted_at: Time.current)
+    end
+
+    before do
+      assignment.assignment_classrooms.create!(classroom: second_classroom)
+    end
+
+    it "selects the first classroom by grade and class number rather than creation order" do
+      classroom.update!(grade: 2)
+      second_student
+      login
+      get assignment_path(assignment)
+
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
+      expect(document.css("#submission-summary tbody tr").map { |row| row[:id] }).to eq([ "student_#{second_student.id}" ])
+    end
+
+    it "limits scores, review counts, problem results and unfinished answers to the selected class" do
+      pending = result_for
+      correct = result_for(judgment: :correct, position: 2)
+      [ pending, correct ].each do |result|
+        second_submission.grading_results.create!(question: result.question, ai_judgment: :correct,
+          ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+      end
+      submission.update!(status: :grading)
+      login
+      get assignment_path(assignment)
+      expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：1件")
+      expect(document.css("#grading-results tbody tr").size).to eq(1)
+      expect(document.at_css("section[aria-labelledby='unfinished-heading']").text).to include("1年1組")
+
+      get assignment_path(assignment, classroom_id: second_classroom.id)
+      expect(document.css("#grade-summary tbody tr").map { |row| row.css("td").map(&:text) }).to eq([ [ "1", "10点" ] ])
+      expect(document.css("#submission-summary tbody tr").map { |row| row[:id] }).to eq([ "student_#{second_student.id}" ])
+      expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
+      expect(document.css("#grading-results tbody tr")).to be_empty
+      expect(document.at_css("section[aria-labelledby='unfinished-heading']")).to be_nil
+      expect(document.css("a[href='#{detail_path}']")).to be_empty
+
+      get assignment_path(assignment, classroom_id: second_classroom.id, filter: "all")
+      rows = document.css("#grading-results tbody tr")
+      expect(rows.size).to eq(2)
+      expect(rows.map { |row| row.at_css("td").text }).to eq([ "1年2組", "1年2組" ])
+      expect(rows.map { |row| row.css("td")[2].text }).to eq([ "問題番号1", "問題番号2" ])
+
+      second_submission.update!(status: :failed)
+      get assignment_path(assignment, classroom_id: second_classroom.id, filter: "all")
+      unfinished = document.at_css("section[aria-labelledby='unfinished-heading']")
+      expect(unfinished.css("li").size).to eq(1)
+      expect(unfinished.text).to include("1年2組", "採点失敗")
+      expect(unfinished.text).not_to include("1年1組")
+      expect(document.at_css("#grade-summary tbody tr").css("td").map(&:text)).to eq([ "1", "—" ])
+    end
+
+    it "preserves the filter in the GET form and the classroom in both filter links" do
+      login
+      get assignment_path(assignment, filter: "all")
+      form = document.at_css("#classroom-selection")
+      expect(form[:method]).to eq("get")
+      expect(form[:action]).to eq(assignment_path(assignment))
+      expect(form.at_css("input[name='filter']")[:value]).to eq("all")
+
+      get form[:action], params: { classroom_id: second_classroom.id, filter: form.at_css("input[name='filter']")[:value] }
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
+      links = document.css(".review-filters a")
+      expect(links.map { |link| link[:href] }).to eq([
+        assignment_path(assignment, classroom_id: second_classroom.id),
+        assignment_path(assignment, classroom_id: second_classroom.id, filter: "all")
+      ])
+      expect(links.last["aria-current"]).to eq("page")
+
+      get links.first[:href]
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
+      expect(document.at_css("#classroom-selection input[name='filter']")).to be_nil
+      expect(document.at_css(".review-filters a[aria-current]").text).to eq("未確認の要確認のみ")
+    end
+
+    it "returns to the answer's classroom after saving a teacher correction" do
+      result = result_for(second_submission, judgment: :incorrect)
+      login
+      get assignment_path(assignment, classroom_id: second_classroom.id)
+      get document.at_css("#student_#{second_student.id} a")[:href]
+      patch detail_path(second_submission), params: { judgments: { result.id.to_s => "correct" } }
+      follow_redirect!
+      back_link = document.css("a").find { |link| link.text == "小テスト詳細へ戻る" }
+      expect(back_link[:href]).to eq(assignment_path(assignment, classroom_id: second_classroom.id))
+      get back_link[:href]
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
+      expect(document.at_css("#grade-summary tbody tr").css("td").map(&:text)).to eq([ "1", "5点" ])
+    end
+
+    it "shows an empty state for a selected classroom without registered students" do
+      login
+      get assignment_path(assignment, classroom_id: second_classroom.id)
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("選択したクラスに生徒がいません。")
+      expect(document.css("#grade-summary tbody tr, #submission-summary tbody tr, #grading-results tbody tr")).to be_empty
+      expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
+    end
+
+    it "allows an explicitly selected same-school destination assigned to another teacher" do
+      other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
+      second_classroom.update!(teacher: other_teacher)
+      second_student
+      login
+      get assignment_path(assignment, classroom_id: second_classroom.id)
+      expect(response).to have_http_status(:ok)
+      expect(document.at_css("#student_#{second_student.id}")).to be_present
+    end
+
+    [ "", "0", "-1", "abc", "1.5", "1abc", "999999999999999999999999999999", [ "1" ], { id: "1" } ].each do |id|
+      it "rejects an explicitly invalid classroom ID #{id.inspect}" do
+        login
+        get assignment_path(assignment), params: { classroom_id: id }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    it "rejects a numeric-prefix ID instead of coercing it to a valid classroom" do
+      login
+      get assignment_path(assignment), params: { classroom_id: "#{classroom.id}abc" }
+      expect(response).to have_http_status(:not_found)
+    end
+
+    [ :other_school, :undistributed_classroom ].each do |kind|
+      it "excludes #{kind} from options and rejects its explicit selection" do
+        target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
+        target = Classroom.create!(school: target_school, teacher: teacher, grade: 3, class_number: 1)
+        assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+        login
+        get assignment_path(assignment)
+        expect(document.css("#classroom_id option").map { |option| option[:value] }).to eq([ classroom.id.to_s, second_classroom.id.to_s ])
+        get assignment_path(assignment, classroom_id: target.id)
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    it "rejects another teacher's assignment even with its valid destination ID" do
+      other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
+      login(other_teacher)
+      get assignment_path(assignment, classroom_id: second_classroom.id)
+      expect(response).to have_http_status(:not_found)
     end
   end
 
