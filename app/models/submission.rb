@@ -12,6 +12,18 @@ class Submission < ApplicationRecord
   validates :status, :submitted_at, presence: true
   validates :student_id, uniqueness: { scope: :assignment_id }
 
+  def score
+    return nil unless persisted? && completed?
+
+    question_ids = assignment.questions.order(:id).pluck(:id)
+    return nil if question_ids.empty?
+
+    results = grading_results.order(:question_id).to_a
+    return nil unless results.map(&:question_id) == question_ids
+
+    results.count { |result| result.final_judgment == "correct" } * assignment.point_per_question
+  end
+
   def update_teacher_judgments!(judgments)
     unless judgments.is_a?(Hash) && judgments.any? && judgments.all? { |id, value|
         id.is_a?(String) && id.match?(/\A[1-9][0-9]*\z/) && [ nil, "", "correct", "incorrect" ].include?(value)
