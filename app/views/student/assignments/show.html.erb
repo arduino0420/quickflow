@@ -1,3 +1,6 @@
+<% content_for :head do %>
+  <meta name="turbo-cache-control" content="no-cache">
+<% end %>
 <h1>小テスト詳細</h1>
 
 <%= link_to "一覧へ戻る", student_assignments_path %>
@@ -26,6 +29,7 @@
   <h2>提出済み</h2>
   <p>解答ファイル名: <%= @submission.answer_file.filename if @submission.answer_file.attached? %></p>
   <p>提出日時: <%= @submission.submitted_at.strftime("%Y/%m/%d %H:%M") %></p>
+  <%= render "grading_status" %>
 <% else %>
   <h2>解答PDFの提出</h2>
   <% if @submission.errors.any? %>

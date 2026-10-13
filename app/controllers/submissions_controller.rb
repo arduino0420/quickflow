@@ -36,6 +36,7 @@ class SubmissionsController < ApplicationController
     results = @assignment.reviewable_grading_results.where(submission: @submission)
     @pending_review_count = results.pending_review.count
     @grading_results = results.joins(:question).includes(:question).order("questions.position")
+    @score = @submission.score if @submission.completed?
   end
 
   def render_update_error(message)

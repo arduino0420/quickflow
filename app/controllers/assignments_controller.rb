@@ -10,7 +10,9 @@ class AssignmentsController < ApplicationController
     @assignment = distributed_assignments.find(params[:id])
     @classrooms = @assignment.classrooms.where(school_id: current_teacher.school_id).order(:grade, :class_number)
     results = @assignment.reviewable_grading_results
-    @pending_review_count = results.pending_review.count
+    @pending_review_counts = results.pending_review.group(:submission_id).count
+    @pending_review_count = @pending_review_counts.values.sum
+    set_submission_summary
     @show_all = params[:filter] == "all"
     @grading_results = (@show_all ? results : results.pending_review)
       .joins(:question, submission: { student: :classroom })
@@ -51,6 +53,15 @@ class AssignmentsController < ApplicationController
   end
 
   private
+
+  def set_submission_summary
+    @students = Student.where(classroom: @classrooms).joins(:classroom).includes(:classroom)
+      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
+    @submissions_by_student_id = @assignment.reviewable_submissions.includes(:assignment).index_by(&:student_id)
+    @scores_by_submission_id = @submissions_by_student_id.values.select(&:completed?).to_h do |submission|
+      [ submission.id, submission.score ]
+    end
+  end
 
   def enqueue_question_generation
     job = QuestionGenerationJob.perform_later(@assignment, @assignment.material_file.blob.id)

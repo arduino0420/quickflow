@@ -121,7 +121,7 @@ RSpec.describe "Student assignments", type: :request do
       distribute("別学校", targets: [ foreign_class ]), distribute("未配信", targets: []) ]
     login
     (items.map(&:id) + [ Assignment.maximum(:id) + 100 ]).each do |id|
-      [ student_assignment_path(id), material_student_assignment_path(id) ].each do |path|
+      [ student_assignment_path(id), material_student_assignment_path(id), result_student_assignment_path(id) ].each do |path|
         get path
         expect(response).to have_http_status(:not_found)
       end
@@ -141,7 +141,7 @@ RSpec.describe "Student assignments", type: :request do
         login
         student.destroy!
       end
-      [ student_assignments_path, student_assignment_path(item), material_student_assignment_path(item) ].each do |path|
+      [ student_assignments_path, student_assignment_path(item), material_student_assignment_path(item), result_student_assignment_path(item) ].each do |path|
         get path
         expect(response).to have_http_status(:see_other)
         expect(response).to redirect_to(student_login_path)

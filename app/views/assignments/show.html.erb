@@ -19,6 +19,42 @@
   <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
 </dl>
 
+<section aria-labelledby="submission-summary-heading">
+  <h2 id="submission-summary-heading">提出・得点一覧</h2>
+  <p>要確認が残る得点は暫定です。要確認は加点していません。採点未完了の要確認件数も暫定です。</p>
+  <% if @students.empty? %>
+    <p>配信先クラスに生徒がいません。</p>
+  <% else %>
+    <div class="review-table-container">
+      <table class="review-table" id="submission-summary">
+        <thead>
+          <tr><th scope="col">クラス</th><th scope="col">出席番号</th><th scope="col">提出・採点状態</th><th scope="col">現在の得点</th><th scope="col">未確認の要確認</th><th scope="col">答案</th></tr>
+        </thead>
+        <tbody>
+          <% @students.each do |student| %>
+            <% submission = @submissions_by_student_id[student.id] %>
+            <% pending_review_count = @pending_review_counts.fetch(submission&.id, 0) %>
+            <tr id="student_<%= student.id %>">
+              <td><%= classroom_label(student.classroom) %></td>
+              <td><%= student.attendance_number %>番</td>
+              <td><%= submission_status_label(submission) %></td>
+              <td><%= submission_score_label(submission, @scores_by_submission_id[submission&.id], pending_review_count: pending_review_count) %></td>
+              <td>
+                <% if pending_review_count.positive? %>
+                  <%= pending_review_count %>件<%= "（暫定）" unless submission.completed? %>
+                <% else %>
+                  <%= submission&.completed? ? "なし" : "—" %>
+                <% end %>
+              </td>
+              <td><%= submission ? link_to("答案詳細", assignment_submission_path(@assignment, submission)) : "—" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</section>
+
 <h2>採点結果の確認</h2>
 <p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
 <nav class="review-filters" aria-label="採点結果の表示切り替え">

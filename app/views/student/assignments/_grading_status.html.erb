@@ -1,0 +1,17 @@
+<%= turbo_frame_tag "grading-status" do %>
+  <%= tag.div data: {
+    controller: ("grading-status" if @submission.submitted? || @submission.grading?),
+    grading_status_url_value: student_assignment_path(@assignment)
+  } do %>
+    <p>採点状態：<%= submission_status_label(@submission) %></p>
+    <% if @submission.completed? %>
+      <p>採点が完了しました。</p>
+      <%= link_to "採点結果を見る", result_student_assignment_path(@assignment), data: { turbo_frame: "_top" } %>
+    <% elsif @submission.failed? %>
+      <p>採点に失敗しました。先生に確認してください。</p>
+    <% else %>
+      <p><%= @submission.submitted? ? "採点を待っています。" : "採点中です。" %>状態は約10秒ごとに更新します。</p>
+      <%= link_to "状態を更新", student_assignment_path(@assignment) %>
+    <% end %>
+  <% end %>
+<% end %>
