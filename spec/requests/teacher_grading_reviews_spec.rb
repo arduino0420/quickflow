@@ -34,6 +34,246 @@ RSpec.describe "Teacher grading reviews", type: :request do
     answer_assignment_submission_path(parent, item)
   end
 
+  describe "submission summary and scores" do
+    def summary_cells(item = student)
+      document.at_css("#submission-summary #student_#{item.id}").css("td").map { |cell| cell.text.strip }
+    end
+
+    it "includes unsubmitted students without creating submissions and links only submitted answers" do
+      unsubmitted = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+      result_for(judgment: :correct)
+      login
+      original_count = Submission.count
+      get assignment_path(assignment)
+
+      expect(document.css("#submission-summary tbody tr").size).to eq(2)
+      expect(summary_cells).to eq([ "1年1組", "1番", "採点完了", "5点", "なし", "答案詳細" ])
+      expect(summary_cells(unsubmitted)).to eq([ "1年1組", "2番", "未提出", "—", "—", "—" ])
+      expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.css("#student_#{unsubmitted.id} a")).to be_empty
+      expect(Submission.count).to eq(original_count)
+      expect(unsubmitted.submissions).to be_empty
+    end
+
+    it "orders all students by grade, classroom and attendance number across distributed classrooms" do
+      later_grade = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+      later_class = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
+      [ later_grade, later_class ].each { |target| assignment.assignment_classrooms.create!(classroom: target) }
+      Student.create!(classroom: later_grade, attendance_number: 1, password: "password123")
+      Student.create!(classroom: later_class, attendance_number: 2, password: "password123")
+      Student.create!(classroom: classroom, attendance_number: 3, password: "password123")
+      Student.create!(classroom: later_class, attendance_number: 1, password: "password123")
+      login
+      get assignment_path(assignment)
+
+      identifiers = document.css("#submission-summary tbody tr").map do |row|
+        row.css("td").first(2).map { |cell| cell.text.strip }
+      end
+      expect(identifiers).to eq([
+        [ "1年1組", "1番" ], [ "1年1組", "3番" ],
+        [ "1年2組", "1番" ], [ "1年2組", "2番" ], [ "2年1組", "1番" ]
+      ])
+    end
+
+    { submitted: "採点待ち", grading: "採点中", failed: "採点失敗" }.each do |state, label|
+      it "shows #{state} without a score even if correct results are stored" do
+        result_for(judgment: :correct)
+        submission.update!(status: state)
+        expect_any_instance_of(Submission).not_to receive(:score)
+        login
+        get assignment_path(assignment)
+
+        expect(summary_cells[2..4]).to eq([ label, "—", "—" ])
+        expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
+        get detail_path
+        expect(document.at_css("#submission-score").text).to eq("現在の得点：—")
+      end
+    end
+
+    it "shows integer zero as points in both the summary and answer details" do
+      result_for(judgment: :incorrect)
+      login
+      get assignment_path(assignment)
+      expect(summary_cells[3]).to eq("0点")
+
+      get detail_path
+      expect(document.at_css("#submission-score").text).to eq("現在の得点：0点")
+    end
+
+    it "shows 70 points for seven correct answers worth ten points each" do
+      assignment.update!(point_per_question: 10)
+      10.times { |index| result_for(position: index + 1, judgment: index < 7 ? :correct : :incorrect) }
+      login
+      get assignment_path(assignment)
+      expect(summary_cells[3]).to eq("70点")
+
+      get detail_path
+      expect(document.at_css("#submission-score").text).to eq("現在の得点：70点")
+    end
+
+    { correct: 5, needs_review: 0 }.each do |judgment, points|
+      it "shows #{points} as provisional points and counts only unresolved reviews" do
+        result_for(judgment: judgment)
+        result_for(position: 2)
+        result_for(position: 3, teacher_judgment: :incorrect)
+        expected_count = judgment == :needs_review ? 2 : 1
+        login
+        get assignment_path(assignment)
+        expect(summary_cells[3..4]).to eq([ "#{points}点（暫定）", "#{expected_count}件" ])
+        expect(response.body).to include("要確認は加点していません。")
+
+        get detail_path
+        expect(document.at_css("#submission-score").text).to eq("現在の得点：#{points}点（暫定）")
+        expect(response.body).to include("要確認が残るため暫定の得点です。", "要確認は加点していません。")
+      end
+    end
+
+    it "marks stored review counts as provisional while grading is incomplete" do
+      result_for
+      submission.update!(status: :grading)
+      login
+      get assignment_path(assignment)
+
+      expect(summary_cells[2..4]).to eq([ "採点中", "—", "1件（暫定）" ])
+    end
+
+    [ :no_questions, :missing_result ].each do |inconsistency|
+      it "explains an unavailable completed score for #{inconsistency} without showing zero" do
+        if inconsistency == :missing_result
+          result_for(judgment: :correct)
+          create_question(position: 2, label: "未採点の問題")
+        end
+        login
+        get assignment_path(assignment)
+        expect(summary_cells[2]).to eq("採点完了")
+        expect(summary_cells[3]).to eq("得点を表示できません（採点結果を確認してください）")
+
+        get detail_path
+        expect(document.at_css("#submission-score").text).to include("得点を表示できません")
+        expect(document.at_css("#submission-score").text).not_to include("0点")
+      end
+    end
+
+    it "does not count foreign assignment results as points or unresolved reviews" do
+      result_for(judgment: :correct)
+      other_assignment = Assignment.create!(teacher: teacher, title: "別の小テスト", point_per_question: 5)
+      foreign_review = result_for(owner: other_assignment)
+      foreign_review.update!(student_answer: "別小テストの解答", review_reason: "別小テストの要確認理由")
+      result_for(owner: other_assignment, position: 2, judgment: :correct)
+      login
+      get assignment_path(assignment, filter: "all")
+
+      expect(summary_cells[3]).to include("得点を表示できません")
+      expect(summary_cells[4]).to eq("なし")
+      expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
+      expect(document.css("#grading-results tbody tr").size).to eq(1)
+      expect(response.body).not_to include("別小テストの解答", "別小テストの要確認理由")
+      get detail_path
+      expect(document.at_css("#submission-score").text).to include("得点を表示できません")
+      expect(response.body).not_to include("別小テストの解答", "別小テストの要確認理由")
+    end
+
+    [ :correct, :incorrect, :needs_review ].each do |ai|
+      it "updates summary and detail scores after correcting and restoring AI #{ai}" do
+        result = result_for(judgment: ai)
+        original_label = case ai
+        when :correct then "5点"
+        when :incorrect then "0点"
+        when :needs_review then "0点（暫定）"
+        end
+        teacher_value = ai == :correct ? "incorrect" : "correct"
+        corrected_label = ai == :correct ? "0点" : "5点"
+        login
+        get assignment_path(assignment)
+        expect(summary_cells[3]).to eq(original_label)
+
+        patch detail_path, params: { judgments: { result.id.to_s => teacher_value } }
+        follow_redirect!
+        expect(document.at_css("#submission-score").text).to eq("現在の得点：#{corrected_label}")
+        get assignment_path(assignment)
+        expect(summary_cells[3]).to eq(corrected_label)
+        expect(summary_cells[4]).to eq("なし")
+
+        patch detail_path, params: { judgments: { result.id.to_s => "" } }
+        follow_redirect!
+        expect(document.at_css("#submission-score").text).to eq("現在の得点：#{original_label}")
+        get assignment_path(assignment)
+        expect(summary_cells[3]).to eq(original_label)
+        expect(summary_cells[4]).to eq(ai == :needs_review ? "1件" : "なし")
+      end
+    end
+
+    it "keeps each student's score and review count separate" do
+      result = result_for
+      other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+      other_submission = Submission.create!(assignment: assignment, student: other_student,
+        status: :completed, submitted_at: Time.current)
+      other_submission.grading_results.create!(question: result.question, ai_judgment: :needs_review,
+        teacher_judgment: :correct, ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+      login
+      get assignment_path(assignment)
+
+      expect(summary_cells[3..4]).to eq([ "0点（暫定）", "1件" ])
+      expect(summary_cells(other_student)[3..4]).to eq([ "5点", "なし" ])
+      expect(document.at_css("#student_#{other_student.id} a")[:href]).to eq(detail_path(other_submission))
+    end
+
+    [ :other_school, :undistributed_classroom ].each do |kind|
+      it "excludes submitted and unsubmitted students from #{kind}" do
+        result = result_for(judgment: :correct)
+        target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
+        target = Classroom.create!(school: target_school, teacher: teacher, grade: 2, class_number: 1)
+        assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+        foreign_students = [ 1, 2 ].map do |number|
+          Student.create!(classroom: target, attendance_number: number, password: "password123")
+        end
+        forbidden = Submission.create!(assignment: assignment, student: foreign_students.first,
+          status: :completed, submitted_at: Time.current)
+        forbidden.grading_results.create!(question: result.question, ai_judgment: :needs_review,
+          ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+        login
+        get assignment_path(assignment, filter: "all")
+
+        expect(document.css("#submission-summary tbody tr").size).to eq(1)
+        expect(summary_cells[3..4]).to eq([ "5点", "なし" ])
+        foreign_students.each { |item| expect(document.at_css("#student_#{item.id}")).to be_nil }
+        expect(response.body).not_to include("2年1組", detail_path(forbidden))
+        expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
+        get detail_path(forbidden)
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    it "includes a distributed same-school classroom owned by another teacher" do
+      other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
+      classroom.update!(teacher: other_teacher)
+      result_for(judgment: :correct)
+      login
+      get assignment_path(assignment)
+
+      expect(summary_cells[3]).to eq("5点")
+      expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
+    end
+
+    it "calls score once per completed submission when preparing the summary" do
+      result = result_for(judgment: :correct)
+      other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+      other_submission = Submission.create!(assignment: assignment, student: other_student,
+        status: :completed, submitted_at: Time.current)
+      other_submission.grading_results.create!(question: result.question, ai_judgment: :correct,
+        ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+      calls = Hash.new(0)
+      allow_any_instance_of(Submission).to receive(:score).and_wrap_original do |method|
+        calls[method.receiver.id] += 1
+        method.call
+      end
+      login
+      get assignment_path(assignment)
+
+      expect(calls).to eq(submission.id => 1, other_submission.id => 1)
+    end
+  end
+
   it "defaults to unresolved review problems and switches to all judgments without changing the count" do
     pending = result_for
     result_for(judgment: :correct, position: 2)

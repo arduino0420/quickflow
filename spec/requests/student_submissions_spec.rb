@@ -54,7 +54,9 @@ RSpec.describe "Student submissions", type: :request do
     follow_redirect!
     expect(response.body).to include("提出しました", "提出済み", "material.pdf", item.submitted_at.strftime("%Y/%m/%d %H:%M"))
     expect(document.css("form, input")).to be_empty
-    expect(document.css("a").map { |link| link[:href] }).to eq([ student_assignments_path ])
+    expect(document.css("a").map { |link| link[:href] }).to eq([ student_assignments_path, student_assignment_path(assignment) ])
+    expect(document.at_css("#grading-status").text).to include("採点待ち")
+    expect(document.at_css("#grading-status [data-controller='grading-status']")).to be_present
   end
 
   [ nil, "bad", { id: "bad" } ].each do |file|

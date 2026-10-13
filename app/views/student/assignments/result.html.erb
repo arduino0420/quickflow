@@ -1,0 +1,32 @@
+<% content_for :head do %>
+  <meta name="turbo-cache-control" content="no-cache">
+<% end %>
+<h1><%= @assignment.title %> 採点結果</h1>
+<%= link_to "一覧へ戻る", student_assignments_path %>
+<%= link_to "小テスト詳細へ戻る", student_assignment_path(@assignment) %>
+
+<% if @score.nil? %>
+  <p role="alert">採点結果を表示できません。先生に確認してください</p>
+<% else %>
+  <p id="student-score">現在の得点：<%= submission_score_label(@submission, @score, pending_review_count: @pending_review_count) %></p>
+  <% if @pending_review_count.positive? %>
+    <p>要確認が残るため、現在の得点は暫定です。未確認の問題は加点していません。</p>
+  <% end %>
+  <% @grading_results.each do |result| %>
+    <% judgment = result.final_judgment %>
+    <article class="grading-result" id="question_<%= result.question_id %>">
+      <h2>問題 <%= result.question.question_label %></h2>
+      <p class="final-judgment">最終判定：<%= judgment_label(judgment) %></p>
+      <% if judgment == "incorrect" %>
+        <dl>
+          <dt>生徒解答（AI読み取り結果）</dt><dd><%= result.student_answer.presence || "読み取り結果がありません。先生に確認してください。" %></dd>
+          <dt>正答</dt><dd><%= result.question.correct_answer %></dd>
+          <dt>誤り箇所</dt><dd><%= result.error_point.presence || "説明は登録されていません。先生に確認してください。" %></dd>
+          <dt>短いフィードバック</dt><dd><%= result.feedback.presence || "説明は登録されていません。先生に確認してください。" %></dd>
+        </dl>
+      <% elsif judgment == "needs_review" %>
+        <p>教師による確認が必要です。必要な場合は先生に申告してください。</p>
+      <% end %>
+    </article>
+  <% end %>
+<% end %>

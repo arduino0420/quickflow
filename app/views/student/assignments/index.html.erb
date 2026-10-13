@@ -1,3 +1,6 @@
+<% content_for :head do %>
+  <meta name="turbo-cache-control" content="no-cache">
+<% end %>
 <h1>配信された小テスト</h1>
 
 <% if @assignments.empty? %>
@@ -5,10 +8,24 @@
 <% else %>
   <ul>
     <% @assignments.each do |assignment| %>
-      <li>
+      <% submission = @submissions_by_assignment_id[assignment.id] %>
+      <li id="assignment_<%= assignment.id %>">
         <%= assignment.title %>
+        <span>採点状態：<%= submission_status_label(submission) %></span>
+        <% if submission&.completed? %>
+          <% score = @scores_by_assignment_id[assignment.id] %>
+          <% if score.nil? %>
+            <span>採点結果を表示できません。先生に確認してください</span>
+          <% else %>
+            <span>現在の得点：<%= submission_score_label(submission, score, pending_review_count: @pending_review_counts.fetch(submission.id, 0)) %></span>
+            <%= link_to "採点結果を見る", result_student_assignment_path(assignment) %>
+          <% end %>
+        <% else %>
+          <span>得点：—</span>
+        <% end %>
         <%= link_to "詳細", student_assignment_path(assignment) %>
       </li>
     <% end %>
   </ul>
+  <p>要確認が残る得点は暫定です。未確認の問題は加点していません。</p>
 <% end %>

@@ -5,6 +5,10 @@
 <p><%= @assignment.title %> ／ <%= classroom_label(@submission.student.classroom) %> <%= @submission.student.attendance_number %>番</p>
 <p>採点状態：<%= submission_status_label(@submission) %></p>
 <p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
+<p id="submission-score">現在の得点：<%= submission_score_label(@submission, @score, pending_review_count: @pending_review_count) %></p>
+<% if !@score.nil? && @pending_review_count.positive? %>
+  <p>要確認が残るため暫定の得点です。要確認は加点していません。</p>
+<% end %>
 <% unless @submission.completed? %>
   <p class="grading-state-notice">採点結果は未完成です。要確認件数は現在保存されている結果に基づく暫定件数です。</p>
 <% end %>
