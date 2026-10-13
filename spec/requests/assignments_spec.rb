@@ -250,10 +250,13 @@ RSpec.describe "Assignment creation", type: :request do
       expect(document.css("dd li").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
       expect(document.css("a").map { |link| [ link.text, link[:href] ] }).to eq([
         [ "配信済み小テスト", assignments_path ],
-        [ "未確認の要確認のみ", assignment_path(item) ],
-        [ "すべて表示", assignment_path(item, filter: "all") ]
+        [ "Excel出力", export_assignment_path(item, classroom_id: classroom.id) ],
+        [ "未確認の要確認のみ", assignment_path(item, classroom_id: classroom.id) ],
+        [ "すべて表示", assignment_path(item, classroom_id: classroom.id, filter: "all") ]
       ])
-      expect(document.css("form, button, input")).to be_empty
+      expect(document.css("form").size).to eq(1)
+      expect(document.at_css("#classroom-selection")[:method]).to eq("get")
+      expect(document.at_css("#classroom-selection")[:action]).to eq(assignment_path(item))
       expect(item.reload.attributes).to eq(before_attributes)
       expect(item.assignment_classrooms.order(:id).map(&:attributes)).to eq(before_links)
     end
@@ -279,7 +282,7 @@ RSpec.describe "Assignment creation", type: :request do
       get document.at_css("a[href='#{assignment_path(item)}']")[:href]
       expect(response).to have_http_status(:ok)
       expect(response.body).to include(item.title, "material.pdf", "1年1組")
-      expect(document.css("form")).to be_empty
+      expect(document.at_css("#classroom-selection")[:method]).to eq("get")
     end
   end
 

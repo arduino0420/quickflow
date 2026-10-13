@@ -1,15 +1,15 @@
 class AssignmentsController < ApplicationController
   before_action :require_teacher_login
   before_action :set_classrooms, only: [ :new, :create ]
+  before_action :set_assignment_and_classroom, only: [ :show, :export ]
 
   def index
     @assignments = distributed_assignments.order(created_at: :desc, id: :desc)
   end
 
   def show
-    @assignment = distributed_assignments.find(params[:id])
-    @classrooms = @assignment.classrooms.where(school_id: current_teacher.school_id).order(:grade, :class_number)
-    results = @assignment.reviewable_grading_results
+    @reviewable_submissions = @assignment.reviewable_submissions.where(students: { classroom_id: @selected_classroom.id })
+    results = @assignment.reviewable_grading_results.where(submission: @reviewable_submissions)
     @pending_review_counts = results.pending_review.group(:submission_id).count
     @pending_review_count = @pending_review_counts.values.sum
     set_submission_summary
@@ -18,9 +18,21 @@ class AssignmentsController < ApplicationController
       .joins(:question, submission: { student: :classroom })
       .includes(:question, submission: { student: :classroom })
       .order("classrooms.grade", "classrooms.class_number", "students.attendance_number", "questions.position")
-    @unfinished_submissions = @assignment.reviewable_submissions.where.not(status: :completed)
+    @unfinished_submissions = @reviewable_submissions.where.not(status: :completed)
       .joins(student: :classroom).includes(student: :classroom)
       .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
+  end
+
+  def export
+    raise ActiveRecord::RecordNotFound unless params.key?(:classroom_id)
+
+    data = ClassroomGradeExporter.new.call(@assignment, @selected_classroom)
+    filename = ActiveStorage::Filename.new(
+      "課題#{@assignment.id}_#{@assignment.title}_#{helpers.classroom_label(@selected_classroom)}_成績.xlsx"
+    ).sanitized
+    response.headers["Cache-Control"] = "private, no-store"
+    send_data data, filename: filename,
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", disposition: :attachment
   end
 
   def new
@@ -54,10 +66,27 @@ class AssignmentsController < ApplicationController
 
   private
 
+  def set_assignment_and_classroom
+    @assignment = distributed_assignments.find(params[:id])
+    @classrooms = @assignment.classrooms.where(school_id: current_teacher.school_id).order(:grade, :class_number)
+    set_selected_classroom
+  end
+
+  def set_selected_classroom
+    unless params.key?(:classroom_id)
+      @selected_classroom = @classrooms.first!
+      return
+    end
+
+    id = params[:classroom_id]
+    raise ActiveRecord::RecordNotFound unless id.is_a?(String) && id.match?(/\A[1-9][0-9]*\z/)
+
+    @selected_classroom = @classrooms.find(id)
+  end
+
   def set_submission_summary
-    @students = Student.where(classroom: @classrooms).joins(:classroom).includes(:classroom)
-      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
-    @submissions_by_student_id = @assignment.reviewable_submissions.includes(:assignment).index_by(&:student_id)
+    @students = Student.where(classroom: @selected_classroom).includes(:classroom).order(:attendance_number)
+    @submissions_by_student_id = @reviewable_submissions.includes(:assignment).index_by(&:student_id)
     @scores_by_submission_id = @submissions_by_student_id.values.select(&:completed?).to_h do |submission|
       [ submission.id, submission.score ]
     end
