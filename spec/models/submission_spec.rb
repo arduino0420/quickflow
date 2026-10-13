@@ -8,6 +8,195 @@ RSpec.describe Submission, type: :model do
   let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5) }
   let(:attributes) { { assignment: assignment, student: student, submitted_at: Time.zone.local(2026, 10, 2, 9) } }
 
+  describe "#score" do
+    let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 10) }
+    let(:submission) { described_class.create!(attributes.merge(status: :completed)) }
+    let(:question_count) { 3 }
+    let(:questions) { Array.new(question_count) { |index| create_score_question(position: index + 1) } }
+
+    def create_score_question(position:, owner: assignment)
+      Question.create!(assignment: owner, question_label: position.to_s, position: position,
+        question_text: "1 + 1", correct_answer: "2", answer_generation_model: "test-model",
+        answer_generation_prompt_version: "v1", answer_generated_at: Time.current)
+    end
+
+    def create_score_result(question, ai_judgment: :correct, teacher_judgment: nil, owner: submission)
+      owner.grading_results.create!(question: question, ai_judgment: ai_judgment, teacher_judgment: teacher_judgment,
+        ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+    end
+
+    context "with ten questions" do
+      let(:question_count) { 10 }
+
+      it "returns 70 for seven correct answers worth ten points each" do
+        questions.each_with_index do |question, index|
+          create_score_result(question, ai_judgment: index < 7 ? :correct : :incorrect)
+        end
+
+        expect(submission.score).to eq(70)
+      end
+    end
+
+    it "returns integer zero when all AI judgments are incorrect" do
+      questions.each { |question| create_score_result(question, ai_judgment: :incorrect) }
+
+      expect(submission.score).to eq(0)
+      expect(submission.score).to be_a(Integer)
+    end
+
+    it "counts only correct judgments when incorrect and needs_review results are present" do
+      [ :correct, :incorrect, :needs_review ].each_with_index do |judgment, index|
+        create_score_result(questions[index], ai_judgment: judgment)
+      end
+
+      expect(submission.score).to eq(10)
+    end
+
+    it "returns the current score of zero when every result still needs review" do
+      questions.each { |question| create_score_result(question, ai_judgment: :needs_review) }
+
+      expect(submission.score).to eq(0)
+      expect(submission.grading_results.pending_review.count).to eq(3)
+    end
+
+    it "increases the score after the teacher changes incorrect to correct" do
+      results = questions.map { |question| create_score_result(question, ai_judgment: :incorrect) }
+      expect(submission.score).to eq(0)
+
+      submission.update_teacher_judgments!(results.first.id.to_s => "correct")
+
+      expect(submission.score).to eq(10)
+      expect(results.first.reload.ai_judgment).to eq("incorrect")
+    end
+
+    it "decreases the score after the teacher changes correct to incorrect" do
+      results = questions.map { |question| create_score_result(question) }
+      expect(submission.score).to eq(30)
+
+      submission.update_teacher_judgments!(results.first.id.to_s => "incorrect")
+
+      expect(submission.score).to eq(20)
+      expect(results.first.reload.ai_judgment).to eq("correct")
+    end
+
+    it "adds points when the teacher resolves needs_review as correct" do
+      results = questions.map { |question| create_score_result(question, ai_judgment: :needs_review) }
+      expect(submission.score).to eq(0)
+
+      submission.update_teacher_judgments!(results.first.id.to_s => "correct")
+
+      expect(submission.score).to eq(10)
+    end
+
+    [ :correct, :incorrect, :needs_review ].each do |ai_judgment|
+      it "returns to AI #{ai_judgment} scoring when the teacher judgment is cleared" do
+        results = questions.map do |question|
+          create_score_result(question, ai_judgment: ai_judgment,
+            teacher_judgment: ai_judgment == :correct ? :incorrect : :correct)
+        end
+        initial_score = ai_judgment == :correct ? 0 : 30
+        expect(submission.score).to eq(initial_score)
+
+        submission.update_teacher_judgments!(results.to_h { |result| [ result.id.to_s, "" ] })
+
+        expect(submission.score).to eq(ai_judgment == :correct ? 30 : 0)
+        expect(results.map { |result| result.reload.teacher_judgment }).to all(be_nil)
+      end
+    end
+
+    it "reads fresh teacher judgments on repeated calls despite preloaded results" do
+      results = questions.map { |question| create_score_result(question) }
+      submission.grading_results.load
+      expect(submission.score).to eq(30)
+
+      GradingResult.find(results.first.id).update!(teacher_judgment: :incorrect)
+      expect(submission.score).to eq(20)
+
+      GradingResult.find(results.first.id).update!(teacher_judgment: nil)
+      expect(submission.score).to eq(30)
+    end
+
+    it "does not save the calculated score or change persisted grading data" do
+      results = questions.map { |question| create_score_result(question) }
+      original_submission = submission.attributes
+      original_results = results.map(&:attributes)
+
+      expect(submission.score).to eq(30)
+
+      expect(submission.reload.attributes).to eq(original_submission)
+      expect(results.map { |result| result.reload.attributes }).to eq(original_results)
+    end
+
+    it "returns nil for an unsaved submission even when marked completed" do
+      expect(described_class.new(attributes.merge(status: :completed)).score).to be_nil
+    end
+
+    [ :submitted, :grading, :failed ].each do |status|
+      it "returns nil for #{status} even with a full set of correct results" do
+        questions.each { |question| create_score_result(question) }
+        submission.update!(status: status)
+
+        expect(submission.score).to be_nil
+      end
+    end
+
+    it "leaves an unsubmitted student without a submission or a score" do
+      expect(student.submissions.find_by(assignment: assignment)&.score).to be_nil
+      expect(student.submissions).to be_empty
+    end
+
+    it "returns nil when the assignment has no questions" do
+      expect(submission.score).to be_nil
+    end
+
+    it "returns nil when none of the question results have been saved" do
+      questions
+
+      expect(submission.score).to be_nil
+    end
+
+    it "returns nil when a question result is missing" do
+      questions.first(2).each { |question| create_score_result(question) }
+
+      expect(submission.score).to be_nil
+    end
+
+    it "returns nil when a foreign result is mixed into otherwise complete results" do
+      questions.each { |question| create_score_result(question) }
+      other_assignment = Assignment.create!(teacher: teacher, title: "Other quiz", point_per_question: 10)
+      create_score_result(create_score_question(position: 1, owner: other_assignment))
+
+      expect(submission.score).to be_nil
+    end
+
+    it "returns nil when a foreign result replaces a missing result despite matching counts" do
+      questions.first(2).each { |question| create_score_result(question) }
+      other_assignment = Assignment.create!(teacher: teacher, title: "Other quiz", point_per_question: 10)
+      create_score_result(create_score_question(position: 1, owner: other_assignment))
+      expect(submission.grading_results.count).to eq(questions.size)
+
+      expect(submission.score).to be_nil
+    end
+
+    it "returns full marks without counting a question more than once" do
+      questions.reverse_each { |question| create_score_result(question, teacher_judgment: :correct) }
+
+      full_marks = assignment.questions.count * assignment.point_per_question
+      expect(submission.score).to eq(full_marks)
+      expect(submission.score).to be <= full_marks
+    end
+
+    it "does not include another student's correct results" do
+      questions.each { |question| create_score_result(question, ai_judgment: :incorrect) }
+      other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+      other_submission = described_class.create!(attributes.merge(student: other_student, status: :completed))
+      questions.each { |question| create_score_result(question, owner: other_submission) }
+
+      expect(submission.score).to eq(0)
+      expect(other_submission.score).to eq(30)
+    end
+  end
+
   it "returns its grading results" do
     submission = described_class.create!(attributes)
     question = Question.create!(assignment: assignment, question_label: "1", position: 1,
