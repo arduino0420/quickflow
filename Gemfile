@@ -24,7 +24,7 @@ gem "caxlsx", "4.5.0"
 gem "bcrypt", "~> 3.1.7"
 
 # Connect to the OpenAI API
-gem "openai", "~> 0.99.0"
+gem "openai", "~> 0.103.0"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
