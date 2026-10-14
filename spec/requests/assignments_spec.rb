@@ -35,7 +35,7 @@ RSpec.describe "Assignment creation", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(document.at_css("h1").text).to eq("小テスト配信")
-    expect(document.at_css("a[href='/assignments']").text).to eq("配信済み小テスト")
+    expect(document.at_css("main a[href='/assignments']").text).to eq("配信済み小テスト")
     expect(document.at_css("a[href*='/distribution']")).to be_nil
     expect(document.at_css('form[action="/assignments"][method="post"][enctype="multipart/form-data"]')).to be_present
     expect(document.at_css('input[name="assignment[title]"]')).to be_present
@@ -211,10 +211,14 @@ RSpec.describe "Assignment creation", type: :request do
       expect(response).to have_http_status(:ok)
       links = document.css("li a")
       expect(links.map { |link| link[:href] }).to eq([ assignment_path(newer), assignment_path(older) ])
-      expect(links.map(&:text)).to eq([ "詳細", "詳細" ])
+      expect(links.map { |link| link.text.strip }).to eq([ newer.title, older.title ])
+      expect(document.css(".assignment-card-link").size).to eq(2)
+      expect(document.css(".assignment-card-link a, .assignment-card-link button")).to be_empty
+      expect(document.css(".assignment-card-link[tabindex='-1']")).to be_empty
+      expect(document.css("main a").map { |link| link.text.strip }).not_to include("詳細", "生徒アカウント登録")
       expect(response.body).not_to include(undistributed.title, foreign.title)
       expect(document.at_css("a[href='#{new_assignment_path}']").text).to eq("小テスト配信")
-      expect(document.css("form")).to be_empty
+      expect(document.at_css("form[action='/logout'] input[name='_method']")[:value]).to eq("delete")
     end
 
     it "uses descending ID to order assignments created at the same time" do
@@ -246,13 +250,18 @@ RSpec.describe "Assignment creation", type: :request do
       end.to not_change(Assignment, :count).and not_change(AssignmentClassroom, :count)
       expect(response).to have_http_status(:ok)
       expect(document.css("dt").map(&:text)).to eq([ "タイトル", "1問あたりの点数", "配信先クラス", "教材ファイル名" ])
-      expect(document.css("dd").map { |node| node.text.strip }).to include(item.title, "7", "material.pdf")
+      expect(document.at_css(".assignment-title span").text).to eq(item.title)
+      expect(document.css("dd").map { |node| node.text.strip }).to include("7", "material.pdf")
       expect(document.css("dd li").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
-      expect(document.css("a").map { |link| [ link.text, link[:href] ] }).to eq([
+      expect(document.css(".distributed-classrooms li").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
+      expect(document.at_css("section[aria-labelledby='grade-summary-heading']").next_element[:class]).to eq("grade-export-actions")
+      expect(document.at_css(".page-card").element_children.last[:class]).to eq("grade-export-actions")
+      expect(document.css("main a").map { |link| [ link.text, link[:href] ] }).to eq([
         [ "配信済み小テスト", assignments_path ],
-        [ "Excel出力", export_assignment_path(item, classroom_id: classroom.id) ],
-        [ "未確認の要確認のみ", assignment_path(item, classroom_id: classroom.id) ],
-        [ "すべて表示", assignment_path(item, classroom_id: classroom.id, filter: "all") ]
+        [ "名前を編集", edit_assignment_path(item) ],
+        [ "すべての生徒", assignment_path(item, classroom_id: "all", filter: "all") ],
+        [ "要確認のある生徒", assignment_path(item, classroom_id: "all", filter: "needs_review") ],
+        [ "Excel出力", export_assignment_path(item, classroom_id: "all") ]
       ])
       expect(document.css("form").size).to eq(1)
       expect(document.at_css("#classroom-selection")[:method]).to eq("get")

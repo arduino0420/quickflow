@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
   <head>
     <title><%= content_for(:title) || "Quickflow" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -24,6 +24,24 @@
   </head>
 
   <body>
-    <%= yield %>
+    <header class="app-header <%= "app-header--auth" if [ "sessions", "student_sessions" ].include?(controller_name) %> <%= "app-header--with-actions" if content_for?(:header_actions) %>">
+      <div class="app-header-inner">
+        <% if current_teacher && !current_student %>
+          <%= link_to "QuickFlow", assignments_path, class: "app-brand" %>
+        <% elsif current_student && !current_teacher %>
+          <%= link_to "QuickFlow", student_assignments_path, class: "app-brand" %>
+        <% else %>
+          <span class="app-brand">QuickFlow</span>
+        <% end %>
+        <% if content_for?(:header_actions) %>
+          <div class="app-header-actions"><%= yield :header_actions %></div>
+        <% end %>
+      </div>
+    </header>
+    <main class="app-main <%= "app-main--compact" if [ "sessions", "student_sessions" ].include?(controller_name) %>">
+      <div class="page-card">
+        <%= yield %>
+      </div>
+    </main>
   </body>
 </html>

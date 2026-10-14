@@ -1,7 +1,7 @@
 class Student::AssignmentsController < ApplicationController
   before_action :require_student_login
   before_action :prevent_result_caching
-  before_action :set_assignment, only: [ :show, :material, :result ]
+  before_action :set_assignment, only: [ :show, :material, :result, :answer ]
 
   def index
     @assignments = available_assignments.order(created_at: :desc, id: :desc)
@@ -18,12 +18,25 @@ class Student::AssignmentsController < ApplicationController
   def show
     @submission = current_student.submissions.find_by(assignment: @assignment) ||
       current_student.submissions.build(assignment: @assignment)
+    set_grading_results if @submission.completed?
   end
 
   def result
-    @submission = current_student.submissions.find_by(assignment: @assignment)
-    return redirect_to student_assignment_path(@assignment), status: :see_other unless @submission&.completed?
+    redirect_to student_assignment_path(@assignment), status: :see_other
+  end
 
+  def material
+    send_assignment_file(@assignment.material_file)
+  end
+
+  def answer
+    submission = current_student.submissions.find_by!(assignment: @assignment)
+    send_assignment_file(submission.answer_file)
+  end
+
+  private
+
+  def set_grading_results
     @score = @submission.score
     return if @score.nil?
 
@@ -32,8 +45,7 @@ class Student::AssignmentsController < ApplicationController
     @pending_review_count = @grading_results.count { |result| result.final_judgment == "needs_review" }
   end
 
-  def material
-    file = @assignment.material_file
+  def send_assignment_file(file)
     return head :not_found unless file.attached?
 
     disposition = params[:download] == "1" || file.content_type != "application/pdf" ? :attachment : :inline
@@ -44,8 +56,6 @@ class Student::AssignmentsController < ApplicationController
   rescue ActiveStorage::FileNotFoundError
     head :not_found
   end
-
-  private
 
   def prevent_result_caching
     response.headers["Cache-Control"] = "private, no-store"

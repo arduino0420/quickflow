@@ -3,10 +3,12 @@
     controller: ("grading-status" if @submission.submitted? || @submission.grading?),
     grading_status_url_value: student_assignment_path(@assignment)
   } do %>
-    <p>採点状態：<%= submission_status_label(@submission) %></p>
+    <% unless @submission.completed? %>
+      <p id="student-score">現在の点数：—</p>
+    <% end %>
+    <% unless @submission.completed? %><p>採点状態：<%= submission_status_label(@submission) %></p><% end %>
     <% if @submission.completed? %>
-      <p>採点が完了しました。</p>
-      <%= link_to "採点結果を見る", result_student_assignment_path(@assignment), data: { turbo_frame: "_top" } %>
+      <%= render "grading_results" %>
     <% elsif @submission.failed? %>
       <p>採点に失敗しました。先生に確認してください。</p>
     <% else %>

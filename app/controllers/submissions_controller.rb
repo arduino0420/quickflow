@@ -7,9 +7,13 @@ class SubmissionsController < ApplicationController
   end
 
   def update
-    input = params[:judgments]
-    judgments = input.is_a?(ActionController::Parameters) ? input.each_pair.to_h : nil
-    @submission.update_teacher_judgments!(judgments)
+    if params.key?(:final_judgments)
+      update_final_judgments
+    else
+      input = params[:judgments]
+      judgments = input.is_a?(ActionController::Parameters) ? input.each_pair.to_h : nil
+      @submission.update_teacher_judgments!(judgments)
+    end
     redirect_to assignment_submission_path(@assignment, @submission), notice: "判定を保存しました。", status: :see_other
   rescue Submission::InvalidTeacherJudgments => error
     render_update_error(error.message)
@@ -31,6 +35,28 @@ class SubmissionsController < ApplicationController
   end
 
   private
+
+  def update_final_judgments
+    input = params[:final_judgments]
+    original = params[:original_final_judgments]
+    valid = !params.key?(:judgments) && input.is_a?(ActionController::Parameters) && input.present? &&
+      original.is_a?(ActionController::Parameters) && input.keys.sort == original.keys.sort &&
+      input.each_pair.all? { |id, value|
+        id.match?(/\A[1-9][0-9]*\z/) && [ "", "correct", "incorrect" ].include?(value) &&
+          [ "correct", "incorrect", "needs_review" ].include?(original[id])
+      }
+    raise Submission::InvalidTeacherJudgments, "判定の指定が正しくありません。" unless valid
+
+    @submission.with_lock do
+      raise Submission::InvalidTeacherJudgments, "採点が完了した答案だけ修正できます。" unless @submission.completed?
+
+      ids = @submission.grading_results.where(question: @assignment.questions).where(id: input.keys).pluck(:id).map(&:to_s)
+      raise ActiveRecord::RecordNotFound unless ids.sort == input.keys.sort
+
+      changes = input.each_pair.to_h.reject { |id, value| value.empty? || value == original[id] }
+      @submission.update_teacher_judgments!(changes) if changes.any?
+    end
+  end
 
   def set_grading_results
     results = @assignment.reviewable_grading_results.where(submission: @submission)

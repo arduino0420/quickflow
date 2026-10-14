@@ -1,15 +1,21 @@
+<% content_for :header_actions do %>
+  <%= button_to "ログアウト", logout_path, method: :delete, class: "teacher-logout-button" %>
+<% end %>
 <h1>配信済み小テスト</h1>
 
-<%= link_to "小テスト配信", new_assignment_path %>
+<nav class="assignment-list-actions" aria-label="教師メニュー">
+  <%= link_to "小テスト配信", new_assignment_path, class: "button button-primary" %>
+</nav>
 
 <% if @assignments.empty? %>
   <p>配信済みの小テストはありません。</p>
 <% else %>
-  <ul>
+  <ul class="assignment-list">
     <% @assignments.each do |assignment| %>
-      <li>
-        <%= assignment.title %>
-        <%= link_to "詳細", assignment_path(assignment) %>
+      <li class="assignment-card">
+        <%= link_to assignment_path(assignment), class: "assignment-card-link" do %>
+          <span class="assignment-list-title"><%= assignment.title %></span>
+        <% end %>
       </li>
     <% end %>
   </ul>

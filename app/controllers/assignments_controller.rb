@@ -1,6 +1,7 @@
 class AssignmentsController < ApplicationController
   before_action :require_teacher_login
   before_action :set_classrooms, only: [ :new, :create ]
+  before_action :set_assignment, only: [ :edit, :update ]
   before_action :set_assignment_and_classroom, only: [ :show, :export ]
 
   def index
@@ -8,27 +9,25 @@ class AssignmentsController < ApplicationController
   end
 
   def show
-    @reviewable_submissions = @assignment.reviewable_submissions.where(students: { classroom_id: @selected_classroom.id })
+    @reviewable_submissions = @assignment.reviewable_submissions.where(students: { classroom_id: @selected_classrooms.select(:id) })
     results = @assignment.reviewable_grading_results.where(submission: @reviewable_submissions)
     @pending_review_counts = results.pending_review.group(:submission_id).count
     @pending_review_count = @pending_review_counts.values.sum
     set_submission_summary
-    @show_all = params[:filter] == "all"
-    @grading_results = (@show_all ? results : results.pending_review)
-      .joins(:question, submission: { student: :classroom })
-      .includes(:question, submission: { student: :classroom })
-      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number", "questions.position")
-    @unfinished_submissions = @reviewable_submissions.where.not(status: :completed)
-      .joins(student: :classroom).includes(student: :classroom)
-      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
+    @review_only = params[:filter] == "needs_review"
+    if @review_only
+      student_ids = @submissions_by_student_id.values.select { |submission| @pending_review_counts.fetch(submission.id, 0).positive? }.map(&:student_id)
+      @students = @students.where(id: student_ids)
+    end
   end
 
   def export
     raise ActiveRecord::RecordNotFound unless params.key?(:classroom_id)
 
-    data = ClassroomGradeExporter.new.call(@assignment, @selected_classroom)
+    data = ClassroomGradeExporter.new.call(@assignment, @selected_classrooms.to_a)
+    classroom_name = @selected_classroom ? helpers.classroom_label(@selected_classroom) : "全クラス"
     filename = ActiveStorage::Filename.new(
-      "課題#{@assignment.id}_#{@assignment.title}_#{helpers.classroom_label(@selected_classroom)}_成績.xlsx"
+      "課題#{@assignment.id}_#{@assignment.title}_#{classroom_name}_成績.xlsx"
     ).sanitized
     response.headers["Cache-Control"] = "private, no-store"
     send_data data, filename: filename,
@@ -38,6 +37,17 @@ class AssignmentsController < ApplicationController
   def new
     @assignment = current_teacher.assignments.build
     @selected_classroom_ids = []
+  end
+
+  def edit
+  end
+
+  def update
+    if @assignment.update(params.require(:assignment).permit(:title))
+      redirect_to assignment_path(@assignment), notice: "小テスト名を変更しました。", status: :see_other
+    else
+      render :edit, status: :unprocessable_entity
+    end
   end
 
   def create
@@ -66,26 +76,34 @@ class AssignmentsController < ApplicationController
 
   private
 
-  def set_assignment_and_classroom
+  def set_assignment
     @assignment = distributed_assignments.find(params[:id])
+  end
+
+  def set_assignment_and_classroom
+    set_assignment
     @classrooms = @assignment.classrooms.where(school_id: current_teacher.school_id).order(:grade, :class_number)
     set_selected_classroom
   end
 
   def set_selected_classroom
-    unless params.key?(:classroom_id)
-      @selected_classroom = @classrooms.first!
+    id = params[:classroom_id]
+    if !params.key?(:classroom_id) || id == "all"
+      @selected_classrooms = @classrooms
+      @classroom_selection = "all"
       return
     end
 
-    id = params[:classroom_id]
     raise ActiveRecord::RecordNotFound unless id.is_a?(String) && id.match?(/\A[1-9][0-9]*\z/)
 
     @selected_classroom = @classrooms.find(id)
+    @selected_classrooms = @classrooms.where(id: @selected_classroom.id)
+    @classroom_selection = @selected_classroom.id
   end
 
   def set_submission_summary
-    @students = Student.where(classroom: @selected_classroom).includes(:classroom).order(:attendance_number)
+    @students = Student.where(classroom: @selected_classrooms).joins(:classroom).includes(:classroom)
+      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
     @submissions_by_student_id = @reviewable_submissions.includes(:assignment).index_by(&:student_id)
     @scores_by_submission_id = @submissions_by_student_id.values.select(&:completed?).to_h do |submission|
       [ submission.id, submission.score ]

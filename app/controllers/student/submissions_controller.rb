@@ -14,7 +14,11 @@ class Student::SubmissionsController < ApplicationController
     @submission.answer_file = upload
     Submission.transaction(requires_new: true) { @submission.save! }
 
-    AnswerReadingJob.perform_later(@submission)
+    unless enqueue_answer_reading
+      return redirect_to student_assignment_path(@assignment),
+        alert: "答案PDFは保存されましたが、採点処理を開始できませんでした。再提出せず、先生に確認してください。",
+        status: :see_other
+    end
 
     redirect_to student_assignment_path(@assignment), notice: "提出しました", status: :see_other
   rescue ActiveRecord::RecordInvalid
@@ -28,6 +32,18 @@ class Student::SubmissionsController < ApplicationController
   end
 
   private
+
+  def enqueue_answer_reading
+    raise "Could not enqueue answer reading" unless AnswerReadingJob.perform_later(@submission)
+
+    true
+  rescue StandardError => error
+    @submission.with_lock do
+      @submission.update!(status: :failed) unless @submission.completed? || @submission.failed?
+    end
+    Rails.logger.error("Answer reading enqueue failed: submission_id=#{@submission.id} #{error.class}")
+    @submission.completed?
+  end
 
   def require_student_login
     redirect_to student_login_path, status: :see_other unless current_student

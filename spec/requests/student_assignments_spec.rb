@@ -46,9 +46,9 @@ RSpec.describe "Student assignments", type: :request do
     expect(document.css("li a").map { |link| link[:href] }).to eq([
       student_assignment_path(latest), student_assignment_path(old)
     ])
-    expect(document.css("li").map { |node| node.text.strip }).to all(include("詳細"))
+    expect(document.css(".assignment-card-link").size).to eq(2)
     expect(response.body).not_to include("別クラス", "別学校", "未配信")
-    expect(document.css("form, button, input")).to be_empty
+    expect(document.at_css("form[action='/student/logout'] input[name='_method']")[:value]).to eq("delete")
   end
 
   it "shows an empty list" do
@@ -69,8 +69,8 @@ RSpec.describe "Student assignments", type: :request do
     expect(response).to have_http_status(:ok)
     expect(document.css("dt").map(&:text)).to eq([ "タイトル", "1問あたりの点数", "教材ファイル名" ])
     expect(document.css("dd").map(&:text)).to eq([ "式の計算", "5", "material.pdf" ])
-    expect(document.css("a").map { |link| link[:href] }).to eq([
-      student_assignments_path, material_student_assignment_path(item), material_student_assignment_path(item, download: "1")
+    expect(document.css("main a").map { |link| link[:href] }).to eq([
+      student_assignments_path, material_student_assignment_path(item, download: "1")
     ])
     expect(document.at_css("form")[:action]).to eq(student_assignment_submission_path(item))
     expect(response.body).not_to include("/rails/active_storage", "再配信", "編集", "削除")
@@ -109,7 +109,7 @@ RSpec.describe "Student assignments", type: :request do
     login
     get student_assignment_path(item)
     expect(response).to have_http_status(:ok)
-    expect(document.css("a").map { |link| link[:href] }).to eq([ student_assignments_path ])
+    expect(document.css("main a").map { |link| link[:href] }).to eq([ student_assignments_path ])
     get material_student_assignment_path(item)
     expect(response).to have_http_status(:not_found)
   end
@@ -121,7 +121,7 @@ RSpec.describe "Student assignments", type: :request do
       distribute("別学校", targets: [ foreign_class ]), distribute("未配信", targets: []) ]
     login
     (items.map(&:id) + [ Assignment.maximum(:id) + 100 ]).each do |id|
-      [ student_assignment_path(id), material_student_assignment_path(id), result_student_assignment_path(id) ].each do |path|
+      [ student_assignment_path(id), material_student_assignment_path(id), result_student_assignment_path(id), answer_student_assignment_path(id) ].each do |path|
         get path
         expect(response).to have_http_status(:not_found)
       end
@@ -141,7 +141,7 @@ RSpec.describe "Student assignments", type: :request do
         login
         student.destroy!
       end
-      [ student_assignments_path, student_assignment_path(item), material_student_assignment_path(item), result_student_assignment_path(item) ].each do |path|
+      [ student_assignments_path, student_assignment_path(item), material_student_assignment_path(item), result_student_assignment_path(item), answer_student_assignment_path(item) ].each do |path|
         get path
         expect(response).to have_http_status(:see_other)
         expect(response).to redirect_to(student_login_path)
@@ -183,7 +183,7 @@ RSpec.describe "Student assignments", type: :request do
     follow_redirect!
     get document.at_css("a[href='#{student_assignment_path(item)}']")[:href]
     expect(response.body).to include("配信教材", "material.pdf")
-    get document.at_css("a[href='#{material_student_assignment_path(item)}']")[:href]
+    get document.at_css("a[href='#{material_student_assignment_path(item, download: "1")}']")[:href]
     expect(response).to have_http_status(:ok)
     expect(response.body.b).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
   end

@@ -1,0 +1,24 @@
+<section class="assignment-name-editor" aria-labelledby="edit-name-heading">
+  <h1 id="edit-name-heading">小テスト名を編集</h1>
+
+  <% if @assignment.errors.any? %>
+    <div role="alert" id="assignment-name-errors">
+      <p>小テスト名を保存できませんでした。入力内容を確認してください。</p>
+      <ul>
+        <% @assignment.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%= form_with model: @assignment do |form| %>
+    <%= form.label :title, "小テスト名" %>
+    <%= form.text_field :title, required: true,
+      aria: { invalid: @assignment.errors[:title].any?, describedby: ("assignment-name-errors" if @assignment.errors.any?) } %>
+    <div class="assignment-name-actions">
+      <%= form.submit "保存" %>
+      <%= link_to "キャンセル", assignment_path(@assignment) %>
+    </div>
+  <% end %>
+</section>
