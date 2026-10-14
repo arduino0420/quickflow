@@ -2,6 +2,8 @@
   <%= button_to "ログアウト", logout_path, method: :delete, class: "teacher-logout-button" %>
 <% end %>
 <h1>配信済み小テスト</h1>
+<% if notice.present? %><p role="status"><%= notice %></p><% end %>
+<% if alert.present? %><p role="alert"><%= alert %></p><% end %>
 
 <nav class="assignment-list-actions" aria-label="教師メニュー">
   <%= link_to "小テスト配信", new_assignment_path, class: "button button-primary" %>

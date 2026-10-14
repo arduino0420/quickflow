@@ -1,4 +1,6 @@
 class QuestionGenerationJob < ApplicationJob
+  include DiscardDeletedRecord
+
   queue_as :default
 
   def perform(assignment, material_blob_id)
@@ -6,11 +8,13 @@ class QuestionGenerationJob < ApplicationJob
     begin
       generator.call(assignment, material_blob_id: material_blob_id)
     rescue StandardError => error
-      generator.record_failure(assignment)
-      # Parser errors can include AI output; diagnostic metadata is logged by the service.
-      Rails.logger.error("QuestionGenerationJob failed: #{error.class}")
-      readable_submissions(assignment).find_each do |submission|
-        submission.with_lock { submission.update!(status: :failed) unless submission.completed? || submission.failed? }
+      assignment.with_lock("FOR NO KEY UPDATE") do
+        generator.record_failure(assignment)
+        # Parser errors can include AI output; log only diagnostic metadata.
+        Rails.logger.error("QuestionGenerationJob failed: #{error.class}")
+        readable_submissions(assignment).find_each do |submission|
+          submission.with_lock { submission.update!(status: :failed) unless submission.completed? || submission.failed? }
+        end
       end
       return
     end

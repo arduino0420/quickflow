@@ -1,4 +1,6 @@
 class AnswerGradingJob < ApplicationJob
+  include DiscardDeletedRecord
+
   queue_as :default
 
   def perform(submission)
@@ -27,11 +29,11 @@ class AnswerGradingJob < ApplicationJob
         end
       rescue StandardError => error
         submission.reload.update!(status: :failed)
-        Rails.logger.error("AnswerGradingJob failed: #{error.class}: #{error.message}")
+        Rails.logger.error("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}")
       end
     end
   rescue StandardError => error
     submission.with_lock { submission.update!(status: :failed) unless submission.completed? || submission.failed? }
-    Rails.logger.error("AnswerGradingJob failed: #{error.class}: #{error.message}")
+    Rails.logger.error("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}")
   end
 end

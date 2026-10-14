@@ -293,7 +293,7 @@ RSpec.describe "Student submissions", type: :request do
         { results: [ { question_id: question_id, ai_judgment: "correct", error_point: nil, feedback: nil, review_reason: nil } ] }
       end
       instance_double(OpenAI::Models::Responses::Response, output_text: JSON.generate(data), model: "stub-model",
-        status: "completed", output: [])
+        status: "completed", output: [], error: nil, incomplete_details: nil)
     end
     QuestionGenerationJob.perform_now(assignment, assignment.material_file.blob.id)
     question_id = assignment.questions.sole.id

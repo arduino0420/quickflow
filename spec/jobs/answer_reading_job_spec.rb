@@ -84,7 +84,7 @@ RSpec.describe AnswerReadingJob, type: :job do
     expect(submission.reload).to be_failed
     expect(submission.extracted_text).to be_nil
     expect(reader).to have_received(:call).once
-    expect(Rails.logger).to have_received(:error).with(/AnswerReadingJob failed: .*APITimeoutError: Timed out/).once
+    expect(Rails.logger).to have_received(:error).with("AnswerReadingJob failed: submission_id=#{submission.id} #{error.class}").once
   end
 
   it "marks the submission as failed when required fields are missing" do

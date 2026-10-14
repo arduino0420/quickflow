@@ -43,8 +43,10 @@
               <dt>問題文</dt><dd><%= result.question.question_text %></dd>
               <dt>生徒解答（AI読み取り）</dt><dd><%= result.student_answer.presence || "読み取り結果なし（答案PDFを確認してください）" %></dd>
               <dt>正答</dt><dd><%= result.question.correct_answer %></dd>
+              <% unless result.final_judgment == "correct" %>
               <dt>要確認理由</dt><dd><%= result.review_reason.presence || "—" %></dd>
               <dt>フィードバック</dt><dd><%= result.feedback.presence || "—" %></dd>
+              <% end %>
               <dt>最終判定</dt><dd><%= result.final_judgment == "needs_review" ? "未確定（要確認）" : judgment_label(result.final_judgment) %></dd>
             </dl>
             <%= label_tag "judgment_#{result.id}", "問題#{result.question.question_label}の最終判定" %>

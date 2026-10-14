@@ -12,15 +12,18 @@ class Student::SubmissionsController < ApplicationController
     return render_errors unless valid_pdf?(upload)
 
     @submission.answer_file = upload
-    Submission.transaction(requires_new: true) { @submission.save! }
+    AssignmentLifecycleLock.synchronize(@assignment.id) do
+      # KEY SHARE is compatible with question generation's NO KEY UPDATE lock.
+      @assignment.with_lock("FOR KEY SHARE") { @submission.save! }
 
-    unless enqueue_answer_reading
-      return redirect_to student_assignment_path(@assignment),
-        alert: "答案PDFは保存されましたが、採点処理を開始できませんでした。再提出せず、先生に確認してください。",
-        status: :see_other
+      unless enqueue_answer_reading
+        return redirect_to student_assignment_path(@assignment),
+          alert: "答案PDFは保存されましたが、採点処理を開始できませんでした。再提出せず、先生に確認してください。",
+          status: :see_other
+      end
+
+      redirect_to student_assignment_path(@assignment), notice: "提出しました", status: :see_other
     end
-
-    redirect_to student_assignment_path(@assignment), notice: "提出しました", status: :see_other
   rescue ActiveRecord::RecordInvalid
     return redirect_already_submitted if existing_submission
 

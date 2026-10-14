@@ -50,6 +50,19 @@ class AssignmentsController < ApplicationController
     end
   end
 
+  def destroy
+    assignment = current_teacher.assignments.find(params[:id])
+    result = AssignmentDeletion.new.call(assignment, teacher: current_teacher)
+    if result == :cleanup_pending
+      redirect_to assignments_path, alert: "小テストと成績は削除しましたが、PDFの削除処理を登録できませんでした。運用担当者に確認してください。", status: :see_other
+    else
+      redirect_to assignments_path, notice: "小テスト・提出答案・採点結果・成績を削除しました。PDFファイルはバックグラウンドで削除します。", status: :see_other
+    end
+  rescue AssignmentDeletion::InconsistentData, ActiveRecord::RecordNotDestroyed, ActiveRecord::RecordInvalid,
+      ActiveRecord::InvalidForeignKey, ActiveRecord::RecordNotSaved, ActiveRecord::Deadlocked, ActiveRecord::LockWaitTimeout
+    redirect_to assignments_path, alert: "小テストを削除できませんでした。データは変更していません。運用担当者に確認してください。", status: :see_other
+  end
+
   def create
     @assignment = current_teacher.assignments.build(assignment_params)
 
@@ -60,10 +73,13 @@ class AssignmentsController < ApplicationController
 
     return render_creation_errors if @assignment.errors.any?
 
-    Assignment.transaction do
-      @assignment.save!
-      selected_classrooms.each do |classroom|
-        @assignment.assignment_classrooms.create!(classroom: classroom)
+    AssignmentLifecycleLock.with_lock_scope do |acquire|
+      Assignment.transaction do
+        @assignment.save!
+        acquire.call(@assignment.id)
+        selected_classrooms.each do |classroom|
+          @assignment.assignment_classrooms.create!(classroom: classroom)
+        end
       end
     end
 
@@ -81,7 +97,12 @@ class AssignmentsController < ApplicationController
   end
 
   def set_assignment_and_classroom
-    set_assignment
+    unpublished = current_teacher.assignments.where.missing(:assignment_classrooms)
+    if action_name == "show" && unpublished.exists?(id: params[:id])
+      @assignment = unpublished.find(params[:id])
+    else
+      set_assignment
+    end
     @classrooms = @assignment.classrooms.where(school_id: current_teacher.school_id).order(:grade, :class_number)
     set_selected_classroom
   end

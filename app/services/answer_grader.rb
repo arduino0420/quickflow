@@ -92,6 +92,7 @@ class AnswerGrader
         student_answer: problem.fetch("student_answer") }
     end
     response = @client.responses.create(model: @model, instructions: prompt, input: JSON.generate(problems: input))
+    validate_response!(response)
     data = JSON.parse(response.output_text)
     judgments = data["results"] if data.is_a?(Hash)
     validate_judgments!(judgments, candidates)
@@ -101,6 +102,19 @@ class AnswerGrader
       result_for(question, problem, judgment.fetch("ai_judgment"), response.model.presence || @model,
         **judgment.slice("error_point", "feedback", "review_reason").symbolize_keys)
     end
+  end
+
+  def validate_response!(response)
+    fields = %i[status output error incomplete_details]
+    unless fields.all? { |field| response.respond_to?(field) } && response.status.to_s == "completed" &&
+        response.output.is_a?(Array) && response.error.nil? && response.incomplete_details.nil?
+      raise "Answer grading response is not completed"
+    end
+
+    refused = response.output.any? do |item|
+      item.respond_to?(:content) && item.content&.any? { |content| content.type.to_s == "refusal" }
+    end
+    raise "Answer grading response was refused" if refused
   end
 
   def validate_judgments!(judgments, candidates)
