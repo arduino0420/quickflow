@@ -36,9 +36,12 @@ RSpec.describe "Teacher sessions", type: :request do
     login
 
     expect(response).to have_http_status(:see_other)
-    expect(response).to redirect_to(login_path)
+    expect(response).to redirect_to(assignments_path)
     follow_redirect!
     expect(response).to have_http_status(:ok)
+    expect(response.body).to include("配信済み小テスト")
+
+    get login_path
     expect(response.body).to include("ログイン中のユーザーID: #{teacher.user_id}")
     document = Nokogiri::HTML(response.body)
     expect(document.at_css('form[action="/login"]')).to be_nil
@@ -73,7 +76,12 @@ RSpec.describe "Teacher sessions", type: :request do
 
   it "logs out and clears authentication for subsequent requests" do
     login
-    delete logout_path
+    follow_redirect!
+    document = Nokogiri::HTML(response.body)
+    form = document.at_css("header .app-header-actions form[action='/logout'][method='post']")
+    expect(form.at_css("button").text).to eq("ログアウト")
+    expect(form.at_css("input[name='_method']")[:value]).to eq("delete")
+    delete form[:action]
 
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(login_path)
@@ -82,6 +90,11 @@ RSpec.describe "Teacher sessions", type: :request do
 
     get login_path
     expect_login_form
+
+    [ assignments_path, new_assignment_path, assignment_path(123), export_assignment_path(123, classroom_id: "all") ].each do |path|
+      get path
+      expect(response).to redirect_to(login_path)
+    end
   end
 
   it "allows logout without a logged-in teacher" do
@@ -91,6 +104,30 @@ RSpec.describe "Teacher sessions", type: :request do
     expect(response).to redirect_to(login_path)
     follow_redirect!
     expect_login_form
+  end
+
+  it "requires a CSRF token for the list logout button when forgery protection is enabled" do
+    original_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    get login_path
+    token = Nokogiri::HTML(response.body).at_css("input[name='authenticity_token']")[:value]
+    post login_path, params: { authenticity_token: token, session: { user_id: teacher.user_id, password: "password123" } }
+    follow_redirect!
+    form = Nokogiri::HTML(response.body).at_css("form[action='/logout']")
+    logout_token = form.at_css("input[name='authenticity_token']")[:value]
+    expect(logout_token).to be_present
+
+    delete logout_path
+    expect(response).to have_http_status(422)
+    get assignments_path
+    expect(response).to have_http_status(:ok)
+
+    delete logout_path, params: { authenticity_token: logout_token }
+    expect(response).to redirect_to(login_path)
+    get assignments_path
+    expect(response).to redirect_to(login_path)
+  ensure
+    ActionController::Base.allow_forgery_protection = original_protection
   end
 
   it "treats a session for a deleted teacher as logged out" do
@@ -112,6 +149,9 @@ RSpec.describe "Teacher sessions", type: :request do
 
     login
     follow_redirect!
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("配信済み小テスト")
+    get login_path
     expect(response.body).to include("ログイン中のユーザーID: #{teacher.user_id}")
     get student_login_path
     expect(response.body).not_to include("ログイン中:")

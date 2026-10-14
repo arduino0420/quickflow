@@ -7,7 +7,9 @@ Rails.application.routes.draw do
   post "/student/login", to: "student_sessions#create"
   delete "/student/logout", to: "student_sessions#destroy", as: :student_logout
 
-  resources :assignments, only: [ :index, :show, :new, :create ] do
+  resources :students, only: [ :new, :create ]
+
+  resources :assignments, only: [ :index, :show, :new, :create, :edit, :update ] do
     get :export, on: :member, defaults: { format: :xlsx }
     resources :submissions, only: [ :show, :update ] do
       get :answer, on: :member
@@ -18,6 +20,7 @@ Rails.application.routes.draw do
     resources :assignments, only: [ :index, :show ] do
       get :material, on: :member
       get :result, on: :member
+      get :answer, on: :member
       resource :submission, only: [ :create ]
     end
   end

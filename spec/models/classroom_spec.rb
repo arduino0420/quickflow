@@ -37,13 +37,13 @@ RSpec.describe Classroom, type: :model do
     end
   end
 
-  [ 1, 2, 3 ].each do |grade|
+  [ 1, 2, 3, 4, 5, 6 ].each do |grade|
     it "accepts grade #{grade}" do
       expect(described_class.new(attributes.merge(grade: grade))).to be_valid
     end
   end
 
-  [ nil, "", 0, 4, 1.5, "abc" ].each do |grade|
+  [ nil, "", 0, 7, 1.5, "abc" ].each do |grade|
     it "rejects grade #{grade.inspect}" do
       classroom = described_class.new(attributes.merge(grade: grade))
 
@@ -52,13 +52,13 @@ RSpec.describe Classroom, type: :model do
     end
   end
 
-  [ 1, 100 ].each do |class_number|
+  [ 1, 15 ].each do |class_number|
     it "accepts class number #{class_number}" do
       expect(described_class.new(attributes.merge(class_number: class_number))).to be_valid
     end
   end
 
-  [ nil, "", 0, -1, 1.5, "abc" ].each do |class_number|
+  [ nil, "", 0, -1, 16, 1.5, "abc" ].each do |class_number|
     it "rejects class number #{class_number.inspect}" do
       classroom = described_class.new(attributes.merge(class_number: class_number))
 

@@ -1,45 +1,76 @@
 .teacher-review-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
   gap: 1.5rem;
+  margin-top: 1.5rem;
 }
-
-.teacher-review-layout > section { min-width: 0; }
-.teacher-review-layout > section[aria-labelledby="answer-heading"] {
-  position: sticky;
-  top: 1rem;
-  align-self: start;
-}
-
+.teacher-review-layout > section { min-width: 0; padding: 1rem; border: 1px solid var(--color-soft-border); border-radius: var(--radius); background: var(--color-surface); }
+.teacher-review-layout > section > :first-child { margin-top: 0; }
+.teacher-review-layout > section[aria-labelledby="answer-heading"],
+.teacher-review-layout > section[aria-label="提出した答案PDF"] { position: sticky; top: 1rem; }
 .teacher-answer-pdf {
   display: block;
-  box-sizing: border-box;
   width: 100%;
   height: 75vh;
-  /* Leave space for the heading, links and the sticky offset. */
   max-height: calc(100vh - 12rem);
   max-height: calc(100dvh - 12rem);
-  border: 1px solid #767676;
+  border: 1px solid var(--color-border);
+  border-radius: var(--control-radius);
+  background: var(--color-background);
 }
-.grading-result { border-bottom: 1px solid #767676; padding: 1rem 0; overflow-wrap: anywhere; }
-.grading-result dd { white-space: pre-wrap; margin: 0 0 0.75rem; }
-.grading-result dt { font-weight: bold; }
-.review-table-container { overflow-x: auto; }
-.review-table { border-collapse: collapse; width: 100%; }
-.review-table th, .review-table td { padding: 0.75rem; border-bottom: 1px solid #767676; text-align: left; }
-.review-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
-.grading-state-notice { padding: 1rem; background: #fff5d6; color: #3c3000; }
+.grading-result { padding: 1rem; margin: 1.25rem 0; border: 1px solid var(--color-soft-border); border-left: 4px solid var(--color-border); border-radius: var(--control-radius); overflow-wrap: anywhere; }
+.grading-result h2, .grading-result h3, .grading-result h4 { margin-top: 0; font-size: 1.1rem; }
+.grading-result dl { margin-bottom: 0; }
+.grading-result dd { white-space: pre-wrap; margin: 0.2rem 0 0.85rem; }
+.grading-result dt { color: var(--color-muted); font-size: 0.875rem; font-weight: 600; }
+.grading-result select { margin-bottom: 0.5rem; }
+.judgment-correct { border-left-color: var(--color-success); }
+.judgment-incorrect { border-left-color: var(--color-danger); }
+.judgment-needs_review { border-left-color: var(--color-warning-text); }
+.teacher-grading-result.judgment-needs_review { background: var(--color-warning-soft); border-color: var(--color-warning-border); color: var(--color-text); }
+.judgment-badge, .grade-state { display: inline-block; padding: 0.25rem 0.65rem; border-radius: var(--control-radius); font-size: 0.875rem; font-weight: 600; }
+.judgment-correct .judgment-badge, .grade-state-completed { color: var(--color-success-text); background: var(--color-success-soft); }
+.judgment-incorrect .judgment-badge, .grade-state-failed { color: var(--color-danger-text); background: var(--color-danger-soft); }
+.judgment-needs_review .judgment-badge { color: var(--color-warning-text); background: var(--color-warning-soft); }
+.grade-state-unsubmitted { color: var(--color-muted); background: var(--color-background); }
+.grade-state-submitted, .grade-state-grading { color: var(--color-primary-hover); background: var(--color-info-soft); }
+.review-table-container { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-soft-border); border-radius: var(--control-radius); }
+.review-table { width: 100%; border-collapse: collapse; }
+.review-table th, .review-table td { padding: 0.9rem 1rem; border-bottom: 1px solid var(--color-soft-border); text-align: left; vertical-align: middle; }
+.review-table th { color: var(--color-muted); background: var(--color-background); font-size: 0.875rem; font-weight: 700; white-space: nowrap; }
+.review-table tbody tr:last-child td { border-bottom: 0; }
+#grade-summary { min-width: 42rem; font-size: 1rem; }
+#grade-summary .grade-needs-review { background: var(--color-warning-soft); }
+.grade-review strong { color: var(--color-text); }
+.grade-status, .grade-answer { white-space: nowrap; }
+.review-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+.review-filters a { display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0.5rem 0.85rem; border: 1px solid var(--color-border); border-radius: var(--control-radius); text-decoration: none; }
+.review-filters a[aria-current="page"] { color: var(--color-surface); background: var(--color-primary); border-color: var(--color-primary); font-weight: 600; }
+.review-filters a:hover { border-color: var(--color-primary); }
+.assignment-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.assignment-title span { min-width: 0; font-size: 1.1rem; font-weight: 700; }
+.assignment-edit-link { font-size: 0.875rem; }
+.assignment-name-editor { max-width: 36rem; }
+#teacher-judgments > input[type="submit"] { min-width: 8rem; }
 
 @media (max-width: 48rem) {
   .teacher-review-layout { grid-template-columns: minmax(0, 1fr); }
+  .teacher-review-layout > section { padding: 0.85rem; }
 }
-
 @media (max-width: 48rem), (max-height: 36rem) {
-  .teacher-review-layout > section[aria-labelledby="answer-heading"] {
-    position: static;
-    top: auto;
-    align-self: auto;
-  }
-
+  .teacher-review-layout > section[aria-labelledby="answer-heading"],
+  .teacher-review-layout > section[aria-label="提出した答案PDF"] { position: static; }
   .teacher-answer-pdf { height: 55vh; max-height: none; }
 }
+
+#grade-summary tr[data-controller="row-navigation"] { cursor: pointer; }
+#grade-summary tr[data-controller="row-navigation"]:hover { background: var(--color-background); }
+#grade-summary tr:focus-within { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+#grade-summary tr.grade-needs-review,
+#grade-summary tr.grade-needs-review:hover,
+#grade-summary tr.grade-needs-review:focus-within { background: #FEF3C7; }
+#grade-summary .grade-needs-review td { border-bottom-color: #FDE68A; }
+.grade-row-link { display: inline-flex; align-items: center; min-height: 2.75rem; font-weight: 400; }
+
+.grade-row-link, .grade-row-link:hover, .grade-row-link:visited { color: var(--color-text); text-decoration: none; }

@@ -16,6 +16,15 @@ module GradingReviewsHelper
     pending_review_count.positive? ? "#{score}点（暫定）" : "#{score}点"
   end
 
+  def student_incorrect_feedback(result)
+    unless result.ai_judgment == "incorrect"
+      return "教師が判定を変更しています。理由は先生に確認してください。"
+    end
+
+    explanations = [ result.error_point, result.feedback ].filter_map { |text| text&.strip.presence }.uniq
+    explanations.any? ? explanations.join("\n") : "説明は登録されていません。先生に確認してください。"
+  end
+
   def classroom_label(classroom)
     "#{classroom.grade}年#{classroom.class_number}組"
   end

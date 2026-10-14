@@ -52,9 +52,10 @@ RSpec.describe "Student submissions", type: :request do
     expect(item.submitted_at).to be_between(started, Time.current)
     expect(item.answer_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
     follow_redirect!
-    expect(response.body).to include("提出しました", "提出済み", "material.pdf", item.submitted_at.strftime("%Y/%m/%d %H:%M"))
+    expect(response.body).to include("提出しました", "#{assignment.title}の採点結果", "採点待ち")
+    expect(Nokogiri::HTML(response.body).at_css("iframe")[:src]).to eq(answer_student_assignment_path(assignment))
     expect(document.css("form, input")).to be_empty
-    expect(document.css("a").map { |link| link[:href] }).to eq([ student_assignments_path, student_assignment_path(assignment) ])
+    expect(document.css("main a").map { |link| link[:href] }).to eq([ student_assignments_path, student_assignment_path(assignment) ])
     expect(document.at_css("#grading-status").text).to include("採点待ち")
     expect(document.at_css("#grading-status [data-controller='grading-status']")).to be_present
   end
@@ -194,6 +195,83 @@ RSpec.describe "Student submissions", type: :request do
     }.to have_enqueued_job(AnswerReadingJob).with(kind_of(Submission))
 
     expect(response).to have_http_status(:see_other)
+  end
+
+  [ :exception, :false, :nil ].each do |failure|
+    it "preserves the answer and displays failure when reading registration returns #{failure}" do
+      other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "other-password")
+      other_submission = Submission.create!(assignment: assignment, student: other_student, submitted_at: Time.current)
+      other_attributes = other_submission.attributes
+      if failure == :exception
+        allow(AnswerReadingJob).to receive(:perform_later).and_raise(StandardError, "private error details")
+      else
+        allow(AnswerReadingJob).to receive(:perform_later).and_return(failure == :false ? false : nil)
+      end
+      allow(Rails.logger).to receive(:error)
+      expect(AnswerReader).not_to receive(:new)
+      login
+      before_counts = counts
+      submit(pdf, id: other_submission.id, student_id: other_student.id, status: "completed")
+
+      expect(response).to have_http_status(:see_other)
+      expect(response).to redirect_to(student_assignment_path(assignment))
+      item = student.submissions.find_by!(assignment: assignment)
+      expect(item).to be_failed
+      expect(item.answer_file).to be_attached
+      expect(item.answer_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+      expect(item.submitted_at).to be_present
+      expect(item.extracted_text).to be_nil
+      expect(item.grading_results).to be_empty
+      expect(item.score).to be_nil
+      expect(counts).to eq(before_counts.map { |count| count + 1 })
+      expect(other_submission.reload.attributes).to eq(other_attributes)
+      expect(Rails.logger).to have_received(:error).with(/Answer reading enqueue failed: submission_id=#{item.id} /).once
+      expect(Rails.logger).not_to have_received(:error).with(/private error details/)
+      follow_redirect!
+      expect(document.at_css("[role='alert']").text).to include("答案PDFは保存されました", "採点処理を開始できませんでした", "再提出せず")
+      expect(response.body).not_to include("提出しました", "採点を待っています", "採点中です", "採点が完了しました", "private error details")
+      expect(document.at_css("#grading-status").text).to include("採点失敗", "先生に確認してください")
+      expect(document.at_css("#grading-status [data-controller='grading-status']")).to be_nil
+      expect(document.css("form, input[type='file']")).to be_empty
+
+      attributes = item.reload.attributes
+      attachment = item.answer_file.attachment.attributes
+      saved_counts = counts
+      submit
+      follow_redirect!
+      expect(response.body).to include("すでに提出済みです", "採点失敗")
+      expect(item.reload.attributes).to eq(attributes)
+      expect(item.answer_file.attachment.reload.attributes).to eq(attachment)
+      expect(counts).to eq(saved_counts)
+      expect(AnswerReadingJob).to have_received(:perform_later).once
+
+      post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
+      get assignment_path(assignment)
+      row = document.at_css("#grade-summary #grade_student_#{student.id}")
+      expect(row.text).to include("採点失敗")
+      expect(document.at_css("#grade_student_#{student.id} .grade-score").text).to be_empty
+      get assignment_submission_path(assignment, item)
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("採点失敗", "採点が完了すると")
+      get answer_assignment_submission_path(assignment, item)
+      expect(response.body.b).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+    end
+  end
+
+  it "does not overwrite a completed result when registration raises after the job ran" do
+    login
+    allow(AnswerReadingJob).to receive(:perform_later) do |item|
+      Submission.find(item.id).update!(status: :completed)
+      raise StandardError, "Registration result unavailable"
+    end
+    submit
+
+    expect(response).to have_http_status(:see_other)
+    expect(student.submissions.find_by!(assignment: assignment)).to be_completed
+    expect(Submission.last.answer_file).to be_attached
+    follow_redirect!
+    expect(response.body).to include("提出しました")
+    expect(response.body).not_to include("採点処理を開始できませんでした")
   end
 
   it "uses answers prepared before submission for reading and grading using only stubs" do

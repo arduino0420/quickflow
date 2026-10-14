@@ -36,11 +36,11 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   describe "submission summary and scores" do
     def summary_cells(item = student)
-      document.at_css("#submission-summary #student_#{item.id}").css("td").map { |cell| cell.text.strip }
+      document.at_css("#grade-summary #grade_student_#{item.id}").css("td").map { |cell| cell.text.strip }
     end
 
     def grade_cells(item = student)
-      document.at_css("#grade_student_#{item.id}").css("td").map { |cell| cell.text.strip }
+      document.at_css("#grade_student_#{item.id}").css(".grade-attendance, .grade-score").map { |cell| cell.text.strip }
     end
 
     it "includes unsubmitted students without creating submissions and links only submitted answers" do
@@ -50,20 +50,46 @@ RSpec.describe "Teacher grading reviews", type: :request do
       original_count = Submission.count
       get assignment_path(assignment)
 
-      expect(document.css("#submission-summary tbody tr").size).to eq(2)
-      expect(summary_cells).to eq([ "1年1組", "1番", "採点完了", "5点", "なし", "答案詳細" ])
-      expect(summary_cells(unsubmitted)).to eq([ "1年1組", "2番", "未提出", "—", "—", "—" ])
-      expect(document.css("#grade-summary th").map(&:text)).to eq([ "出席番号", "得点" ])
       expect(document.css("#grade-summary tbody tr").size).to eq(2)
-      expect(grade_cells).to eq([ "1", "5点" ])
-      expect(grade_cells(unsubmitted)).to eq([ "2", "—" ])
-      expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
-      expect(document.css("#student_#{unsubmitted.id} a")).to be_empty
+      expect(summary_cells).to eq([ "1年1組", "1番", "採点完了", "5点", "なし" ])
+      expect(summary_cells(unsubmitted)).to eq([ "1年1組", "2番", "未提出", "", "—" ])
+      expect(document.css("#grade-summary th").map(&:text)).to eq([ "クラス", "出席番号", "提出状況", "得点", "要確認" ])
+      expect(document.css("#grade-summary tbody tr").size).to eq(2)
+      expect(grade_cells).to eq([ "1番", "5点" ])
+      expect(grade_cells(unsubmitted)).to eq([ "2番", "" ])
+      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.css("#grade_student_#{unsubmitted.id} a")).to be_empty
       expect(Submission.count).to eq(original_count)
       expect(unsubmitted.submissions).to be_empty
     end
 
-    it "defaults to the first classroom and orders registered students within the selected classroom" do
+    it "makes only submitted rows navigable and updates the yellow highlight after correction" do
+      result = result_for
+      unsubmitted = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+      login
+      get assignment_path(assignment)
+      row = document.at_css("#grade_student_#{student.id}")
+      expect(row["data-controller"]).to eq("row-navigation")
+      expect(row["data-action"]).to eq("click->row-navigation#open")
+      expect(row[:class]).to include("grade-needs-review")
+      expect(row.css("a").size).to eq(1)
+      expect(row.at_css("a.grade-row-link")[:href]).to eq(detail_path)
+      expect(row.at_css("a")["tabindex"]).to be_nil
+      expect(row.css("a a, a button, form, select")).to be_empty
+      expect(row.element_children.map(&:name)).to all(eq("td"))
+      empty_row = document.at_css("#grade_student_#{unsubmitted.id}")
+      expect(empty_row["data-controller"]).to be_nil
+      expect(empty_row[:class]).not_to include("grade-needs-review")
+      expect(empty_row.css("a")).to be_empty
+      expect(document.css(".review-filters a").map(&:text)).to eq([ "すべての生徒", "要確認のある生徒" ])
+      expect(document.at_css(".review-filters a[aria-current]").text).to eq("すべての生徒")
+      patch detail_path, params: { judgments: { result.id.to_s => "correct" } }
+      get assignment_path(assignment)
+      expect(document.at_css("#grade_student_#{student.id}")[:class]).not_to include("grade-needs-review")
+      expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("なし")
+    end
+
+    it "defaults to all classrooms and supports selecting each classroom" do
       later_grade = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
       later_class = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
       [ later_grade, later_class ].each { |target| assignment.assignment_classrooms.create!(classroom: target) }
@@ -74,18 +100,14 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment)
 
-      expect(document.css("#classroom_id option").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
-      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(classroom.id.to_s)
+      expect(document.css("#classroom_id option").map(&:text)).to eq([ "配信したすべてのクラス", "1年1組", "1年2組", "2年1組" ])
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq("all")
 
       { classroom => [ "1", "3" ], later_class => [ "1", "2" ], later_grade => [ "1" ] }.each do |target, numbers|
-        get assignment_path(assignment, classroom_id: target.id) unless target == classroom
+        get assignment_path(assignment, classroom_id: target.id)
         expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(target.id.to_s)
-        expect(document.css("#grade-summary tbody tr").map { |row| row.at_css("td").text }).to eq(numbers)
-        identifiers = document.css("#submission-summary tbody tr").map do |row|
-          row.css("td").first(2).map { |cell| cell.text.strip }
-        end
-        label = "#{target.grade}年#{target.class_number}組"
-        expect(identifiers).to eq(numbers.map { |number| [ label, "#{number}番" ] })
+        expect(document.css("#grade-summary tbody tr").map { |row| row.at_css("td").text.strip }).to eq(numbers.map { |number| "#{number}番" })
+        expect(document.css("#grade-summary th").map(&:text)).to eq([ "出席番号", "提出状況", "得点", "要確認" ])
       end
     end
 
@@ -97,9 +119,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
         login
         get assignment_path(assignment)
 
-        expect(summary_cells[2..4]).to eq([ label, "—", "—" ])
-        expect(grade_cells).to eq([ "1", "—" ])
-        expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
+        expect(summary_cells[2..4]).to eq([ label, "", "—" ])
+        expect(grade_cells).to eq([ "1番", "" ])
+        expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
         get detail_path
         expect(document.at_css("#submission-score").text).to eq("現在の得点：—")
       end
@@ -110,7 +132,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment)
       expect(summary_cells[3]).to eq("0点")
-      expect(grade_cells).to eq([ "1", "0点" ])
+      expect(grade_cells).to eq([ "1番", "0点" ])
 
       get detail_path
       expect(document.at_css("#submission-score").text).to eq("現在の得点：0点")
@@ -135,9 +157,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expected_count = judgment == :needs_review ? 2 : 1
         login
         get assignment_path(assignment)
-        expect(summary_cells[3..4]).to eq([ "#{points}点（暫定）", "#{expected_count}件" ])
-        expect(grade_cells).to eq([ "1", "#{points}点（暫定）" ])
-        expect(response.body).to include("要確認は加点していません。")
+        expect(summary_cells[3..4]).to eq([ "#{points}点（暫定）", "あり（#{expected_count}件）" ])
+        expect(grade_cells).to eq([ "1番", "#{points}点（暫定）" ])
+        expect(response.body).not_to include("要確認は加点していません。")
 
         get detail_path
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{points}点（暫定）")
@@ -151,7 +173,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment)
 
-      expect(summary_cells[2..4]).to eq([ "採点中", "—", "1件（暫定）" ])
+      expect(summary_cells[2..4]).to eq([ "採点中", "", "あり（1件）（暫定）" ])
     end
 
     [ :no_questions, :missing_result ].each do |inconsistency|
@@ -164,6 +186,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         get assignment_path(assignment)
         expect(summary_cells[2]).to eq("採点完了")
         expect(summary_cells[3]).to eq("得点を表示できません（採点結果を確認してください）")
+        expect(summary_cells[4]).to eq("—")
 
         get detail_path
         expect(document.at_css("#submission-score").text).to include("得点を表示できません")
@@ -181,9 +204,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
       get assignment_path(assignment, filter: "all")
 
       expect(summary_cells[3]).to include("得点を表示できません")
-      expect(summary_cells[4]).to eq("なし")
+      expect(summary_cells[4]).to eq("—")
       expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
-      expect(document.css("#grading-results tbody tr").size).to eq(1)
+      expect(document.css("#grade-summary tbody tr").size).to eq(1)
       expect(response.body).not_to include("別小テストの解答", "別小テストの要確認理由")
       get detail_path
       expect(document.at_css("#submission-score").text).to include("得点を表示できません")
@@ -218,7 +241,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         get assignment_path(assignment)
         expect(summary_cells[3]).to eq(original_label)
         expect(grade_cells[1]).to eq(original_label)
-        expect(summary_cells[4]).to eq(ai == :needs_review ? "1件" : "なし")
+        expect(summary_cells[4]).to eq(ai == :needs_review ? "あり（1件）" : "なし")
       end
     end
 
@@ -232,9 +255,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment)
 
-      expect(summary_cells[3..4]).to eq([ "0点（暫定）", "1件" ])
+      expect(summary_cells[3..4]).to eq([ "0点（暫定）", "あり（1件）" ])
       expect(summary_cells(other_student)[3..4]).to eq([ "5点", "なし" ])
-      expect(document.at_css("#student_#{other_student.id} a")[:href]).to eq(detail_path(other_submission))
+      expect(document.at_css("#grade_student_#{other_student.id} a")[:href]).to eq(detail_path(other_submission))
     end
 
     [ :other_school, :undistributed_classroom ].each do |kind|
@@ -253,9 +276,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
         login
         get assignment_path(assignment, filter: "all")
 
-        expect(document.css("#submission-summary tbody tr").size).to eq(1)
+        expect(document.css("#grade-summary tbody tr").size).to eq(1)
         expect(summary_cells[3..4]).to eq([ "5点", "なし" ])
-        foreign_students.each { |item| expect(document.at_css("#student_#{item.id}")).to be_nil }
+        foreign_students.each { |item| expect(document.at_css("#grade_student_#{item.id}")).to be_nil }
         expect(response.body).not_to include("2年1組", detail_path(forbidden))
         expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
         get detail_path(forbidden)
@@ -271,7 +294,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       get assignment_path(assignment)
 
       expect(summary_cells[3]).to eq("5点")
-      expect(document.at_css("#student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
     end
 
     it "calls score once per completed submission when preparing the summary" do
@@ -304,17 +327,17 @@ RSpec.describe "Teacher grading reviews", type: :request do
       assignment.assignment_classrooms.create!(classroom: second_classroom)
     end
 
-    it "selects the first classroom by grade and class number rather than creation order" do
+    it "defaults to all classrooms ordered by grade and class number rather than creation order" do
       classroom.update!(grade: 2)
       second_student
       login
       get assignment_path(assignment)
 
-      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
-      expect(document.css("#submission-summary tbody tr").map { |row| row[:id] }).to eq([ "student_#{second_student.id}" ])
+      expect(document.at_css("#classroom_id option[selected]")[:value]).to eq("all")
+      expect(document.css("#grade-summary tbody tr").map { |row| row[:id] }).to eq([ "grade_student_#{second_student.id}", "grade_student_#{student.id}" ])
     end
 
-    it "limits scores, review counts, problem results and unfinished answers to the selected class" do
+    it "limits the unified rows, scores, review states and answer links to the selected class" do
       pending = result_for
       correct = result_for(judgment: :correct, position: 2)
       [ pending, correct ].each do |result|
@@ -324,68 +347,55 @@ RSpec.describe "Teacher grading reviews", type: :request do
       submission.update!(status: :grading)
       login
       get assignment_path(assignment)
-      expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：1件")
-      expect(document.css("#grading-results tbody tr").size).to eq(1)
-      expect(document.at_css("section[aria-labelledby='unfinished-heading']").text).to include("1年1組")
-
+      expect(document.css("#grade-summary tbody tr").size).to eq(2)
+      expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("あり（1件）（暫定）")
       get assignment_path(assignment, classroom_id: second_classroom.id)
-      expect(document.css("#grade-summary tbody tr").map { |row| row.css("td").map(&:text) }).to eq([ [ "1", "10点" ] ])
-      expect(document.css("#submission-summary tbody tr").map { |row| row[:id] }).to eq([ "student_#{second_student.id}" ])
-      expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
-      expect(document.css("#grading-results tbody tr")).to be_empty
-      expect(document.at_css("section[aria-labelledby='unfinished-heading']")).to be_nil
+      expect(document.css("#grade-summary tbody tr").map { |row| row[:id] }).to eq([ "grade_student_#{second_student.id}" ])
+      expect(document.at_css(".grade-score").text).to eq("10点")
+      expect(document.at_css(".grade-review").text.strip).to eq("なし")
       expect(document.css("a[href='#{detail_path}']")).to be_empty
-
-      get assignment_path(assignment, classroom_id: second_classroom.id, filter: "all")
-      rows = document.css("#grading-results tbody tr")
-      expect(rows.size).to eq(2)
-      expect(rows.map { |row| row.at_css("td").text }).to eq([ "1年2組", "1年2組" ])
-      expect(rows.map { |row| row.css("td")[2].text }).to eq([ "問題番号1", "問題番号2" ])
-
       second_submission.update!(status: :failed)
-      get assignment_path(assignment, classroom_id: second_classroom.id, filter: "all")
-      unfinished = document.at_css("section[aria-labelledby='unfinished-heading']")
-      expect(unfinished.css("li").size).to eq(1)
-      expect(unfinished.text).to include("1年2組", "採点失敗")
-      expect(unfinished.text).not_to include("1年1組")
-      expect(document.at_css("#grade-summary tbody tr").css("td").map(&:text)).to eq([ "1", "—" ])
+      get assignment_path(assignment, classroom_id: second_classroom.id)
+      expect(document.at_css(".grade-status").text).to eq("採点失敗")
+      expect(document.at_css(".grade-score").text).to be_empty
+      expect(document.at_css(".grade-review").text.strip).to eq("—")
     end
 
-    it "preserves the filter in the GET form and the classroom in both filter links" do
+    it "preserves the row filter when changing classes and the class when changing filters" do
       login
-      get assignment_path(assignment, filter: "all")
+      get assignment_path(assignment, filter: "needs_review")
       form = document.at_css("#classroom-selection")
       expect(form[:method]).to eq("get")
-      expect(form[:action]).to eq(assignment_path(assignment))
-      expect(form.at_css("input[name='filter']")[:value]).to eq("all")
-
-      get form[:action], params: { classroom_id: second_classroom.id, filter: form.at_css("input[name='filter']")[:value] }
+      expect(form["data-controller"]).to eq("classroom-selection")
+      expect(form.at_css("select")["data-action"]).to eq("change->classroom-selection#submit")
+      expect(form.css("input[type=submit], button")).to be_empty
+      expect(form.at_css("input[name='filter']")[:value]).to eq("needs_review")
+      get form[:action], params: { classroom_id: second_classroom.id, filter: "needs_review" }
       expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
       links = document.css(".review-filters a")
       expect(links.map { |link| link[:href] }).to eq([
-        assignment_path(assignment, classroom_id: second_classroom.id),
-        assignment_path(assignment, classroom_id: second_classroom.id, filter: "all")
+        assignment_path(assignment, classroom_id: second_classroom.id, filter: "all"),
+        assignment_path(assignment, classroom_id: second_classroom.id, filter: "needs_review")
       ])
       expect(links.last["aria-current"]).to eq("page")
-
       get links.first[:href]
       expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
       expect(document.at_css("#classroom-selection input[name='filter']")).to be_nil
-      expect(document.at_css(".review-filters a[aria-current]").text).to eq("未確認の要確認のみ")
+      expect(document.at_css(".review-filters a[aria-current]").text).to eq("すべての生徒")
     end
 
     it "returns to the answer's classroom after saving a teacher correction" do
       result = result_for(second_submission, judgment: :incorrect)
       login
       get assignment_path(assignment, classroom_id: second_classroom.id)
-      get document.at_css("#student_#{second_student.id} a")[:href]
+      get document.at_css("#grade_student_#{second_student.id} a")[:href]
       patch detail_path(second_submission), params: { judgments: { result.id.to_s => "correct" } }
       follow_redirect!
       back_link = document.css("a").find { |link| link.text == "小テスト詳細へ戻る" }
       expect(back_link[:href]).to eq(assignment_path(assignment, classroom_id: second_classroom.id))
       get back_link[:href]
       expect(document.at_css("#classroom_id option[selected]")[:value]).to eq(second_classroom.id.to_s)
-      expect(document.at_css("#grade-summary tbody tr").css("td").map(&:text)).to eq([ "1", "5点" ])
+      expect(document.at_css("#grade-summary tbody tr").css(".grade-attendance, .grade-score").map { |cell| cell.text.strip }).to eq([ "1番", "5点" ])
     end
 
     it "shows an empty state for a selected classroom without registered students" do
@@ -393,7 +403,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       get assignment_path(assignment, classroom_id: second_classroom.id)
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("選択したクラスに生徒がいません。")
-      expect(document.css("#grade-summary tbody tr, #submission-summary tbody tr, #grading-results tbody tr")).to be_empty
+      expect(document.css("#grade-summary tbody tr")).to be_empty
       expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：0件")
     end
 
@@ -404,7 +414,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment, classroom_id: second_classroom.id)
       expect(response).to have_http_status(:ok)
-      expect(document.at_css("#student_#{second_student.id}")).to be_present
+      expect(document.at_css("#grade_student_#{second_student.id}")).to be_present
     end
 
     [ "", "0", "-1", "abc", "1.5", "1abc", "999999999999999999999999999999", [ "1" ], { id: "1" } ].each do |id|
@@ -428,7 +438,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
         login
         get assignment_path(assignment)
-        expect(document.css("#classroom_id option").map { |option| option[:value] }).to eq([ classroom.id.to_s, second_classroom.id.to_s ])
+        expect(document.css("#classroom_id option").map { |option| option[:value] }).to eq([ "all", classroom.id.to_s, second_classroom.id.to_s ])
         get assignment_path(assignment, classroom_id: target.id)
         expect(response).to have_http_status(:not_found)
       end
@@ -442,25 +452,26 @@ RSpec.describe "Teacher grading reviews", type: :request do
     end
   end
 
-  it "defaults to unresolved review problems and switches to all judgments without changing the count" do
+  it "defaults to all students and filters only rows with pending reviews" do
     pending = result_for
     result_for(judgment: :correct, position: 2)
     result_for(judgment: :incorrect, position: 3)
     result_for(teacher_judgment: :incorrect, position: 4)
+    other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
     login
     get assignment_path(assignment)
-    expect(response).to have_http_status(:ok)
-    expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：1件")
-    expect(document.css("#grading-results tbody tr").size).to eq(1)
-    expect(document.at_css("#grading-results").text).to include("1年1組", "1番", "問題番号1", "判読困難1")
-    expect(document.at_css("#grading-results a")[:href]).to eq("#{detail_path}#question_#{pending.question_id}")
-    get document.at_css("a[aria-current]")[:href]
-    expect(document.css("#grading-results tbody tr").size).to eq(1)
-    get assignment_path(assignment, filter: "all")
-    expect(document.css("#grading-results tbody tr").size).to eq(4)
-    expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：1件")
+    expect(document.css("#grade-summary tbody tr").size).to eq(2)
+    expect(document.css("#submission-summary, #grading-results, [aria-labelledby='unfinished-heading']")).to be_empty
+    expect(response.body).not_to include("提出状況・答案確認", "採点結果の確認", "判読困難1")
+    get assignment_path(assignment, filter: "needs_review")
+    expect(document.css("#grade-summary tbody tr").size).to eq(1)
+    expect(document.at_css("#grade_student_#{student.id}")[:class]).to include("grade-needs-review")
+    expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("あり（1件）")
+    expect(document.at_css("#grade_student_#{other_student.id}")).to be_nil
+    expect(document.at_css("#grade-summary a")[:href]).to eq(detail_path)
     get assignment_path(assignment, filter: "unexpected")
-    expect(document.css("#grading-results tbody tr").size).to eq(1)
+    expect(document.css("#grade-summary tbody tr").size).to eq(2)
+    expect(pending.reload.teacher_judgment).to be_nil
   end
 
   it "shows the PDF and ordered question details with independent AI, teacher and final judgments" do
@@ -473,7 +484,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(document.css("article h3").map(&:text)).to eq([ "問題 問題番号1", "問題 問題番号2" ])
     expect(response.body).to include("3x+2x を計算しなさい。", "生徒解答1", "5x", "判読困難1", "フィードバック1")
     fields = document.css("article").last.css("dt, dd").map(&:text).each_slice(2).to_h
-    expect(fields.slice("AI判定", "教師判定", "最終判定")).to eq("AI判定" => "正解", "教師判定" => "不正解", "最終判定" => "不正解")
+    expect(fields.slice("AI判定", "教師判定", "最終判定")).to eq("最終判定" => "不正解")
     expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：1件")
     expect(document.at_css("form#teacher-judgments")[:action]).to eq(detail_path)
     expect(document.css("select").size).to eq(2)
@@ -493,12 +504,13 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(response.body).not_to include("生徒解答2")
   end
 
-  it "shows empty states for no pending reviews or no grading results" do
+  it "shows a review-filter empty state without hiding the answer in the default view" do
     login
+    get assignment_path(assignment, filter: "needs_review")
+    expect(response.body).to include("要確認のある生徒はいません。", "未確認の要確認：0件")
     get assignment_path(assignment)
-    expect(response.body).to include("未確認の要確認問題はありません。", "未確認の要確認：0件")
-    get assignment_path(assignment, filter: "all")
-    expect(response.body).to include("採点結果はまだありません。")
+    expect(document.at_css("#grade-summary a")[:href]).to eq(detail_path)
+    expect(document.at_css(".grade-review").text.strip).to eq("—")
     get detail_path
     expect(response.body).to include("採点結果がありません。")
   end
@@ -509,7 +521,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       [ assignment_path(assignment), assignment_path(assignment, filter: "all") ].each do |path|
         get path
-        expect(response.body).to include(label, "採点結果は未完成です。")
+        expect(response.body).to include(label)
         expect(document.at_css("a[href='#{detail_path}']")).to be_present
       end
       get detail_path
@@ -526,7 +538,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
     submission.update!(status: :failed)
     login
     get assignment_path(assignment)
-    expect(document.at_css("#grading-results").text).to include("未完成", "採点失敗")
+    expect(document.at_css("#grade-summary").text).to include("採点失敗", "あり（1件）", "（暫定）")
+    expect(document.at_css(".grade-score").text).to be_empty
     get detail_path
     expect(document.css("article")).to be_empty
     expect(response.body).to include("未確認の要確認：1件", "暫定件数")
@@ -543,6 +556,27 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(response.headers["X-Content-Type-Options"]).to eq("nosniff")
     get answer_assignment_submission_path(assignment, submission, download: "1")
     expect(response.headers["Content-Disposition"]).to include("attachment")
+  end
+
+  it "highlights only final needs-review cards and updates the card after teacher corrections" do
+    pending = result_for
+    result_for(position: 2, judgment: :correct)
+    result_for(position: 3, judgment: :incorrect)
+    login
+    get detail_path
+    expect(document.css(".teacher-grading-result.judgment-needs_review").map { |card| card[:id] }).to eq([ "question_#{pending.question_id}" ])
+    expect(document.at_css("#question_#{pending.question_id}").text).to include("要確認")
+    expect(document.at_css("iframe")[:src]).to eq(pdf_path)
+    expect(response.body).not_to include("答案PDFを開く", "答案をダウンロード")
+    patch detail_path, params: { judgments: { pending.id.to_s => "correct" } }
+    follow_redirect!
+    expect(document.css(".teacher-grading-result.judgment-needs_review")).to be_empty
+    expect(document.at_css("#question_#{pending.question_id}")[:class]).to include("judgment-correct")
+    fields = document.at_css("#question_#{pending.question_id}").css("dt, dd").map(&:text).each_slice(2).to_h
+    expect(fields.slice("AI判定", "最終判定")).to eq("最終判定" => "正解")
+    patch detail_path, params: { judgments: { pending.id.to_s => "" } }
+    follow_redirect!
+    expect(document.at_css("#question_#{pending.question_id}")[:class]).to include("judgment-needs_review")
   end
 
   it "returns 404 for an absent attachment and keeps the details readable" do
@@ -713,9 +747,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(response.body).to include("判定を保存しました。")
         expect(document.at_css("select option[selected]")[:value]).to eq(teacher_value)
         fields = document.css("article dt, article dd").map(&:text).each_slice(2).to_h
-        expect(fields["AI判定"]).to eq(ai == :needs_review ? "要確認" : (ai == :correct ? "正解" : "不正解"))
-        expect(fields["教師判定"]).to eq(teacher_value == "correct" ? "正解" : "不正解")
-        expect(fields["最終判定"]).to eq(fields["教師判定"])
+        expect(fields).not_to have_key("AI判定")
+        expect(fields).not_to have_key("教師判定")
+        expect(fields["最終判定"]).to eq(teacher_value == "correct" ? "正解" : "不正解")
         get detail_path
         expect(document.at_css("select option[selected]")[:value]).to eq(teacher_value)
       end
@@ -731,7 +765,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(result.ai_judgment).to eq(ai.to_s)
         expect(result.final_judgment).to eq(ai.to_s)
         follow_redirect!
-        expect(document.at_css("select option[selected]")[:value]).to eq("")
+        expect(document.at_css("select option[selected]")[:value]).to eq(ai == :needs_review ? "" : ai.to_s)
       end
     end
 
@@ -752,15 +786,15 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(document.at_css("#pending-review-count").text).to include("0件")
       get assignment_path(assignment)
       expect(document.at_css("#pending-review-count").text).to include("0件")
-      expect(document.css("#grading-results tbody tr")).to be_empty
+      expect(document.at_css(".grade-review").text.strip).to eq("なし")
       get assignment_path(assignment, filter: "all")
-      expect(document.css("#grading-results tbody tr").size).to eq(2)
+      expect(document.css("#grade-summary tbody tr").size).to eq(1)
       save_judgments(first.id.to_s => "")
       follow_redirect!
       expect(document.at_css("#pending-review-count").text).to include("1件")
       get assignment_path(assignment)
       expect(document.at_css("#pending-review-count").text).to include("1件")
-      expect(document.css("#grading-results tbody tr").size).to eq(1)
+      expect(document.css("#grade-summary tbody tr").size).to eq(1)
       expect(second.reload.teacher_judgment).to eq("incorrect")
     end
 

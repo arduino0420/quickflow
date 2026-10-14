@@ -37,7 +37,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
     add_result(submission, another_question, :correct)
     login
 
-    [ nil, "all" ].each do |filter|
+    [ nil, "all", "needs_review" ].each do |filter|
       get assignment_path(assignment), params: { classroom_id: second_classroom.id, filter: filter }
       document = Nokogiri::HTML(response.body)
       link = document.css("a").find { |node| node.text == "Excel出力" }
@@ -87,6 +87,22 @@ RSpec.describe "Assignment Excel exports", type: :request do
     sheet = xlsx_worksheet(response.body)
     expect(sheet.xpath("/worksheet/sheetData/row").size).to eq(41)
     expect((2..41).map { |row| xlsx_value(sheet, "C#{row}") }).to all(be_nil)
+  end
+
+  it "exports 41 rows when all classrooms is selected for a single destination" do
+    login
+    get assignment_path(assignment)
+    document = Nokogiri::HTML(response.body)
+    expect(document.at_css("#classroom_id option[selected]")[:value]).to eq("all")
+    link = document.css("a").find { |node| node.text == "Excel出力" }
+    expect(link[:href]).to eq(export_assignment_path(assignment, classroom_id: "all"))
+    get link[:href]
+    sheet = xlsx_worksheet(response.body)
+    expect(response).to have_http_status(:ok)
+    rows = sheet.xpath("/worksheet/sheetData/row")
+    expect(rows.size).to eq(41)
+    expect(rows.map { |row| row.xpath("./c").size }).to all(eq(3))
+    expect((2..41).map { |row| xlsx_value(sheet, "A#{row}") }).to eq([ "1年1組" ] * 40)
   end
 
   it "allows a same-school destination belonging to another teacher" do

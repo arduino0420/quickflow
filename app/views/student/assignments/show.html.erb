@@ -1,35 +1,49 @@
 <% content_for :head do %>
   <meta name="turbo-cache-control" content="no-cache">
 <% end %>
-<h1>小テスト詳細</h1>
+<h1><%= @assignment.title %><%= "の採点結果" if @submission.persisted? %></h1>
 
 <%= link_to "一覧へ戻る", student_assignments_path %>
 
-<dl>
-  <dt>タイトル</dt>
-  <dd><%= @assignment.title %></dd>
-  <dt>1問あたりの点数</dt>
-  <dd><%= @assignment.point_per_question %></dd>
-  <dt>教材ファイル名</dt>
-  <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
-</dl>
+<% unless @submission.persisted? %>
+  <dl class="assignment-metadata">
+    <dt>タイトル</dt>
+    <dd><%= @assignment.title %></dd>
+    <dt>1問あたりの点数</dt>
+    <dd><%= @assignment.point_per_question %></dd>
+    <dt>教材ファイル名</dt>
+    <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
+  </dl>
 
-<% if @assignment.material_file.attached? %>
-  <% if @assignment.material_file.content_type == "application/pdf" %>
-    <%= link_to "教材を開く", material_student_assignment_path(@assignment), data: { turbo: false } %>
+  <% if @assignment.material_file.attached? %>
+    <%= link_to "教材をダウンロード", material_student_assignment_path(@assignment, download: "1"), data: { turbo: false } %>
   <% end %>
-  <%= link_to "教材をダウンロード", material_student_assignment_path(@assignment, download: "1"), data: { turbo: false } %>
 <% end %>
 
 <% if flash[:notice].present? %>
   <p role="status"><%= flash[:notice] %></p>
 <% end %>
+<% if flash[:alert].present? %>
+  <p role="alert"><%= flash[:alert] %></p>
+<% end %>
 
 <% if @submission.persisted? %>
-  <h2>提出済み</h2>
-  <p>解答ファイル名: <%= @submission.answer_file.filename if @submission.answer_file.attached? %></p>
-  <p>提出日時: <%= @submission.submitted_at.strftime("%Y/%m/%d %H:%M") %></p>
-  <%= render "grading_status" %>
+  <div class="teacher-review-layout">
+    <section aria-label="提出した答案PDF">
+      <% if @submission.answer_file.attached? %>
+        <% if @submission.answer_file.content_type == "application/pdf" %>
+          <iframe class="teacher-answer-pdf" title="提出した答案PDF" src="<%= answer_student_assignment_path(@assignment) %>"></iframe>
+        <% else %>
+          <p>答案ファイルをPDFとして表示できません。先生に確認してください。</p>
+        <% end %>
+      <% else %>
+        <p>答案PDFが添付されていません。先生に確認してください。</p>
+      <% end %>
+    </section>
+    <section aria-label="採点結果">
+      <%= render "grading_status" %>
+    </section>
+  </div>
 <% else %>
   <h2>解答PDFの提出</h2>
   <% if @submission.errors.any? %>
