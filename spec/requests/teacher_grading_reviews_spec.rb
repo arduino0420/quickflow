@@ -700,7 +700,10 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(response).to have_http_status(:not_found)
     end
     AssignmentClassroom.where(assignment: assignment).delete_all
-    [ assignment_path(assignment), detail_path, pdf_path ].each do |path|
+    get assignment_path(assignment)
+    expect(response).to have_http_status(:ok)
+    expect(document.css("#grade-summary tbody tr, .grade-row-link")).to be_empty
+    [ detail_path, pdf_path ].each do |path|
       get path
       expect(response).to have_http_status(:not_found)
     end
@@ -974,5 +977,34 @@ RSpec.describe "Teacher grading reviews", type: :request do
     login
     [ assignment_path(assignment), assignment_path(assignment, filter: "all"), detail_path, pdf_path ].each { |path| get path }
     expect([ assignment, submission, result, result.question, submission.answer_file.blob ].map { |record| record.reload.attributes }).to eq(before_records)
+  end
+  [ [ :correct, nil ], [ :incorrect, :correct ], [ :needs_review, :correct ] ].each do |ai, correction|
+    it "hides reasons and feedback only for final correct (AI #{ai}, teacher #{correction}) without changing stored data" do
+      result = result_for(judgment: ai, teacher_judgment: correction)
+      original = result.attributes
+      login
+      get detail_path
+      card = document.at_css("#question_#{result.question_id}")
+      expect(card.css("dt").map(&:text)).not_to include("要確認理由", "フィードバック")
+      expect(card.text).not_to include(result.review_reason, result.feedback)
+      expect(result.reload.attributes).to eq(original)
+      patch detail_path, params: { final_judgments: { result.id.to_s => "incorrect" }, original_final_judgments: { result.id.to_s => "correct" } }
+      follow_redirect!
+      card = document.at_css("#question_#{result.question_id}")
+      expect(card.css("dt").map(&:text)).to include("要確認理由", "フィードバック")
+      expect(card.text).to include(result.review_reason, result.feedback)
+    end
+  end
+
+  it "keeps reasons and feedback visible for unresolved review and final incorrect" do
+    pending = result_for
+    incorrect = result_for(position: 2, judgment: :correct, teacher_judgment: :incorrect)
+    login
+    get detail_path
+    [ pending, incorrect ].each do |result|
+      card = document.at_css("#question_#{result.question_id}")
+      expect(card.css("dt").map(&:text)).to include("要確認理由", "フィードバック")
+      expect(card.text).to include(result.review_reason, result.feedback)
+    end
   end
 end

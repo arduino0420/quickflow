@@ -40,7 +40,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
 
   def ai_response(data)
     instance_double(OpenAI::Models::Responses::Response, output_text: JSON.generate(data), model: "stub-model",
-      status: "completed", output: [])
+      status: "completed", output: [], error: nil, incomplete_details: nil)
   end
 
   before do

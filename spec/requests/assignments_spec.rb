@@ -255,7 +255,7 @@ RSpec.describe "Assignment creation", type: :request do
       expect(document.css("dd li").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
       expect(document.css(".distributed-classrooms li").map(&:text)).to eq([ "1年1組", "1年2組", "2年1組" ])
       expect(document.at_css("section[aria-labelledby='grade-summary-heading']").next_element[:class]).to eq("grade-export-actions")
-      expect(document.at_css(".page-card").element_children.last[:class]).to eq("grade-export-actions")
+      expect(document.at_css(".page-card").element_children.last[:class]).to eq("assignment-delete-actions")
       expect(document.css("main a").map { |link| [ link.text, link[:href] ] }).to eq([
         [ "配信済み小テスト", assignments_path ],
         [ "名前を編集", edit_assignment_path(item) ],
@@ -263,22 +263,26 @@ RSpec.describe "Assignment creation", type: :request do
         [ "要確認のある生徒", assignment_path(item, classroom_id: "all", filter: "needs_review") ],
         [ "Excel出力", export_assignment_path(item, classroom_id: "all") ]
       ])
-      expect(document.css("form").size).to eq(1)
+      expect(document.css("form").size).to eq(2)
       expect(document.at_css("#classroom-selection")[:method]).to eq("get")
       expect(document.at_css("#classroom-selection")[:action]).to eq(assignment_path(item))
       expect(item.reload.attributes).to eq(before_attributes)
       expect(item.assignment_classrooms.order(:id).map(&:attributes)).to eq(before_links)
     end
 
-    it "returns 404 for another teacher, an undistributed assignment and a nonexistent assignment" do
+    it "rejects another teacher and nonexistent assignments while allowing owner-only unpublished deletion" do
       other_teacher = Teacher.create!(school: school, user_id: "teacher2", password: "password123")
       foreign = Assignment.create!(teacher: other_teacher, title: "他教師", point_per_question: 5)
       AssignmentClassroom.create!(assignment: foreign, classroom: classroom)
       undistributed = Assignment.create!(teacher: teacher, title: "未配信", point_per_question: 5)
-      [ foreign.id, undistributed.id, Assignment.maximum(:id) + 100 ].each do |id|
+      [ foreign.id, Assignment.maximum(:id) + 100 ].each do |id|
         get assignment_path(id)
         expect(response).to have_http_status(:not_found)
       end
+      get assignment_path(undistributed)
+      expect(response).to have_http_status(:ok)
+      expect(document.at_css(".assignment-delete-actions form")[:action]).to eq(assignment_path(undistributed))
+      expect(document.css(".grade-export-actions, .assignment-edit-link, #grade-summary tbody tr")).to be_empty
     end
 
     it "connects initial distribution to the list and read-only details" do

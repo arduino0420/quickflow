@@ -9,7 +9,7 @@ Rails.application.routes.draw do
 
   resources :students, only: [ :new, :create ]
 
-  resources :assignments, only: [ :index, :show, :new, :create, :edit, :update ] do
+  resources :assignments, only: [ :index, :show, :new, :create, :edit, :update, :destroy ] do
     get :export, on: :member, defaults: { format: :xlsx }
     resources :submissions, only: [ :show, :update ] do
       get :answer, on: :member

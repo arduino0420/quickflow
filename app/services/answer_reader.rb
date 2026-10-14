@@ -30,11 +30,25 @@ class AnswerReader
         ]
       )
 
+      validate_response!(response)
       response.output_text
     end
   end
 
   private
+
+  def validate_response!(response)
+    fields = %i[status output error incomplete_details]
+    unless fields.all? { |field| response.respond_to?(field) } && response.status.to_s == "completed" &&
+        response.output.is_a?(Array) && response.error.nil? && response.incomplete_details.nil?
+      raise "Answer reading response is not completed"
+    end
+
+    refused = response.output.any? do |item|
+      item.respond_to?(:content) && item.content&.any? { |content| content.type.to_s == "refusal" }
+    end
+    raise "Answer reading response was refused" if refused
+  end
 
   def prompt
     <<~PROMPT

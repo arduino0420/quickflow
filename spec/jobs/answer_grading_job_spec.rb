@@ -100,7 +100,7 @@ RSpec.describe AnswerGradingJob, type: :job do
     expect(submission.extracted_text).to eq(original_reading)
     expect(submission.grading_results).to be_empty
     expect(grader).to have_received(:call).once
-    expect(Rails.logger).to have_received(:error).with(/AnswerGradingJob failed: .*APITimeoutError: Timed out/).once
+    expect(Rails.logger).to have_received(:error).with("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}").once
   end
 
   it "rejects invalid stored readings before spending on generation" do

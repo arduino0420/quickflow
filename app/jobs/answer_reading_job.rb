@@ -1,5 +1,7 @@
 
 class AnswerReadingJob < ApplicationJob
+  include DiscardDeletedRecord
+
   queue_as :default
 
   def perform(submission)
@@ -24,14 +26,14 @@ class AnswerReadingJob < ApplicationJob
         ready = true
       rescue StandardError => error
         submission.update!(status: :failed)
-        Rails.logger.error("AnswerReadingJob failed: #{error.class}: #{error.message}")
+        Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{error.class}")
       end
     end
 
     enqueue_grading(submission) if ready
   rescue StandardError => e
     submission.with_lock { submission.update!(status: :failed) unless submission.completed? || submission.failed? }
-    Rails.logger.error("AnswerReadingJob failed: #{e.class}: #{e.message}")
+    Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{e.class}")
   end
 
   private
