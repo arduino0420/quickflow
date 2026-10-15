@@ -42,6 +42,18 @@ RSpec.describe "Admin teacher management", type: :request do
     expect(response.headers["Cache-Control"]).to include("private", "no-store")
   end
 
+  it "aligns teacher ID, classrooms and edit links in separate columns with stacked navigation" do
+    classroom
+    login_admin
+    get admin_teachers_path
+    expect(document.css(".admin-teacher-list th").map(&:text)).to eq([ "教師ID", "担当クラス", "操作" ])
+    row = document.at_css(".admin-teacher-list tbody tr")
+    expect(row.css("td").map { |cell| cell.text.strip }).to eq([ teacher.user_id, "1年1組", "編集" ])
+    expect(row.css("td")[0].at_css("a")).to be_nil
+    expect(row.css("td")[2].at_css("a")[:href]).to eq(edit_admin_teacher_path(teacher))
+    expect(document.css(".admin-teacher-list-actions a").map(&:text)).to eq([ "教師を新規登録", "管理者トップに戻る" ])
+  end
+
   it "does not disclose historical cross-school relationships in the list" do
     TeacherClassroom.new(teacher: teacher, classroom: foreign_classroom).save!(validate: false)
     login_admin

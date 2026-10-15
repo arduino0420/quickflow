@@ -55,7 +55,7 @@ RSpec.describe "Student submissions", type: :request do
     expect(response.body).to include("提出しました", "#{assignment.title}の採点結果", "採点待ち")
     expect(Nokogiri::HTML(response.body).at_css("iframe")[:src]).to eq(answer_student_assignment_path(assignment))
     expect(document.css("form, input")).to be_empty
-    expect(document.css("main a").map { |link| link[:href] }).to eq([ student_assignments_path, student_assignment_path(assignment) ])
+    expect(document.css("main a").map { |link| link[:href] }).to eq([ student_assignments_path ])
     expect(document.at_css("#grading-status").text).to include("採点待ち")
     expect(document.at_css("#grading-status [data-controller='grading-status']")).to be_present
   end

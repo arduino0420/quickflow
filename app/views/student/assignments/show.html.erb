@@ -40,7 +40,9 @@
         <p>答案PDFが添付されていません。先生に確認してください。</p>
       <% end %>
     </section>
-    <section aria-label="採点結果">
+    <section aria-label="採点結果" class="student-grading-panel"
+      data-controller="grading-presentation"
+      data-action="turbo:before-frame-render->grading-presentation#beforeRender turbo:frame-load->grading-presentation#frameLoaded turbo:before-fetch-response->grading-presentation#responseReceived turbo:fetch-request-error->grading-presentation#requestFailed turbo:frame-missing->grading-presentation#requestFailed">
       <%= render "grading_status" %>
     </section>
   </div>

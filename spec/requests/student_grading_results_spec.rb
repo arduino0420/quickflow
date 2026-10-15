@@ -60,8 +60,10 @@ RSpec.describe "Student grading results", type: :request do
       if state == :completed
         expect(list_row.text).to include("5点")
         expect(list_row.at_css("a[href='#{result_path}']")).to be_present
+      elsif state.nil?
+        expect(list_row.at_css(".student-card-score").text).to eq("")
       else
-        expect(list_row.text).to include("—")
+        expect(list_row.at_css(".student-card-score").text).to eq("")
         expect(list_row.text).not_to include("0点")
       end
       expect(list_row[:class].split.include?("assignment-card--submitted")).to eq(!state.nil?)
@@ -119,9 +121,9 @@ RSpec.describe "Student grading results", type: :request do
     fields = document.css("article").first.css("dt, dd").map(&:text).each_slice(2).to_h
     expect(fields).to eq("AIが読み取ったあなたの回答" => "3", "正答" => "2",
       "フィードバック" => "足し算が違います。\n計算を確認しましょう。")
-    expect(response.body).to include("教師による確認が必要です。", "必要な場合は先生に申告してください。")
+    expect(response.body).to include("教師による確認が必要です。先生に申告してください。")
     expect(document.at_css("#student-score").text).to eq("現在の点数：5点（暫定）")
-    expect(response.body).to include("未確認の問題は加点していません。")
+    expect(response.body).not_to include("要確認が残るため、現在の得点は暫定です。", "未確認の問題は加点していません。")
     expect(document.css("form, select")).to be_empty
   end
 
@@ -129,14 +131,14 @@ RSpec.describe "Student grading results", type: :request do
     result_for(judgment: :needs_review)
     login
     get student_assignments_path
-    expect(list_row.at_css(".student-card-score").text).to eq("—")
+    expect(list_row.at_css(".student-card-score").text).to eq("0点")
     expect(list_row[:class].split).to include("assignment-card--submitted")
     expect(list_row.at_css("a")[:href]).to eq(result_path)
     expect(response.body).not_to include("要確認が残る得点は暫定です。未確認の問題は加点していません。")
     get result_path
 
     expect(document.at_css("#student-score").text).to eq("現在の点数：0点（暫定）")
-    expect(response.body).to include("現在の得点は暫定です。", "未確認の問題は加点していません。")
+    expect(response.body).not_to include("現在の得点は暫定です。", "未確認の問題は加点していません。")
   end
 
   it "hides obsolete incorrect explanations after the teacher marks an answer correct" do
@@ -188,7 +190,7 @@ RSpec.describe "Student grading results", type: :request do
       get result_path
       expect(document.at_css("#student-score").text).to eq("現在の点数：#{original_score}")
       get student_assignments_path
-      expect(list_row.at_css(".student-card-score").text).to eq(ai == :needs_review ? "—" : original_score)
+      expect(list_row.at_css(".student-card-score").text).to eq(ai == :correct ? "5点" : "0点")
     end
   end
 
@@ -223,7 +225,7 @@ RSpec.describe "Student grading results", type: :request do
       end
       login
       get student_assignments_path
-      expect(list_row.at_css(".student-card-score").text).to eq("—")
+      expect(list_row.at_css(".student-card-score").text).to eq("")
       expect(list_row.at_css("a[href='#{result_path}']")).to be_present
       get result_path
 
@@ -258,7 +260,7 @@ RSpec.describe "Student grading results", type: :request do
     result_for(other_submission, judgment: :incorrect, student_answer: "他人だけの解答")
     login
     get student_assignments_path
-    expect(list_row.at_css(".student-card-score").text).to eq("—")
+    expect(list_row.at_css(".student-card-score").text).to eq("")
     get result_student_assignment_path(assignment)
 
     expect(response).to redirect_to(student_assignment_path(assignment))
@@ -274,7 +276,7 @@ RSpec.describe "Student grading results", type: :request do
       login
       get student_assignment_path(assignment), headers: { "Turbo-Frame" => "grading-status" }
       expect(document.at_css("#grading-status [data-controller='grading-status']")).to be_present
-      expect(document.at_css("#grading-status a").text).to eq("状態を更新")
+      expect(document.css("#grading-status a, #grading-status button")).to be_empty
 
       submission.update!(status: state)
       get student_assignment_path(assignment), headers: { "Turbo-Frame" => "grading-status" }

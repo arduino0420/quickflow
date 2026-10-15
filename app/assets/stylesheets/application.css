@@ -168,3 +168,41 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 .assignment-delete-actions .button { max-width: 100%; white-space: normal; }
 .button-danger { background: var(--color-danger); color: var(--color-surface); }
 .button-danger:hover { background: var(--color-danger-text); color: var(--color-surface); }
+
+/* Teacher list only: keep shared forms and quiz cards unchanged. */
+.admin-teacher-list-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 0.75rem; margin: 1.25rem 0; }
+.admin-teacher-list { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 0.75rem; }
+.admin-teacher-list th, .admin-teacher-list td { padding: 1rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.admin-teacher-list th:first-child { width: 30%; }
+.admin-teacher-list th:last-child { width: 7.5rem; }
+.admin-teacher-list td { background: var(--color-surface); border-top: 1px solid var(--color-soft-border); border-bottom: 1px solid var(--color-soft-border); }
+.admin-teacher-list td:first-child { border-left: 1px solid var(--color-soft-border); border-radius: var(--radius) 0 0 var(--radius); }
+.admin-teacher-list td:last-child { border-right: 1px solid var(--color-soft-border); border-radius: 0 var(--radius) var(--radius) 0; }
+@media (max-width: 36rem) {
+  .admin-teacher-list, .admin-teacher-list tbody { display: block; }
+  .admin-teacher-list thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .admin-teacher-list tr { display: block; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid var(--color-soft-border); border-radius: var(--radius); }
+  .admin-teacher-list td, .admin-teacher-list td:first-child, .admin-teacher-list td:last-child { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 0.5rem; padding: 0.5rem; border: 0; border-radius: 0; }
+  .admin-teacher-list td::before { content: attr(data-label); font-weight: 700; color: var(--color-muted); }
+}
+
+/* Student list presentation: submission status still comes from the server. */
+.assignment-list--student .assignment-card:not(.assignment-card--submitted) .student-card-link { background: var(--color-info-soft); }
+.assignment-list--student .assignment-card--submitted .assignment-list-title { font-weight: 400; }
+/* Administrator navigation and teacher rows only. */
+.admin-dashboard-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; max-width: 38rem; margin: 1.5rem 0; }
+.admin-dashboard-action { min-height: 4rem; padding: 1rem 1.5rem; box-shadow: 0 3px 8px rgb(37 99 235 / 12%); transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease; }
+.admin-dashboard-action:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgb(37 99 235 / 18%); }
+.admin-teacher-list tbody tr[data-controller~="row-navigation"] { cursor: pointer; }
+.admin-teacher-list tbody td { transition: background-color 160ms ease; }
+.admin-teacher-list tbody tr:hover td,
+.admin-teacher-list tbody tr:focus-within td { background: var(--color-info-soft); }
+@media (max-width: 36rem) {
+  .admin-dashboard-actions { grid-template-columns: minmax(0, 1fr); }
+  .admin-teacher-list tbody tr:hover,
+  .admin-teacher-list tbody tr:focus-within { background: var(--color-info-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-dashboard-action, .admin-teacher-list tbody td { transition: none; }
+  .admin-dashboard-action:hover { transform: none; }
+}

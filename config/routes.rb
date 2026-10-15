@@ -4,6 +4,7 @@ Rails.application.routes.draw do
     post "login", to: "sessions#create"
     delete "logout", to: "sessions#destroy", as: :logout
     resources :teachers, only: [ :index, :new, :create, :edit, :update ]
+    resources :students, only: [ :new, :create ]
     root "dashboard#show"
   end
 

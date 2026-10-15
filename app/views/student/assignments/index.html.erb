@@ -17,8 +17,8 @@
           <span class="student-card-info">
             <span class="assignment-list-title"><%= assignment.title %></span>
           </span>
-          <% score = @scores_by_assignment_id[assignment.id] if submission&.completed? %>
-          <span class="student-card-score"><%= submission&.completed? && !score.nil? && @pending_review_counts.fetch(submission.id, 0).zero? ? "#{score}点" : "—" %></span>
+          <% score = @scores_by_assignment_id[assignment.id] %>
+          <span class="student-card-score"><%= submission&.completed? && !score.nil? ? "#{score}点" : "" %></span>
         <% end %>
       </li>
     <% end %>
