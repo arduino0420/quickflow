@@ -86,7 +86,8 @@ RSpec.describe "Student sessions", type: :request do
       { school: school, grade: 2, class_number: 2 },
       { school: school, grade: 1, class_number: 3 }
     ].each do |attributes|
-      other_classroom = Classroom.create!(attributes.merge(teacher: teacher))
+      owner = attributes[:school] == school ? teacher : Teacher.create!(school: other_school, user_id: "foreign", password: "password123")
+      other_classroom = Classroom.create!(attributes.merge(teacher: owner))
       Student.create!(classroom: other_classroom, attendance_number: 3, password: "student-password")
     end
 
@@ -100,7 +101,7 @@ RSpec.describe "Student sessions", type: :request do
 
   it "uses the classroom's school rather than the teacher's school" do
     other_school = School.create!(school_code: "OTHER1")
-    classroom.update!(school: other_school)
+    classroom.update_columns(school_id: other_school.id) # Historical school mismatch for login filtering.
     login_credentials = credentials.merge(school_code: other_school.school_code)
 
     post student_login_path, params: { student_session: login_credentials }

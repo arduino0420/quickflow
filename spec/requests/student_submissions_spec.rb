@@ -108,9 +108,9 @@ RSpec.describe "Student submissions", type: :request do
   it "rejects other classrooms, other schools, undistributed and nonexistent assignments" do
     other = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
     foreign_school = School.create!(school_code: "OTHER1")
-    foreign = Classroom.create!(school: foreign_school, teacher: teacher, grade: 1, class_number: 1)
+    foreign = Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 1, class_number: 1)
     ids = [ other, foreign, nil ].map do |target|
-      item = Assignment.create!(teacher: teacher, title: "範囲外", point_per_question: 5)
+      item = Assignment.create!(teacher: target&.teacher || teacher, title: "範囲外", point_per_question: 5)
       item.assignment_classrooms.create!(classroom: target) if target
       item.id
     end
@@ -121,6 +121,24 @@ RSpec.describe "Student submissions", type: :request do
       expect(response).to have_http_status(:not_found)
       expect(counts).to eq(before_counts)
     end
+  end
+
+  it "rejects a historical cross-school distribution without saving an answer PDF or registering jobs" do
+    foreign_school = School.create!(school_code: "FOREIGN")
+    owner = Teacher.create!(school: foreign_school, user_id: "foreign", password: "password123")
+    target = Assignment.create!(teacher: owner, title: "Historical distribution", point_per_question: 5)
+    target.assignment_classrooms.build(classroom: classroom).save!(validate: false)
+    login
+    before_counts = counts
+    expect(AnswerReadingJob).not_to receive(:perform_later)
+    expect(AnswerGradingJob).not_to receive(:perform_later)
+    expect(QuestionGenerationJob).not_to receive(:perform_later)
+
+    post student_assignment_submission_path(target), params: { submission: { answer_file: pdf } }
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(counts).to eq(before_counts)
+    expect(student.submissions.where(assignment: target)).to be_empty
   end
 
   [ :logged_out, :teacher, :logged_out_after_login ].each do |authentication|

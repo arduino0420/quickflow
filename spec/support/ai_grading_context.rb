@@ -14,6 +14,7 @@ RSpec.shared_context "AI grading records" do
       reading_status: "readable", reading_reason: "明確に読める" }
   end
   let(:submission) do
+    assignment.assignment_classrooms.find_or_create_by!(classroom: classroom)
     Submission.create!(assignment: assignment, student: student, submitted_at: Time.current,
       extracted_text: JSON.generate(problems: [ problem ]))
   end

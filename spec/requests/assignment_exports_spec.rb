@@ -144,8 +144,8 @@ RSpec.describe "Assignment Excel exports", type: :request do
   [ :other_school, :undistributed ].each do |kind|
     it "rejects a #{kind} classroom even when its ID is supplied directly" do
       target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-      target = Classroom.create!(school: target_school, teacher: teacher, grade: 3, class_number: 1)
-      assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+      target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 3, class_number: 1)
+      assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
       login
       expect(ClassroomGradeExporter).not_to receive(:new)
       get export_path(target)

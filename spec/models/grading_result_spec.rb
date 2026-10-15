@@ -18,6 +18,8 @@ RSpec.describe GradingResult, type: :model do
       ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.zone.local(2026, 10, 2, 10) }
   end
 
+  before { assignment.assignment_classrooms.create!(classroom: classroom) }
+
   [ :correct, :incorrect, :needs_review ].product([ nil, :correct, :incorrect ]).each do |ai, teacher|
     it "derives the final judgment from AI #{ai} and teacher #{teacher.inspect}" do
       result = described_class.new(attributes.merge(ai_judgment: ai, teacher_judgment: teacher))

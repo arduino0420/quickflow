@@ -10,6 +10,7 @@ RSpec.describe AnswerReadingJob, type: :job do
   let(:assignment) { Assignment.create!(teacher: teacher, title: "式の計算", point_per_question: 5) }
 
   let(:submission) do
+    assignment.assignment_classrooms.create!(classroom: classroom)
     Submission.create!(
       student: student,
       assignment: assignment,

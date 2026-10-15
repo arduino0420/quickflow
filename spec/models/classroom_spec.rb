@@ -76,13 +76,14 @@ RSpec.describe Classroom, type: :model do
     expect(duplicate.errors[:class_number]).to be_present
   end
 
-  it "allows the same grade and class number in another school without matching the teacher school" do
+  it "allows the same grade and class number in another school with its own teacher" do
     described_class.create!(attributes)
     other_school = School.create!(school_code: "OTHER1")
-    classroom = described_class.create!(attributes.merge(school: other_school))
+    other_teacher = Teacher.create!(school: other_school, user_id: "teacher2", password: "password123")
+    classroom = described_class.create!(attributes.merge(school: other_school, teacher: other_teacher))
 
     expect(classroom.reload.school).to eq(other_school)
-    expect(classroom.teacher.school).to eq(school)
+    expect(classroom.teacher.school).to eq(other_school)
   end
 
   [ { grade: 2 }, { class_number: 2 } ].each do |changes|

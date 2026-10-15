@@ -35,8 +35,8 @@ RSpec.describe "Student assignments", type: :request do
     latest = distribute("新しい小テスト", owner: other_teacher)
     distribute("別クラス", targets: [ other_classroom ])
     foreign_school = School.create!(school_code: "OTHER1")
-    foreign_class = Classroom.create!(school: foreign_school, teacher: teacher, grade: 1, class_number: 1)
-    distribute("別学校", targets: [ foreign_class ])
+    foreign_class = Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 1, class_number: 1)
+    distribute("別学校", targets: [ foreign_class ], owner: foreign_class.teacher)
     distribute("未配信", targets: [])
     login
     get student_assignments_path
@@ -116,9 +116,9 @@ RSpec.describe "Student assignments", type: :request do
 
   it "returns 404 for details and material outside the student's classroom" do
     foreign_school = School.create!(school_code: "OTHER1")
-    foreign_class = Classroom.create!(school: foreign_school, teacher: teacher, grade: 1, class_number: 1)
+    foreign_class = Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 1, class_number: 1)
     items = [ distribute("別クラス", targets: [ other_classroom ]),
-      distribute("別学校", targets: [ foreign_class ]), distribute("未配信", targets: []) ]
+      distribute("別学校", targets: [ foreign_class ], owner: foreign_class.teacher), distribute("未配信", targets: []) ]
     login
     (items.map(&:id) + [ Assignment.maximum(:id) + 100 ]).each do |id|
       [ student_assignment_path(id), material_student_assignment_path(id), result_student_assignment_path(id), answer_student_assignment_path(id) ].each do |path|
