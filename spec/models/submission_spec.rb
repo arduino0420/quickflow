@@ -8,6 +8,8 @@ RSpec.describe Submission, type: :model do
   let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5) }
   let(:attributes) { { assignment: assignment, student: student, submitted_at: Time.zone.local(2026, 10, 2, 9) } }
 
+  before { assignment.assignment_classrooms.create!(classroom: classroom) }
+
   describe "#score" do
     let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 10) }
     let(:submission) { described_class.create!(attributes.merge(status: :completed)) }
@@ -21,8 +23,11 @@ RSpec.describe Submission, type: :model do
     end
 
     def create_score_result(question, ai_judgment: :correct, teacher_judgment: nil, owner: submission)
-      owner.grading_results.create!(question: question, ai_judgment: ai_judgment, teacher_judgment: teacher_judgment,
+      result = owner.grading_results.build(question: question, ai_judgment: ai_judgment, teacher_judgment: teacher_judgment,
         ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+      # Only cross-assignment fixtures simulate historical corruption for score defenses.
+      result.save!(validate: question.assignment_id == owner.assignment_id)
+      result
     end
 
     context "with ten questions" do
@@ -290,6 +295,7 @@ RSpec.describe Submission, type: :model do
   it "allows another assignment for the same student" do
     described_class.create!(attributes)
     other_assignment = Assignment.create!(teacher: teacher, title: "Another quiz", point_per_question: 5)
+    other_assignment.assignment_classrooms.create!(classroom: classroom)
 
     expect(described_class.create!(attributes.merge(assignment: other_assignment))).to be_persisted
   end

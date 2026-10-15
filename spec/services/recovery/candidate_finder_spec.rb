@@ -7,6 +7,7 @@ RSpec.describe Recovery::CandidateFinder do
   let(:now) { Time.zone.local(2026, 10, 15, 12) }
 
   def candidate(number, status:, updated_at:)
+    assignment.assignment_classrooms.find_or_create_by!(classroom: classroom)
     owner = Student.create!(classroom: classroom, attendance_number: number, password: "password123")
     Submission.create!(assignment: assignment, student: owner, submitted_at: now,
       status: status, updated_at: updated_at)

@@ -51,15 +51,17 @@ RSpec.describe AssignmentDeletion do
   [ :incoming, :outgoing ].each do |kind|
     it "refuses #{kind} cross-assignment grading links instead of deleting another quiz's data" do
       other = Assignment.create!(teacher: teacher, title: "他", point_per_question: 5)
+      other.assignment_classrooms.create!(classroom: classroom)
       other_question = create_question(owner: other)
       other_submission = Submission.create!(assignment: other, student: student, submitted_at: Time.current)
       cross = if kind == :incoming
-        other_submission.grading_results.create!(question: @question, ai_judgment: :correct,
+        other_submission.grading_results.build(question: @question, ai_judgment: :correct,
           ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
       else
-        submission.grading_results.create!(question: other_question, ai_judgment: :correct,
+        submission.grading_results.build(question: other_question, ai_judgment: :correct,
           ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
       end
+      cross.save!(validate: false) # Historical cross-assignment data for the deletion guard.
       original = cross.attributes
       expect { described_class.new.call(assignment, teacher: teacher) }.to raise_error(AssignmentDeletion::InconsistentData)
       expect(cross.reload.attributes).to eq(original)

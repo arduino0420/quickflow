@@ -76,7 +76,8 @@ RSpec.describe "Teacher-managed student registration", type: :request do
     it "excludes and rejects #{kind} classrooms" do
       target_school = kind == :other_teacher ? school : School.create!(school_code: "FOREIGN")
       owner = kind == :inconsistent_school ? teacher : Teacher.create!(school: target_school, user_id: "other", password: "password123")
-      target = Classroom.create!(school: target_school, teacher: owner, grade: 2, class_number: 1)
+      target = Classroom.new(school: target_school, teacher: owner, grade: 2, class_number: 1)
+      target.save!(validate: kind != :inconsistent_school) # Historical school mismatch only.
       login
       get new_student_path
       expect(document.css("option").map { |option| option[:value] }).not_to include(target.id.to_s)

@@ -13,8 +13,11 @@ RSpec.describe Recovery::SubmissionInspector do
   end
 
   def create_result(question, **attributes)
-    submission.grading_results.create!({ question: question, ai_judgment: :correct,
+    result = submission.grading_results.build({ question: question, ai_judgment: :correct,
       ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current }.merge(attributes))
+    # The inspector must still report historical cross-assignment corruption.
+    result.save!(validate: question.assignment_id == submission.assignment_id)
+    result
   end
 
   it "identifies grading as a possible restart stage using valid saved data" do

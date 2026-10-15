@@ -12,6 +12,8 @@ class Submission < ApplicationRecord
   validates :status, :submitted_at, presence: true
   validates :student_id, uniqueness: { scope: :assignment_id }
 
+  validate :assignment_distributed_to_student_classroom
+
   def score
     return nil unless persisted? && completed?
 
@@ -40,6 +42,19 @@ class Submission < ApplicationRecord
       judgments.each do |id, value|
         results.fetch(id).update!(teacher_judgment: value.presence)
       end
+    end
+  end
+
+  private
+
+  def assignment_distributed_to_student_classroom
+    return unless assignment&.teacher && student&.classroom
+
+    unless assignment.teacher.school == student.classroom.school
+      errors.add(:assignment, "は生徒と同じ学校の教師が作成した小テストである必要があります")
+    end
+    unless assignment.assignment_classrooms.exists?(classroom_id: student.classroom_id)
+      errors.add(:assignment, "は生徒の所属クラスに配信されている必要があります")
     end
   end
 end

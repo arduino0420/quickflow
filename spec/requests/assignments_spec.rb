@@ -303,7 +303,7 @@ RSpec.describe "Assignment creation", type: :request do
     let(:other_teacher) { Teacher.create!(school: school, user_id: "teacher2", password: "password123") }
     let(:other_classroom) { Classroom.create!(school: school, teacher: other_teacher, grade: 2, class_number: 1) }
     let(:foreign_school) { School.create!(school_code: "OTHER1") }
-    let(:foreign_classroom) { Classroom.create!(school: foreign_school, teacher: other_teacher, grade: 1, class_number: 1) }
+    let(:foreign_classroom) { Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 1, class_number: 1) }
 
     before { teacher_login }
 

@@ -39,9 +39,11 @@ RSpec.describe "Student grading results", type: :request do
 
   def result_for(item = submission, question: nil, position: 1, judgment: :correct, teacher_judgment: nil, **details)
     question ||= question_for(position: position)
-    item.grading_results.create!(question: question, student_answer: "本人の解答", ai_judgment: judgment,
+    result = item.grading_results.build(question: question, student_answer: "本人の解答", ai_judgment: judgment,
       teacher_judgment: teacher_judgment, ai_model_name: "test-model", prompt_version: "v1",
       graded_at: Time.current, **details)
+    result.save!(validate: question.assignment_id == item.assignment_id) # Preserve historical-corruption defenses.
+    result
   end
 
   { nil => "未提出", submitted: "採点待ち", grading: "採点中", completed: "採点完了", failed: "採点失敗" }.each do |state, label|

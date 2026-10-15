@@ -15,6 +15,7 @@ RSpec.describe Student, type: :model do
   it "returns its submissions" do
     student = described_class.create!(attributes)
     assignment = Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5)
+    assignment.assignment_classrooms.create!(classroom: classroom)
     submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
 
     expect(student.submissions).to contain_exactly(submission)
