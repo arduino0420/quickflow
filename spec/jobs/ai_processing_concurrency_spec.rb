@@ -28,6 +28,7 @@ RSpec.describe "Concurrent AI processing", type: :job do
     assignment.destroy!
     @other_student&.destroy!
     student.destroy!
+    TeacherClassroom.where(classroom_id: classroom.id).delete_all
     classroom.destroy!
     teacher.destroy!
     school.destroy!

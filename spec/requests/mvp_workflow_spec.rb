@@ -8,7 +8,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
   let(:school) { School.create!(school_code: "MVP#{SecureRandom.hex(4)}") }
   let(:teacher) { Teacher.create!(school: school, user_id: "mvp-#{SecureRandom.hex(4)}", password: "password123") }
   let(:classrooms) do
-    [ 1, 2 ].map { |number| Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: number) }
+    [ 1, 2 ].map { |number| Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: number) }
   end
   let(:students) do
     classrooms.map { |classroom| Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }

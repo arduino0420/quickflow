@@ -5,7 +5,7 @@ RSpec::Matchers.define_negated_matcher :not_change, :change
 RSpec.describe "Assignment creation", type: :request do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "student-password") }
   let(:attributes) { { title: "式の計算", point_per_question: "5",
     material_file: upload("material.pdf", "application/pdf"), classroom_ids: [ classroom.id.to_s ] } }
@@ -200,7 +200,7 @@ RSpec.describe "Assignment creation", type: :request do
       older = distributed
       older.update!(created_at: 2.days.ago)
       newer = Assignment.create!(teacher: teacher, title: "新しい小テスト", point_per_question: 5)
-      second_classroom = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+      second_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
       [ classroom, second_classroom ].each { |item| AssignmentClassroom.create!(assignment: newer, classroom: item) }
       undistributed = Assignment.create!(teacher: teacher, title: "未配信", point_per_question: 5)
       other_teacher = Teacher.create!(school: school, user_id: "teacher2", password: "password123")
@@ -237,8 +237,8 @@ RSpec.describe "Assignment creation", type: :request do
 
     it "shows exactly the approved fields and classes in grade and class order without modifying records" do
       item = distributed
-      second = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
-      third = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+      second = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
+      third = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
       [ third, second ].each { |target| AssignmentClassroom.create!(assignment: item, classroom: target) }
       item.material_file.attach(upload("material.pdf", "application/pdf"))
       before_attributes = item.reload.attributes
@@ -301,9 +301,9 @@ RSpec.describe "Assignment creation", type: :request do
 
   context "initial distribution" do
     let(:other_teacher) { Teacher.create!(school: school, user_id: "teacher2", password: "password123") }
-    let(:other_classroom) { Classroom.create!(school: school, teacher: other_teacher, grade: 2, class_number: 1) }
+    let(:other_classroom) { Classroom.create!(school: school, teachers: [ other_teacher ], grade: 2, class_number: 1) }
     let(:foreign_school) { School.create!(school_code: "OTHER1") }
-    let(:foreign_classroom) { Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 1, class_number: 1) }
+    let(:foreign_classroom) { Classroom.create!(school: foreign_school, teachers: [ Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 1, class_number: 1) }
 
     before { teacher_login }
 

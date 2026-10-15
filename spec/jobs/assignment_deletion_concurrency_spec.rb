@@ -37,6 +37,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
       @additional_students.each(&:destroy!)
       student.destroy!
+      TeacherClassroom.where(classroom_id: classroom.id).delete_all
       classroom.destroy!
       teacher.destroy!
       school.destroy!

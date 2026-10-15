@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Student grading results", type: :request do
   let(:school) { School.create!(school_code: "RESULTS") }
   let(:teacher) { Teacher.create!(school: school, user_id: "results-teacher", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "結果を確認する小テスト", point_per_question: 5)

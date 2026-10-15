@@ -99,7 +99,7 @@ RSpec.describe ClassroomGradeExporter do
 
   it "does not mix another classroom's students or another assignment's submissions into the export" do
     own = create_export_submission(1, judgments: [ :incorrect, :incorrect ])
-    other_classroom = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+    other_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
     assignment.assignment_classrooms.create!(classroom: other_classroom)
     create_export_submission(1, target: other_classroom)
     create_export_submission(2, target: other_classroom)

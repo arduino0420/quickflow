@@ -6,8 +6,8 @@ RSpec.describe "All distributed classroom grades", type: :request do
   include_context "AI grading records"
   include XlsxInspection
 
-  let(:second_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
-  let(:third_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1) }
+  let(:second_classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2) }
+  let(:third_classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1) }
 
   before do
     [ third_classroom, second_classroom, classroom ].each do |target|
@@ -112,9 +112,9 @@ RSpec.describe "All distributed classroom grades", type: :request do
   end
 
   it "excludes undistributed and foreign school data even with a foreign distribution link" do
-    undistributed = Classroom.create!(school: school, teacher: teacher, grade: 3, class_number: 14)
+    undistributed = Classroom.create!(school: school, teachers: [ teacher ], grade: 3, class_number: 14)
     foreign_school = School.create!(school_code: "FOREIGN")
-    foreign = Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 3, class_number: 15)
+    foreign = Classroom.create!(school: foreign_school, teachers: [ Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 3, class_number: 15)
     assignment.assignment_classrooms.build(classroom: foreign).tap { |link| link.save!(validate: false) } # Historical foreign distribution.
     [ undistributed, foreign ].each { |target| create_result(target, 1, historical: true) }
     create_result(classroom, 1)

@@ -142,7 +142,7 @@ RSpec.describe "Assignment name editing", type: :request do
   it "rejects an owned assignment distributed only to another school" do
     foreign_school = School.create!(school_code: "FOREIGN")
     foreign_teacher = Teacher.create!(school: foreign_school, user_id: "foreign", password: "password123")
-    foreign_classroom = Classroom.create!(school: foreign_school, teacher: foreign_teacher, grade: 1, class_number: 1)
+    foreign_classroom = Classroom.create!(school: foreign_school, teachers: [ foreign_teacher ], grade: 1, class_number: 1)
     AssignmentClassroom.where(assignment: assignment).delete_all
     assignment.assignment_classrooms.build(classroom: foreign_classroom).tap { |link| link.save!(validate: false) } # Historical foreign distribution.
     login

@@ -91,7 +91,7 @@ RSpec.describe "Assignment deletion", type: :request do
 
   it "refuses deletion when its distribution is in another school" do
     foreign = School.create!(school_code: "FOREIGN")
-    target = Classroom.create!(school: foreign, teacher: Teacher.create!(school: foreign, user_id: "foreign", password: "password123"), grade: 1, class_number: 1)
+    target = Classroom.create!(school: foreign, teachers: [ Teacher.create!(school: foreign, user_id: "foreign", password: "password123") ], grade: 1, class_number: 1)
     assignment.assignment_classrooms.build(classroom: target).save!(validate: false) # Historical foreign distribution.
     login
     delete assignment_path(assignment)

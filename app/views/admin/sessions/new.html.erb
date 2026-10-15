@@ -1,0 +1,17 @@
+<h1 class="auth-heading">管理者ログイン</h1>
+
+<% if flash[:alert].present? %>
+  <p role="alert"><%= flash[:alert] %></p>
+<% end %>
+
+<%= form_with scope: :admin_session, url: admin_login_path do |form| %>
+  <div>
+    <%= form.label :user_id, "管理者ID" %>
+    <%= form.text_field :user_id, autocomplete: "username", required: true %>
+  </div>
+  <div>
+    <%= form.label :password, "パスワード" %>
+    <%= form.password_field :password, autocomplete: "current-password", value: nil, required: true %>
+  </div>
+  <%= form.submit "ログイン" %>
+<% end %>

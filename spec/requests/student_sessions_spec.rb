@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Student sessions", type: :request do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "teacher-password") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 3, password: "student-password") }
   let(:credentials) do
     { school_code: school.school_code, grade: classroom.grade, class_number: classroom.class_number,
@@ -87,7 +87,7 @@ RSpec.describe "Student sessions", type: :request do
       { school: school, grade: 1, class_number: 3 }
     ].each do |attributes|
       owner = attributes[:school] == school ? teacher : Teacher.create!(school: other_school, user_id: "foreign", password: "password123")
-      other_classroom = Classroom.create!(attributes.merge(teacher: owner))
+      other_classroom = Classroom.create!(attributes.merge(teachers: [ owner ]))
       Student.create!(classroom: other_classroom, attendance_number: 3, password: "student-password")
     end
 
@@ -217,7 +217,7 @@ RSpec.describe "Student sessions", type: :request do
 
   [ [ 1, 1, 1 ], [ 6, 15, 40 ] ].each do |grade, class_number, attendance|
     it "logs in with boundary values #{[ grade, class_number, attendance ]}" do
-      target = Classroom.create!(school: school, teacher: teacher, grade: grade, class_number: class_number)
+      target = Classroom.create!(school: school, teachers: [ teacher ], grade: grade, class_number: class_number)
       pupil = Student.create!(classroom: target, attendance_number: attendance, password: "student-password")
       post student_login_path, params: { student_session: credentials.merge(grade: grade,
         class_number: class_number, attendance_number: attendance) }

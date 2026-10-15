@@ -4,7 +4,7 @@ RSpec.describe "Student submissions", type: :request do
   include ActiveJob::TestHelper
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "student-password") }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "式の計算", point_per_question: 5)
@@ -97,7 +97,7 @@ RSpec.describe "Student submissions", type: :request do
   it "allows another teacher's assignment distributed to multiple classes including the student's" do
     owner = Teacher.create!(school: school, user_id: "teacher2", password: "password123")
     assignment.update!(teacher: owner)
-    other = Classroom.create!(school: school, teacher: owner, grade: 2, class_number: 1)
+    other = Classroom.create!(school: school, teachers: [ owner ], grade: 2, class_number: 1)
     assignment.assignment_classrooms.create!(classroom: other)
     login
     submit
@@ -106,11 +106,11 @@ RSpec.describe "Student submissions", type: :request do
   end
 
   it "rejects other classrooms, other schools, undistributed and nonexistent assignments" do
-    other = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
+    other = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
     foreign_school = School.create!(school_code: "OTHER1")
-    foreign = Classroom.create!(school: foreign_school, teacher: Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 1, class_number: 1)
+    foreign = Classroom.create!(school: foreign_school, teachers: [ Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 1, class_number: 1)
     ids = [ other, foreign, nil ].map do |target|
-      item = Assignment.create!(teacher: target&.teacher || teacher, title: "範囲外", point_per_question: 5)
+      item = Assignment.create!(teacher: target&.teachers&.sole || teacher, title: "範囲外", point_per_question: 5)
       item.assignment_classrooms.create!(classroom: target) if target
       item.id
     end

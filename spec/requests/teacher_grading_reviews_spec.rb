@@ -92,8 +92,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
     end
 
     it "defaults to all classrooms and supports selecting each classroom" do
-      later_grade = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
-      later_class = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
+      later_grade = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
+      later_class = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
       [ later_grade, later_class ].each { |target| assignment.assignment_classrooms.create!(classroom: target) }
       Student.create!(classroom: later_grade, attendance_number: 1, password: "password123")
       Student.create!(classroom: later_class, attendance_number: 2, password: "password123")
@@ -266,7 +266,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       it "excludes submitted and unsubmitted students from #{kind}" do
         result = result_for(judgment: :correct)
         target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-        target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 2, class_number: 1)
+        target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
         assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
         foreign_students = [ 1, 2 ].map do |number|
           Student.create!(classroom: target, attendance_number: number, password: "password123")
@@ -291,7 +291,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "includes a distributed same-school classroom owned by another teacher" do
       other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-      classroom.update!(teacher: other_teacher)
+      classroom.update!(teachers: [ other_teacher ])
       result_for(judgment: :correct)
       login
       get assignment_path(assignment)
@@ -320,7 +320,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
   end
 
   describe "classroom selection" do
-    let(:second_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
+    let(:second_classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2) }
     let(:second_student) { Student.create!(classroom: second_classroom, attendance_number: 1, password: "password123") }
     let(:second_submission) do
       Submission.create!(assignment: assignment, student: second_student, status: :completed, submitted_at: Time.current)
@@ -412,7 +412,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "allows an explicitly selected same-school destination assigned to another teacher" do
       other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-      second_classroom.update!(teacher: other_teacher)
+      second_classroom.update!(teachers: [ other_teacher ])
       second_student
       login
       get assignment_path(assignment, classroom_id: second_classroom.id)
@@ -437,7 +437,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     [ :other_school, :undistributed_classroom ].each do |kind|
       it "excludes #{kind} from options and rejects its explicit selection" do
         target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-        target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 3, class_number: 1)
+        target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 3, class_number: 1)
         assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
         login
         get assignment_path(assignment)
@@ -629,7 +629,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   it "rejects another teacher even in the same school and even if they own the target classroom" do
     other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-    classroom.update!(teacher: other_teacher)
+    classroom.update!(teachers: [ other_teacher ])
     login(other_teacher)
     get assignments_path
     expect(response.body).not_to include(assignment.title)
@@ -645,7 +645,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
   [ :other_school, :undistributed_classroom ].each do |kind|
     it "excludes #{kind} submissions from counts, lists, details and PDF access" do
       target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-      target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 2, class_number: 1)
+      target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
       assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
       student.update!(classroom: target)
       result_for
@@ -679,7 +679,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
   it "excludes assignments distributed only to another school" do
     AssignmentClassroom.where(assignment: assignment).delete_all
     target_school = School.create!(school_code: "FOREIGN")
-    target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 2, class_number: 1)
+    target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
     assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } # Historical foreign distribution.
     login
     get assignments_path
@@ -935,7 +935,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
           login(other_teacher)
         when :undistributed_classroom, :foreign_classroom
           target_school = kind == :foreign_classroom ? School.create!(school_code: "FOREIGN") : school
-          target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 2, class_number: 1)
+          target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
           assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :foreign_classroom
           student.update!(classroom: target)
           login
@@ -962,7 +962,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "allows the distributor to update a same-school classroom owned by another teacher" do
       result = result_for
-      classroom.update!(teacher: Teacher.create!(school: school, user_id: "other", password: "password123"))
+      classroom.update!(teachers: [ Teacher.create!(school: school, user_id: "other", password: "password123") ])
       login
       save_judgments(result.id.to_s => "correct")
       expect(response).to have_http_status(:see_other)

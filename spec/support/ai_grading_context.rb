@@ -1,7 +1,7 @@
 RSpec.shared_context "AI grading records" do
   let(:school) { School.create!(school_code: "AI#{SecureRandom.hex(4)}") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher-#{SecureRandom.hex(4)}", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "式の計算", point_per_question: 5)

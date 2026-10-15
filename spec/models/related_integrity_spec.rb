@@ -6,9 +6,9 @@ RSpec.describe "Related data integrity", type: :model do
   let(:teacher) { Teacher.create!(school: school, user_id: "integrity-a", password: "password123") }
   let(:colleague) { Teacher.create!(school: school, user_id: "integrity-a2", password: "password123") }
   let(:foreign_teacher) { Teacher.create!(school: other_school, user_id: "integrity-b", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
-  let(:other_classroom) { Classroom.create!(school: school, teacher: colleague, grade: 1, class_number: 2) }
-  let(:foreign_classroom) { Classroom.create!(school: other_school, teacher: foreign_teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
+  let(:other_classroom) { Classroom.create!(school: school, teachers: [ colleague ], grade: 1, class_number: 2) }
+  let(:foreign_classroom) { Classroom.create!(school: other_school, teachers: [ foreign_teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "Integrity quiz", point_per_question: 5)
@@ -28,26 +28,28 @@ RSpec.describe "Related data integrity", type: :model do
       answer_generation_model: "test", answer_generation_prompt_version: "v1", answer_generated_at: Time.current)
   end
 
-  describe "Classroom" do
+  describe "TeacherClassroom" do
     it "rejects a teacher from another school" do
-      reject_save(Classroom.new(school: school, teacher: foreign_teacher, grade: 1, class_number: 3), :teacher)
+      reject_save(TeacherClassroom.new(classroom: classroom, teacher: foreign_teacher), :teacher)
     end
 
     it "allows another teacher in the same school" do
-      expect(classroom.update(teacher: colleague)).to be(true)
+      expect(classroom.teacher_classrooms.create!(teacher: colleague)).to be_persisted
     end
 
-    [ :school, :teacher ].each do |attribute|
-      it "rejects a cross-school #{attribute} change without changing stored associations" do
-        original = classroom.attributes
-        classroom.public_send("#{attribute}=", attribute == :school ? other_school : foreign_teacher)
-        reject_save(classroom, :teacher)
-        expect(classroom.reload.attributes).to eq(original)
-      end
+    it "rejects a cross-school teacher change without changing the saved relationship" do
+      link = classroom.teacher_classrooms.sole
+      original = link.attributes
+      link.teacher = foreign_teacher
+      reject_save(link, :teacher)
+      expect(link.reload.attributes).to eq(original)
+    end
 
+    [ :teacher, :classroom ].each do |attribute|
       it "handles missing #{attribute} without an exception" do
-        classroom.public_send("#{attribute}=", nil)
-        reject_save(classroom, attribute)
+        link = classroom.teacher_classrooms.sole
+        link.public_send("#{attribute}=", nil)
+        reject_save(link, attribute)
       end
     end
   end

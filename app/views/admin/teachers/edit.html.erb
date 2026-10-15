@@ -1,0 +1,47 @@
+<h1>教師アカウントの編集</h1>
+<%= link_to "教師一覧へ戻る", admin_teachers_path %>
+
+<% if @teacher.errors.any? %>
+  <div role="alert"><ul>
+    <% @teacher.errors.full_messages.each do |message| %><li><%= message %></li><% end %>
+  </ul></div>
+<% end %>
+
+<%= form_with model: @teacher, url: admin_teacher_path(@teacher), method: :patch do |form| %>
+  <%= hidden_field_tag "teacher[edit_token]", @edit_token %>
+  <div>
+    <%= label_tag :school_code, "学校コード" %>
+    <%= text_field_tag :school_code, @school.school_code, readonly: true %>
+  </div>
+  <div>
+    <%= form.label :user_id, "教師ID" %>
+    <%= form.text_field :user_id, readonly: true, autocomplete: "off" %>
+  </div>
+  <div>
+    <p>パスワードを変更しない場合は、両方のパスワード欄を空欄にしてください。</p>
+    <%= form.label :password, "新しいパスワード" %>
+    <%= form.password_field :password, autocomplete: "new-password", value: nil %>
+  </div>
+  <div>
+    <%= form.label :password_confirmation, "新しいパスワード（確認）" %>
+    <%= form.password_field :password_confirmation, autocomplete: "new-password", value: nil %>
+  </div>
+  <fieldset>
+    <legend>担当クラス</legend>
+    <p>担当クラスがない場合は、すべてのチェックを外して保存できます。</p>
+    <%= hidden_field_tag "teacher[classroom_codes][]", "" %>
+    <% (1..3).each do |grade| %>
+      <fieldset>
+        <legend><%= grade %>年</legend>
+        <% (1..10).each do |number| %>
+          <% code = "#{grade}-#{number}" %>
+          <label>
+            <%= check_box_tag "teacher[classroom_codes][]", code, @selected_classroom_codes.include?(code), id: "teacher_classroom_#{grade}_#{number}" %>
+            <%= grade %>年<%= number %>組
+          </label>
+        <% end %>
+      </fieldset>
+    <% end %>
+  </fieldset>
+  <%= form.submit "変更を保存する" %>
+<% end %>

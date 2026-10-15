@@ -25,7 +25,7 @@ RSpec.describe Assignment, type: :model do
 
   it "returns its submissions" do
     assignment = described_class.create!(attributes)
-    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1)
     student = Student.create!(classroom: classroom, attendance_number: 1, password: "password123")
     assignment.assignment_classrooms.create!(classroom: classroom)
     submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
@@ -80,7 +80,7 @@ RSpec.describe Assignment, type: :model do
   it "returns multiple distribution records and classrooms" do
     assignment = described_class.create!(attributes)
     classrooms = [ 1, 2 ].map do |number|
-      Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: number)
+      Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: number)
     end
     distributions = classrooms.map do |classroom|
       AssignmentClassroom.create!(assignment: assignment, classroom: classroom)

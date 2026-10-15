@@ -1,0 +1,21 @@
+<h1>教師一覧</h1>
+<p>所属学校コード: <%= @school.school_code %></p>
+<%= link_to "教師を新規登録", new_admin_teacher_path, class: "button" %>
+<%= link_to "管理者トップへ戻る", admin_root_path %>
+
+<% if flash[:notice].present? %><p role="status"><%= flash[:notice] %></p><% end %>
+
+<table>
+  <thead><tr><th scope="col">教師ID</th><th scope="col">担当クラス</th></tr></thead>
+  <tbody>
+    <% @teachers.each do |teacher| %>
+      <tr>
+        <td><%= teacher.user_id %> <%= link_to "編集", edit_admin_teacher_path(teacher) %></td>
+        <td>
+          <% classrooms = @classrooms_by_teacher.fetch(teacher.id, []).map(&:classroom) %>
+          <%= classrooms.empty? ? "担当なし" : classrooms.map { |classroom| classroom_label(classroom) }.join("、") %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

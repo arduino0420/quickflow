@@ -1,6 +1,11 @@
 ja:
   activerecord:
     attributes:
+      admin:
+        school: 学校
+        user_id: 管理者ID
+        password: パスワード
+        password_confirmation: パスワード（確認）
       student:
         classroom: クラス
         attendance_number: 出席番号

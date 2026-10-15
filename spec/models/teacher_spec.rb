@@ -37,7 +37,7 @@ RSpec.describe Teacher, type: :model do
 
   it "returns its classrooms" do
     teacher = described_class.create!(attributes)
-    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1)
 
     expect(teacher.classrooms).to contain_exactly(classroom)
   end
@@ -68,8 +68,15 @@ RSpec.describe Teacher, type: :model do
   it "allows an update without supplying the password again" do
     teacher = described_class.create!(attributes).reload
 
-    expect(teacher.update(user_id: "teacher2")).to be(true)
+    expect(teacher.update(updated_at: teacher.updated_at + 1.second)).to be(true)
     expect(teacher.authenticate("password123")).to eq(teacher)
+  end
+
+  it "rejects changing a persisted teacher ID" do
+    teacher = described_class.create!(attributes)
+    expect(teacher.update(user_id: "teacher2")).to be(false)
+    expect(teacher.errors[:user_id]).to be_present
+    expect(teacher.reload.user_id).to eq("teacher1")
   end
 
   it "rejects a mismatched password confirmation" do

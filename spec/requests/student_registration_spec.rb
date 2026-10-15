@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Teacher-managed student registration", type: :request do
   let(:school) { School.create!(school_code: "REGISTER") }
   let(:teacher) { Teacher.create!(school: school, user_id: "register-teacher", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "password123", password_confirmation: "password123" } }
 
   def login
@@ -76,8 +76,9 @@ RSpec.describe "Teacher-managed student registration", type: :request do
     it "excludes and rejects #{kind} classrooms" do
       target_school = kind == :other_teacher ? school : School.create!(school_code: "FOREIGN")
       owner = kind == :inconsistent_school ? teacher : Teacher.create!(school: target_school, user_id: "other", password: "password123")
-      target = Classroom.new(school: target_school, teacher: owner, grade: 2, class_number: 1)
-      target.save!(validate: kind != :inconsistent_school) # Historical school mismatch only.
+      target = Classroom.create!(school: target_school, grade: 2, class_number: 1)
+      link = TeacherClassroom.new(classroom: target, teacher: owner)
+      link.save!(validate: kind != :inconsistent_school) # Historical cross-school relationship only.
       login
       get new_student_path
       expect(document.css("option").map { |option| option[:value] }).not_to include(target.id.to_s)
@@ -155,7 +156,7 @@ RSpec.describe "Teacher-managed student registration", type: :request do
 
   [ { grade: 7 }, { class_number: 16 } ].each do |invalid|
     it "excludes and rejects legacy out-of-range classrooms #{invalid}" do
-      target = Classroom.new(school: school, teacher: teacher, grade: 1, class_number: 2, **invalid)
+      target = Classroom.new(school: school, teachers: [ teacher ], grade: 1, class_number: 2, **invalid)
       target.save!(validate: false)
       login
       get new_student_path

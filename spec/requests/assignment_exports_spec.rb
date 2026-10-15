@@ -24,7 +24,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
   end
 
   it "downloads the displayed class as a one-sheet xlsx with 40 data rows regardless of the judgment filter" do
-    second_classroom = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+    second_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
     assignment.assignment_classrooms.create!(classroom: second_classroom)
     second_student = Student.create!(classroom: second_classroom, attendance_number: 40, password: "password123")
     second_submission = Submission.create!(assignment: assignment, student: second_student, status: :completed, submitted_at: Time.current)
@@ -107,7 +107,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
 
   it "allows a same-school destination belonging to another teacher" do
     other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-    classroom.update!(teacher: other_teacher)
+    classroom.update!(teachers: [ other_teacher ])
     login
     get export_path
     expect(response).to have_http_status(:ok)
@@ -144,7 +144,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
   [ :other_school, :undistributed ].each do |kind|
     it "rejects a #{kind} classroom even when its ID is supplied directly" do
       target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-      target = Classroom.create!(school: target_school, teacher: Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123"), grade: 3, class_number: 1)
+      target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 3, class_number: 1)
       assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
       login
       expect(ClassroomGradeExporter).not_to receive(:new)

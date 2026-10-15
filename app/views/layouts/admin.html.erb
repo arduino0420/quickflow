@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <title>QuickFlow 管理者</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+  <body>
+    <header class="app-header <%= controller_name == "sessions" ? "app-header--auth" : "app-header--with-actions" %>">
+      <div class="app-header-inner">
+        <% if current_admin %>
+          <%= link_to "QuickFlow 管理者", admin_root_path, class: "app-brand" %>
+          <div class="app-header-actions">
+            <%= button_to "ログアウト", admin_logout_path, method: :delete %>
+          </div>
+        <% else %>
+          <span class="app-brand">QuickFlow 管理者</span>
+        <% end %>
+      </div>
+    </header>
+    <main class="app-main <%= "app-main--compact" if controller_name == "sessions" %>">
+      <div class="page-card"><%= yield %></div>
+    </main>
+  </body>
+</html>
