@@ -18,7 +18,7 @@ RSpec.describe "Student sessions", type: :request do
     document = Nokogiri::HTML(response.body)
     expect(document.at_css('form[action="/student/login"][method="post"]')).to be_present
     %w[school_code grade class_number attendance_number password].each do |field|
-      expect(document.at_css("input[name='student_session[#{field}]']")).to be_present
+      expect(document.at_css("[name='student_session[#{field}]']")).to be_present
     end
     expect(document.at_css('input[name="student_session[password]"][type="password"]')).to be_present
     expect(document.at_css('form[action="/student/logout"]')).to be_nil
@@ -207,12 +207,17 @@ RSpec.describe "Student sessions", type: :request do
     get login_path
     expect(response.body).not_to include("ログイン中のユーザーID:")
   end
-  it "sets numeric bounds on every login number field" do
+  it "shows the approved dropdown choices with an empty prompt" do
     get student_login_path
-    { grade: 6, class_number: 15, attendance_number: 40 }.each do |field, maximum|
-      input = Nokogiri::HTML(response.body).at_css("input[name='student_session[#{field}]']")
-      expect(%w[min max step].map { |attribute| input[attribute] }).to eq([ "1", maximum.to_s, "1" ])
+    document = Nokogiri::HTML(response.body)
+    { grade: [ 3, "年" ], class_number: [ 10, "組" ], attendance_number: [ 40, "番" ] }.each do |field, (maximum, suffix)|
+      select = document.at_css("select[name='student_session[#{field}]']")
+      expect(select.css("option").map { |option| [ option[:value], option.text ] }).to eq(
+        [ [ "", "選択してください" ] ] + (1..maximum).map { |n| [ n.to_s, "#{n}#{suffix}" ] }
+      )
+      expect(select.at_css("option")[:value]).to eq("")
     end
+    expect(document.css("input[type='number']")).to be_empty
   end
 
   [ [ 1, 1, 1 ], [ 6, 15, 40 ] ].each do |grade, class_number, attendance|

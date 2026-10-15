@@ -12,12 +12,12 @@
     <header class="app-header <%= controller_name == "sessions" ? "app-header--auth" : "app-header--with-actions" %>">
       <div class="app-header-inner">
         <% if current_admin %>
-          <%= link_to "QuickFlow 管理者", admin_root_path, class: "app-brand" %>
+          <%= link_to "QuickFlow", admin_root_path, class: "app-brand" %>
           <div class="app-header-actions">
             <%= button_to "ログアウト", admin_logout_path, method: :delete %>
           </div>
         <% else %>
-          <span class="app-brand">QuickFlow 管理者</span>
+          <span class="app-brand">QuickFlow</span>
         <% end %>
       </div>
     </header>
