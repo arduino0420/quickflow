@@ -32,9 +32,46 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
     end
   end
 
+  def diagnosed_backfill_call
+    service.call
+  rescue StandardError => error
+    report_lock_failure(error) if Rails.env.test? && lock_acquisition_error?(error)
+    raise
+  end
+
+  def lock_acquisition_error?(error)
+    while error
+      return true if error.is_a?(ActiveRecord::LockWaitTimeout) || error.is_a?(PG::LockNotAvailable)
+
+      error = error.cause
+    end
+    false
+  end
+
+  def report_lock_failure(error)
+    locks = connection.select_all(<<~SQL).to_a
+      SELECT l.pid, l.locktype, l.relation::regclass::text AS relation, l.mode, l.granted,
+             a.backend_type, a.state, (a.xact_start IS NOT NULL) AS in_transaction
+      FROM pg_locks l
+      LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+      WHERE l.locktype = 'relation'
+        AND l.relation IN ('schools'::regclass, 'teachers'::regclass,
+                           'classrooms'::regclass, 'teacher_classrooms'::regclass)
+      ORDER BY l.relation, l.pid, l.mode
+    SQL
+    # NOWAIT does not leave this session waiting, so this may be empty. The
+    # granted locks above provide a second snapshot of possible blockers.
+    blocking_pids = connection.select_value("SELECT pg_blocking_pids(pg_backend_pid())")
+    warn "LegacyBackfill lock diagnostics: #{ { error_class: error.class.name,
+      current_pid: connection.select_value('SELECT pg_backend_pid()'), blocking_pids: blocking_pids,
+      locks: locks }.to_json }"
+  rescue StandardError => diagnostic_error
+    warn "LegacyBackfill lock diagnostics unavailable: #{diagnostic_error.class.name}"
+  end
+
   it "copies every legacy pair and reports matching totals" do
     expected = legacy_pairs
-    report = service.call
+    report = diagnosed_backfill_call
 
     expect(pairs).to match_array(expected)
     expect(report).to eq(legacy_pairs: expected.size, inserted_pairs: expected.size,
@@ -42,10 +79,10 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
   end
 
   it "is repeatable without changing existing intermediate attributes" do
-    service.call
+    diagnosed_backfill_call
     original = TeacherClassroom.order(:id).map(&:attributes)
 
-    expect(service.call[:inserted_pairs]).to eq(0)
+    expect(diagnosed_backfill_call[:inserted_pairs]).to eq(0)
     expect(TeacherClassroom.order(:id).map(&:attributes)).to eq(original)
   end
 
@@ -55,7 +92,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
     original = [ extra, existing ].map(&:attributes)
     expected = legacy_pairs + [ [ colleague.id, classroom.id ] ]
 
-    expect(service.call[:inserted_pairs]).to eq(legacy_pairs.size - 1)
+    expect(diagnosed_backfill_call[:inserted_pairs]).to eq(legacy_pairs.size - 1)
     expect(pairs).to match_array(expected)
     expect([ extra, existing ].map { |record| record.reload.attributes }).to eq(original)
   end
@@ -64,7 +101,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
     other_classroom.update_columns(teacher_id: foreign_teacher.id)
     original = snapshot
 
-    expect { service.call }.to raise_error(described_class::InconsistentData, /旧担当: 1件/)
+    expect { diagnosed_backfill_call }.to raise_error(described_class::InconsistentData, /旧担当: 1件/)
     expect(TeacherClassroom.count).to eq(0)
     expect(snapshot).to eq(original)
   end
@@ -74,7 +111,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
     invalid.save!(validate: false)
     original = invalid.attributes
 
-    expect { service.call }.to raise_error(described_class::InconsistentData, /既存中間レコード: 1件/)
+    expect { diagnosed_backfill_call }.to raise_error(described_class::InconsistentData, /既存中間レコード: 1件/)
     expect(TeacherClassroom.all).to contain_exactly(invalid)
     expect(invalid.reload.attributes).to eq(original)
   end
@@ -88,7 +125,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
       result
     end
 
-    expect { service.call }.to raise_error(ActiveRecord::StatementInvalid)
+    expect { diagnosed_backfill_call }.to raise_error(ActiveRecord::StatementInvalid)
     expect(TeacherClassroom.all).to contain_exactly(existing)
     expect(existing.reload.attributes).to eq(original)
   end
@@ -103,7 +140,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
       result
     end
 
-    expect { service.call }.to raise_error(described_class::VerificationFailed)
+    expect { diagnosed_backfill_call }.to raise_error(described_class::VerificationFailed)
     expect(TeacherClassroom.count).to eq(0)
   end
 
@@ -114,7 +151,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
     original = snapshot
     files = [ assignment.material_file.blob, submission.answer_file.blob ].map { |blob| [ blob, blob.download ] }
 
-    service.call
+    diagnosed_backfill_call
 
     expect(snapshot).to eq(original)
     files.each { |blob, content| expect(blob.download).to eq(content) }
@@ -127,7 +164,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
       expect(model).not_to receive(:create!)
     end
 
-    expect(service.call[:inserted_pairs]).to eq(legacy_pairs.size)
+    expect(diagnosed_backfill_call[:inserted_pairs]).to eq(legacy_pairs.size)
   end
 
   it "fails immediately without inserting while another connection holds a write lock" do
@@ -135,7 +172,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
     begin
       other.exec("BEGIN")
       other.exec("LOCK TABLE teacher_classrooms IN ROW EXCLUSIVE MODE")
-      expect { service.call }.to raise_error(ActiveRecord::LockWaitTimeout)
+      expect { diagnosed_backfill_call }.to raise_error(ActiveRecord::LockWaitTimeout)
       expect(TeacherClassroom.count).to eq(0)
     ensure
       other.exec("ROLLBACK")
