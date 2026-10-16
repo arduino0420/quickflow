@@ -32,6 +32,109 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  it "requests a native leave confirmation before browser Back can discard an unsaved stroke" do
+    click_link "表示試験"
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor = window.Stimulus.getControllerForElementAndIdentifier(
+        document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
+      editor.draft.delay = 60_000;
+    JS
+    ink_drag(0.1, 0.2, 0.5, 0.2)
+    expect(page.evaluate_script(<<~JS)).to be(true)
+      window.Stimulus.getControllerForElementAndIdentifier(
+        document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview').draft.dirty
+    JS
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+
+    expect(page.evaluate_script("document.querySelector('meta[name=turbo-visit-control]')?.content")).to eq("reload")
+    expect(page.evaluate_script("document.documentElement.dataset.turbo")).to eq("false")
+    expect(page.evaluate_script("(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented })()")).to be(true)
+    expect(page).to have_current_path(student_assignment_pdf_preview_path(@assignment))
+    expect(ink_alpha(0.3, 0.2)).to be > 0
+    record_leave_guard
+    page.go_back
+    expect(page).to have_current_path(student_assignments_path)
+    # WebDriver does not expose a dismissible beforeunload dialog in headless Chrome.
+    # Record the browser event after the application handler to verify the guard ran.
+    expect(leave_guard_value).to eq("true")
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+  end
+
+  it "moves Back and Forward without a warning once autosave finishes and restores the ink" do
+    click_link "表示試験"
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.2, 0.5, 0.2)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].size).to eq(1)
+    record_leave_guard
+    page.go_back
+    expect(page).to have_current_path(student_assignments_path)
+    expect(leave_guard_value).to eq("false")
+    page.go_forward
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.3, 0.2)).to be > 0
+  end
+
+  it "requests leave confirmation for an unsaved stroke on the detail link and browser Forward" do
+    click_link "表示試験"
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script("window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'), 'pdf-preview').draft.delay = 60_000")
+    ink_drag(0.1, 0.2, 0.5, 0.2)
+    record_leave_guard
+    click_link "小テストの詳細へ戻る"
+    expect(page).to have_current_path(student_assignment_path(@assignment))
+    expect(leave_guard_value).to eq("true")
+
+    page.go_back
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script("window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'), 'pdf-preview').draft.delay = 60_000")
+    page.execute_script("window.scrollTo(0, 0)")
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.2, 0.5, 0.2)
+    expect(page.evaluate_script("window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'), 'pdf-preview').draft.dirty")).to be(true)
+    record_leave_guard
+    page.go_forward
+    expect(page).to have_current_path(student_assignment_path(@assignment))
+    expect(leave_guard_value).to eq("true")
+  end
+
+  it "requests leave confirmation on reload after autosave fails offline" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor = window.Stimulus.getControllerForElementAndIdentifier(
+        document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
+      editor.draft.delay = 0;
+      editor.draft.request = async () => { throw new TypeError('offline') };
+    JS
+    ink_drag(0.1, 0.2, 0.5, 0.2)
+    expect(page).to have_text("保存できませんでした", wait: 8)
+    expect(ink_alpha(0.3, 0.2)).to be > 0
+    record_leave_guard
+    page.refresh
+    expect(leave_guard_value).to eq("true")
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+  end
+
+  it "requests leave confirmation while the draft save is still in flight" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor = window.Stimulus.getControllerForElementAndIdentifier(
+        document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
+      editor.draft.delay = 0;
+      editor.draft.request = (url, options) => options.method === 'PUT'
+        ? new Promise(() => {}) : window.fetch(url, options);
+    JS
+    ink_drag(0.1, 0.2, 0.5, 0.2)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存中…", wait: 8)
+    record_leave_guard
+    page.go_back
+    expect(leave_guard_value).to eq("true")
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+  end
+
   it "renders page one with a real local module worker and preserves its aspect ratio after resizing" do
     install_browser_script(<<~JS)
       window.pdfPreviewWorkers = [];
@@ -996,8 +1099,10 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.4, 0.15, 0.4, 0.15, 1)
     ink_drag(0.8, 0.15, 0.8, 0.15, 3)
     jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
+    record_leave_guard
     click_button "提出する"
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(leave_guard_value).to eq("false")
     expect(page).to have_text("採点待ち")
     item = Submission.find_by!(assignment: @assignment)
     expect(item.answer_file).to be_attached
@@ -1106,6 +1211,19 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   def install_browser_script(source)
     result = page.driver.browser.execute_cdp("Page.addScriptToEvaluateOnNewDocument", source: source)
     (@browser_script_ids ||= []) << result.fetch("identifier")
+  end
+
+  def record_leave_guard
+    page.execute_script(<<~JS)
+      sessionStorage.removeItem('issue58LeavePrevented');
+      window.addEventListener('beforeunload', event => {
+        sessionStorage.setItem('issue58LeavePrevented', String(event.defaultPrevented));
+      }, { once: true });
+    JS
+  end
+
+  def leave_guard_value
+    page.evaluate_script("sessionStorage.getItem('issue58LeavePrevented')")
   end
 
   def assert_canvas
