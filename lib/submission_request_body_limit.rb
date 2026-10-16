@@ -2,7 +2,7 @@
 # student submission endpoint. This keeps other upload and form routes intact.
 class SubmissionRequestBodyLimit
   MAX_BYTES = 32 * 1024 * 1024
-  PATH = %r{\A/student/assignments/\d+/submission\z}
+  PATH = %r{\A/student/assignments/[^/.]+/submission(?:\.[^/.]+)?\z}
 
   class TooLarge < StandardError; end
 
@@ -60,7 +60,10 @@ class SubmissionRequestBodyLimit
   end
 
   def call(env)
-    return @app.call(env) unless env["REQUEST_METHOD"] == "POST" && PATH.match?(env["PATH_INFO"])
+    return @app.call(env) unless env["REQUEST_METHOD"] == "POST"
+
+    path = ActionDispatch::Journey::Router::Utils.normalize_path(env["PATH_INFO"])
+    return @app.call(env) unless PATH.match?(path)
 
     return reject if env["CONTENT_LENGTH"].to_i > MAX_BYTES
 
