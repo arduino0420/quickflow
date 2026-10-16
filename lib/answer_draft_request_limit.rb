@@ -1,13 +1,17 @@
 # Run before request logging / Rails parameter parsing. Never log malformed ink.
 class AnswerDraftRequestLimit
   MAX_BYTES = 4 * 1024 * 1024 + 16 * 1024
+  PATH = %r{\A/student/assignments/[^/.]+/answer_draft(?:\.[^/.]+)?\z}
 
   def initialize(app)
     @app = app
   end
 
   def call(env)
-    if %w[PUT PATCH].include?(env["REQUEST_METHOD"]) && env["PATH_INFO"].match?(%r{\A/student/assignments/[^/]+/answer_draft(?:\.json)?\z})
+    return @app.call(env) unless %w[PUT PATCH].include?(env["REQUEST_METHOD"])
+
+    path = ActionDispatch::Journey::Router::Utils.normalize_path(env["PATH_INFO"])
+    if PATH.match?(path)
       return reject(415) unless env["CONTENT_TYPE"].to_s.split(";").first == "application/json"
       return reject(413) if env["CONTENT_LENGTH"].to_i > MAX_BYTES
 
