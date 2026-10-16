@@ -34,6 +34,8 @@ RSpec.describe "Student PDF previews", type: :request do
     expect(preview.text).to include("問題を読み込んでいます")
     expect(document.css("canvas").size).to eq(2)
     expect(document.at_css('canvas[data-pdf-preview-target="ink"]')).to be_present
+    expect(document.at_css('button[data-pdf-preview-tool-param="pen"]')["aria-pressed"]).to eq("true")
+    expect(document.at_css('button[data-pdf-preview-tool-param="eraser"]')["aria-pressed"]).to eq("false")
     expect(response.body).to include("書いた内容は保存されません")
     expect(document.css('input[type="file"], input[type="submit"]')).to be_empty
 

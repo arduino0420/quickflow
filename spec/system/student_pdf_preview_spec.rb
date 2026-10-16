@@ -147,6 +147,73 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.15, 0.1)).to eq(0)
   end
 
+  it "partially erases only ink and replays pen/eraser/pen after resize and high-DPI rendering" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(find_button("ペン")["aria-pressed"]).to eq("true")
+    expect(find_button("消しゴム")["aria-pressed"]).to eq("false")
+    original_pdf = find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
+    ink_drag(0.1, 0.1, 0.5, 0.1)
+    ink_drag(0.1, 0.12, 0.5, 0.12)
+    ink_drag(0.8, 0.1, 0.8, 0.1)
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+
+    # Native buttons also activate via keyboard.
+    find_button("消しゴム").send_keys(:space)
+    expect(find_button("消しゴム")["aria-pressed"]).to eq("true")
+    expect(find_button("ペン")["aria-pressed"]).to eq("false")
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.style.cursor")).to include("url(")
+    ink_drag(0.2, 0.1, 0.2, 0.1)
+    ink_drag(0.4, 0.09, 0.4, 0.11)
+    expect(ink_alpha(0.2, 0.1)).to eq(0)
+    expect(ink_alpha(0.4, 0.1)).to eq(0)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.3, 0.1)).to be > 0
+    expect(ink_alpha(0.45, 0.1)).to be > 0
+    expect(ink_alpha(0.4, 0.12)).to be > 0
+    expect(ink_alpha(0.8, 0.1)).to be > 0
+    expect(find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")).to eq(original_pdf)
+
+    find_button("ペン").send_keys(:enter)
+    expect(find_button("ペン")["aria-pressed"]).to eq("true")
+    ink_drag(0.2, 0.1, 0.2, 0.1)
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+    begin
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 800, height: 900,
+        deviceScaleFactor: 2, mobile: false)
+      Timeout.timeout(5) do
+        sleep 0.05 until page.evaluate_script(<<~JS)
+          (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
+            return !c.hidden && devicePixelRatio === 2 && Math.abs(c.width-c.getBoundingClientRect().width*2) <= 1; })()
+        JS
+      end
+      expect(ink_alpha(0.2, 0.1)).to be > 0
+      expect(ink_alpha(0.4, 0.1)).to eq(0)
+      expect(ink_alpha(0.45, 0.1)).to be > 0
+      expect(ink_alpha(0.4, 0.12)).to be > 0
+      expect(ink_alpha(0.8, 0.1)).to be > 0
+      assert_canvas
+      click_button "消しゴム"
+      page.driver.browser.action.scroll_by(0, 150).perform
+      Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
+      expect(ink_alpha(0.4, 0.1)).to eq(0)
+      expect(ink_alpha(0.2, 0.1)).to be > 0
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    end
+  end
+
+  def ink_drag(x1, y1, x2, y2)
+    rect = page.evaluate_script(<<~JS)
+      (() => { const r = document.querySelector('[data-pdf-preview-target="ink"]').getBoundingClientRect();
+        return {x:r.x, y:r.y, width:r.width, height:r.height}; })()
+    JS
+    page.driver.browser.action.move_to_location((rect["x"] + rect["width"] * x1).round, (rect["y"] + rect["height"] * y1).round)
+      .pointer_down(:left)
+      .move_to_location((rect["x"] + rect["width"] * x2).round, (rect["y"] + rect["height"] * y2).round)
+      .pointer_up(:left).perform
+  end
+
   def ink_alpha(x, y)
     page.evaluate_script(<<~JS)
       (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
@@ -169,6 +236,13 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       .move_to_location((bounds["x"] + bounds["width"] * 0.2).round, y, device: "test-pen")
       .pointer_up(:left, device: "test-pen").perform
     expect(ink_alpha(0.15, 0.1)).to be > 0
+
+    click_button "消しゴム"
+    actions = page.driver.browser.action
+    actions.add_pointer_input(:pen, "test-pen")
+    actions.move_to_location((bounds["x"] + bounds["width"] * 0.15).round, y, device: "test-pen")
+      .pointer_down(:left, device: "test-pen").pointer_up(:left, device: "test-pen").perform
+    expect(ink_alpha(0.15, 0.1)).to eq(0)
 
     before = find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")
     actions = page.driver.browser.action

@@ -3,7 +3,7 @@ import PdfInk from "pdf_ink"
 
 // The material URL remains protected by the existing student controller.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink"]
+  static targets = ["status", "container", "canvas", "ink", "tool"]
   static values = { url: String, assetsUrl: String }
 
   connect() {
@@ -13,7 +13,19 @@ export default class extends Controller {
     this.renderedDpr = null
     this.renderQueue = Promise.resolve()
     this.ink = new PdfInk(this.inkTarget)
+    this.updateTool()
+    this.watchPixelRatio()
     this.load()
+  }
+
+  watchPixelRatio() {
+    this.resolutionQuery?.removeEventListener("change", this.resolutionChanged)
+    this.resolutionQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+    this.resolutionChanged = () => {
+      this.watchPixelRatio()
+      this.queueRender()
+    }
+    this.resolutionQuery.addEventListener("change", this.resolutionChanged)
   }
 
   async load() {
@@ -86,8 +98,32 @@ export default class extends Controller {
     this.ink.setViewport(viewport, ratio)
     canvas.hidden = false
     this.inkTarget.hidden = false
+    this.updateTool()
     this.containerTarget.setAttribute("aria-busy", "false")
     this.statusTarget.textContent = "1ページ目を表示しています。"
+  }
+
+  selectTool(event) {
+    this.finishInput()
+    this.ink.setTool(event.params.tool)
+    this.updateTool()
+  }
+
+  updateTool() {
+    for (const button of this.toolTargets) {
+      button.setAttribute("aria-pressed", String(button.dataset.pdfPreviewToolParam === this.ink.tool))
+    }
+    this.inkTarget.style.cursor = "crosshair"
+    if (this.ink.tool !== "eraser" || !this.ink.viewport) return
+    const viewport = this.ink.viewport
+    const diameter = this.ink.eraserWidth * Math.hypot(viewport.transform[0], viewport.transform[1]) *
+      this.inkTarget.getBoundingClientRect().width / viewport.width
+    // Show the approximate erase footprint, scaled with the PDF. Large cursors fall back to crosshair.
+    if (diameter > 120) return
+    const size = Math.ceil(diameter) + 4
+    const center = size / 2
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${center}" cy="${center}" r="${diameter / 2}" fill="none" stroke="black"/></svg>`
+    this.inkTarget.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${center} ${center}, crosshair`
   }
 
   pointerDown(event) {
@@ -151,6 +187,7 @@ export default class extends Controller {
 
   disconnect() {
     this.active = false
+    this.resolutionQuery?.removeEventListener("change", this.resolutionChanged)
     this.finishInput()
     window.cancelAnimationFrame(this.inkFrame)
     this.inkFrame = null

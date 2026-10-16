@@ -9,7 +9,10 @@ RSpec.describe "PDF ink coordinates and strokes" do
       const source = fs.readFileSync(process.argv[1], 'utf8');
       const { default: PdfInk } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
       const calls = [];
-      const context = new Proxy({}, { get: (_, name) => (...args) => calls.push([name, ...args]) });
+      const context = new Proxy({}, {
+        get: (_, name) => (...args) => calls.push([name, ...args]),
+        set: (_, name, value) => { calls.push(['set', name, value]); return true; }
+      });
       let rect = { left: 10, top: 20, width: 400, height: 600 };
       const canvas = { getContext: () => context, getBoundingClientRect: () => rect };
       const viewport = scale => ({ width: 200 * scale, height: 300 * scale, scale, transform: [scale,0,0,-scale,0,300*scale],
@@ -51,6 +54,32 @@ RSpec.describe "PDF ink coordinates and strokes" do
       ink.start(event(90, -400));
       ink.move(event(100, -390, {buttons: 0}));
       assert.equal(ink.stroke, null, 'missing mouseup must not keep drawing');
+      assert.equal(ink.tool, 'pen');
+      ink.setTool('eraser');
+      ink.start(event(90, -400));
+      assert.equal(ink.stroke.tool, 'eraser');
+      assert.equal(ink.stroke.width, 4);
+      ink.move(event(95, -395));
+      ink.end(event(999, 999, {type: 'pointercancel'}));
+      const erased = ink.pages.get(1).at(-1);
+      assert.equal(erased.points.length, 2);
+      ink.start(event(100, -390, {pointerType: 'pen'}));
+      ink.end(event(100, -390, {type: 'lostpointercapture'}));
+      assert.equal(ink.pages.get(1).at(-1).points.length, 1);
+      ink.setTool('pen');
+      ink.start(event(90, -400));
+      ink.end();
+      assert.equal(ink.pages.get(1).at(-1).tool, 'pen');
+      assert.equal(ink.pages.get(1).at(-1).width, 1.2);
+      assert.deepEqual(ink.pages.get(1).map(op => op.id), ink.pages.get(1).map((_, i) => i + 1));
+      const operations = JSON.stringify([...ink.pages]);
+      calls.length = 0;
+      ink.setViewport(viewport(2), 2);
+      assert.equal(JSON.stringify([...ink.pages]), operations);
+      const modes = calls.filter(c => c[0] === 'set' && c[1] === 'globalCompositeOperation').map(c => c[2]);
+      assert(modes.includes('destination-out'));
+      assert.equal(modes.at(-1), 'source-over', 'erase mode must not leak into subsequent drawing');
+      assert.equal(ink.pages.get(1).at(-3).tool, 'eraser');
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
       File.expand_path("../../app/javascript/pdf_ink.js", __dir__))

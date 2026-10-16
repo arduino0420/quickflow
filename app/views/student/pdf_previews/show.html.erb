@@ -13,9 +13,15 @@
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
   data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#queueRender blur@window->pdf-preview#finishInput">
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
+  <div class="pdf-preview-tools" role="group" aria-label="手書きツール">
+    <button type="button" aria-pressed="true" data-pdf-preview-target="tool"
+      data-pdf-preview-tool-param="pen" data-action="pdf-preview#selectTool">ペン</button>
+    <button type="button" aria-pressed="false" data-pdf-preview-target="tool"
+      data-pdf-preview-tool-param="eraser" data-action="pdf-preview#selectTool">消しゴム</button>
+  </div>
   <div data-pdf-preview-target="container" class="pdf-preview-page" aria-busy="true">
     <canvas data-pdf-preview-target="canvas" aria-label="教材PDFの1ページ目" role="img" hidden></canvas>
-    <canvas data-pdf-preview-target="ink" class="pdf-preview-ink" aria-label="黒ペンの手書き領域" hidden
+    <canvas data-pdf-preview-target="ink" class="pdf-preview-ink" aria-label="ペン・消しゴムの手書き領域" hidden
       data-action="pointerdown->pdf-preview#pointerDown pointermove->pdf-preview#pointerMove pointerup->pdf-preview#pointerEnd pointercancel->pdf-preview#pointerEnd lostpointercapture->pdf-preview#pointerEnd"></canvas>
   </div>
   <noscript><p role="alert">PDFの表示にはJavaScriptが必要です。ブラウザの設定を確認してください。</p></noscript>

@@ -5,6 +5,15 @@ export default class PdfInk {
     this.pages = new Map([[1, []]])
     this.pageNumber = 1
     this.width = 1.2 // PDF user-space units; scales with the page, not the screen.
+    this.eraserWidth = 4
+    this.tool = "pen"
+    this.nextOperationId = 1
+  }
+
+  setTool(tool) {
+    if (!["pen", "eraser"].includes(tool)) return
+    this.end()
+    this.tool = tool
   }
 
   setViewport(viewport, ratio) {
@@ -26,7 +35,9 @@ export default class PdfInk {
   start(event) {
     if (!this.viewport || this.stroke || !["mouse", "pen"].includes(event.pointerType) || event.button !== 0) return false
     this.pointerId = event.pointerId
-    this.stroke = { tool: "pen", color: "#000000", width: this.width, points: [this.point(event)] }
+    // Array order is replay order; the ID identifies each operation within this session.
+    this.stroke = { id: this.nextOperationId++, tool: this.tool, color: "#000000",
+      width: this.tool === "eraser" ? this.eraserWidth : this.width, points: [this.point(event)] }
     this.pages.get(this.pageNumber).push(this.stroke)
     this.redraw()
     return true
@@ -60,6 +71,7 @@ export default class PdfInk {
 
   redraw() {
     const context = this.canvas.getContext("2d")
+    context.globalCompositeOperation = "source-over"
     context.resetTransform()
     context.clearRect(0, 0, this.canvas.width, this.canvas.height)
     // Use the actual backing-store dimensions, including pixel rounding.
@@ -67,6 +79,7 @@ export default class PdfInk {
     context.lineCap = "round"
     context.lineJoin = "round"
     for (const stroke of this.pages.get(this.pageNumber)) {
+      context.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over"
       const points = stroke.points.map(point => this.viewport.convertToViewportPoint(...point))
       context.fillStyle = context.strokeStyle = stroke.color
       context.lineWidth = stroke.width * Math.hypot(this.viewport.transform[0], this.viewport.transform[1])
@@ -85,5 +98,6 @@ export default class PdfInk {
       context.lineTo(...points.at(-1))
       context.stroke()
     }
+    context.globalCompositeOperation = "source-over"
   }
 }
