@@ -3,7 +3,7 @@ import PdfInk from "pdf_ink"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool"]
+  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size"]
   static values = { url: String, assetsUrl: String }
 
   connect() {
@@ -13,6 +13,7 @@ export default class extends Controller {
     this.pagesReady = false
     this.statesByCanvas = new WeakMap()
     this.tool = "pen"
+    this.eraserSize = "medium"
     this.revision = 0
     this.renderQueue = Promise.resolve()
     this.updateTool()
@@ -68,12 +69,17 @@ export default class extends Controller {
         inkCanvas.setAttribute("aria-label", `${number}ページ目のペン・消しゴム領域`)
         const ink = new PdfInk(inkCanvas, number)
         ink.setTool(this.tool)
-        const state = { page, canvas, inkCanvas, ink, sheet }
+        ink.setEraserSize(this.eraserSize)
+        const cursor = sheet.querySelector(".pdf-preview-eraser-cursor")
+        const state = { page, canvas, inkCanvas, ink, sheet, cursor }
         this.pageStates.push(state)
         this.statesByCanvas.set(inkCanvas, state)
         this.containerTarget.append(sheet)
       }
       this.pagesReady = true
+      this.layoutPages()
+      this.intersections = new IntersectionObserver(() => this.queueRender(), { rootMargin: "200px 0px" })
+      for (const state of this.pageStates) this.intersections.observe(state.sheet)
       await this.queueRender()
       if (!this.current(session)) return
       let observedWidth = this.pageStates[0]?.renderedWidth
@@ -106,27 +112,55 @@ export default class extends Controller {
     return this.renderQueue
   }
 
+  layoutPages() {
+    const width = this.containerTarget.clientWidth
+    if (!width) return
+    for (const state of this.pageStates) {
+      const original = state.page.getViewport({ scale: 1 })
+      state.viewport = state.page.getViewport({ scale: width / original.width })
+      state.sheet.querySelector(".pdf-preview-page").style.height = `${state.viewport.height}px`
+    }
+  }
+
+  releasePage(state) {
+    if (state === this.inputState || state === this.touch?.state) this.finishInput()
+    state.canvas.hidden = state.inkCanvas.hidden = true
+    state.cursor.hidden = true
+    state.canvas.width = state.canvas.height = state.inkCanvas.width = state.inkCanvas.height = 0
+    state.renderedWidth = state.renderedDpr = null
+    state.page.cleanup()
+  }
+
   async renderPages(session) {
     if (!this.current(session) || !this.pagesReady || !this.pageStates.length) return
     const revision = this.revision
     const width = this.containerTarget.clientWidth
     const dpr = window.devicePixelRatio || 1
     if (!width) return
-    if (this.pageStates.every(state => state.renderedWidth === width && state.renderedDpr === dpr)) return
-    this.containerTarget.setAttribute("aria-busy", "true")
-    this.finishInput()
+    this.layoutPages()
+    const height = window.innerHeight
+    const wanted = this.pageStates.filter(state => {
+      const rect = state.sheet.getBoundingClientRect()
+      return rect.bottom > -200 && rect.top < height + 200
+    })
+    // The visible page is drawn before nearby pages. Page count no longer reduces quality.
+    wanted.sort((a, b) => {
+      const overlap = state => { const r = state.sheet.getBoundingClientRect(); return Math.max(0, Math.min(r.bottom, height) - Math.max(r.top, 0)) }
+      return overlap(b) - overlap(a)
+    })
     for (const state of this.pageStates) {
+      if (!wanted.includes(state) && state.canvas.width) this.releasePage(state)
+    }
+    this.containerTarget.setAttribute("aria-busy", "true")
+    for (const state of wanted) {
       if (!this.current(session) || revision !== this.revision) return
-      if (state.renderedWidth === width && state.renderedDpr === dpr) continue
-      const original = state.page.getViewport({ scale: 1 })
-      const viewport = state.page.getViewport({ scale: width / original.width })
-      // At most 12M pixels per layer across the document, and 8M per page.
-      // PDF and ink together use at most ~96 MB of RGBA backing stores (rounding aside).
-      const ratio = Math.min(dpr, 2,
-        Math.sqrt(Math.min(8_000_000, 12_000_000 / this.pageStates.length) / (viewport.width * viewport.height)))
+      const viewport = state.viewport
+      const ratio = Math.min(dpr, 2, Math.sqrt(Math.min(8_000_000, 16_000_000 / wanted.length) /
+        (viewport.width * viewport.height)))
+      if (state.renderedWidth === width && state.renderedDpr === dpr && state.ratio === ratio) continue
+      if (state === this.inputState) this.finishInput()
       const { canvas, inkCanvas } = state
       canvas.hidden = inkCanvas.hidden = true
-      state.sheet.querySelector(".pdf-preview-page").style.height = `${viewport.height}px`
       canvas.width = Math.ceil(viewport.width * ratio)
       canvas.height = Math.ceil(viewport.height * ratio)
       canvas.style.height = `${viewport.height}px`
@@ -139,6 +173,7 @@ export default class extends Controller {
       state.ink.setViewport(viewport, ratio)
       state.renderedWidth = width
       state.renderedDpr = dpr
+      state.ratio = ratio
       canvas.hidden = inkCanvas.hidden = false
       this.updateCursor(state)
     }
@@ -155,7 +190,19 @@ export default class extends Controller {
     this.updateTool()
   }
 
+  selectSize(event) {
+    if (!["small", "medium", "large"].includes(event.params.size)) return
+    this.finishInput()
+    this.eraserSize = event.params.size
+    for (const state of this.pageStates) state.ink.setEraserSize(this.eraserSize)
+    this.updateTool()
+  }
+
   updateTool() {
+    this.sizesTarget.hidden = this.tool !== "eraser"
+    for (const button of this.sizeTargets) {
+      button.setAttribute("aria-pressed", String(button.dataset.pdfPreviewSizeParam === this.eraserSize))
+    }
     for (const button of this.toolTargets) {
       button.setAttribute("aria-pressed", String(button.dataset.pdfPreviewToolParam === this.tool))
     }
@@ -164,18 +211,32 @@ export default class extends Controller {
 
   updateCursor(state) {
     state.inkCanvas.style.cursor = "crosshair"
+    state.cursor.hidden = true
     if (this.tool !== "eraser" || !state.ink.viewport) return
     const viewport = state.ink.viewport
     const diameter = state.ink.eraserWidth * Math.hypot(viewport.transform[0], viewport.transform[1]) *
       state.inkCanvas.getBoundingClientRect().width / viewport.width
-    if (diameter > 120) return
-    const size = Math.ceil(diameter) + 4
-    const center = size / 2
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${center}" cy="${center}" r="${diameter / 2}" fill="none" stroke="black"/></svg>`
-    state.inkCanvas.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${center} ${center}, crosshair`
+    state.inkCanvas.style.cursor = "none"
+    state.cursor.style.width = state.cursor.style.height = `${diameter}px`
+  }
+
+  showCursor(event) {
+    const state = this.statesByCanvas.get(event.currentTarget)
+    if (!state) return
+    this.updateCursor(state)
+    state.cursor.hidden = this.tool !== "eraser" || event.pointerType === "touch" || state.inkCanvas.hidden
+    const rect = state.inkCanvas.getBoundingClientRect()
+    state.cursor.style.left = `${event.clientX - rect.left}px`
+    state.cursor.style.top = `${event.clientY - rect.top}px`
+  }
+
+  hideCursor(event) {
+    const state = this.statesByCanvas.get(event.currentTarget)
+    if (state) state.cursor.hidden = true
   }
 
   pointerDown(event) {
+    this.showCursor(event)
     const state = this.statesByCanvas.get(event.currentTarget)
     if (!state || state.inkCanvas.hidden) return
     if (event.pointerType === "touch") {
@@ -185,7 +246,8 @@ export default class extends Controller {
       }
       return
     }
-    if (this.inputState) return
+    if (event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) return
+    if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) return
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
@@ -195,6 +257,7 @@ export default class extends Controller {
   }
 
   pointerMove(event) {
+    this.showCursor(event)
     if (event.pointerId === this.touch?.id) {
       window.scrollBy(0, this.touch.y - event.clientY)
       this.touch.y = event.clientY
@@ -210,6 +273,12 @@ export default class extends Controller {
         if (this.active) state.ink.redraw()
       })
     }
+  }
+
+  scrolled() {
+    // A wheel/trackpad scroll must not extend a held pen stroke as the page moves.
+    // Finger scrolling has no inputState and keeps its own pointer capture.
+    if (this.inputState) this.finishInput()
   }
 
   pointerEnd(event) {
@@ -250,6 +319,7 @@ export default class extends Controller {
     this.finishInput()
     window.clearTimeout(this.resizeTimer)
     this.observer?.disconnect()
+    this.intersections?.disconnect()
     for (const state of this.pageStates) {
       state.renderTask?.cancel()
       state.canvas.width = state.canvas.height = state.inkCanvas.width = state.inkCanvas.height = 0

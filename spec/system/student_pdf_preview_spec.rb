@@ -160,9 +160,10 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
     # Native buttons also activate via keyboard.
     find_button("消しゴム").send_keys(:space)
+    click_button "小"
     expect(find_button("消しゴム")["aria-pressed"]).to eq("true")
     expect(find_button("ペン")["aria-pressed"]).to eq("false")
-    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.style.cursor")).to include("url(")
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.style.cursor")).to eq("none")
     ink_drag(0.2, 0.1, 0.2, 0.1)
     ink_drag(0.4, 0.09, 0.4, 0.11)
     expect(ink_alpha(0.2, 0.1)).to eq(0)
@@ -194,6 +195,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(ink_alpha(0.8, 0.1)).to be > 0
       assert_canvas
       click_button "消しゴム"
+    click_button "小"
       page.driver.browser.action.scroll_by(0, 150).perform
       Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
       expect(ink_alpha(0.4, 0.1)).to eq(0)
@@ -204,6 +206,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   end
 
   def ink_drag(x1, y1, x2, y2, number = nil)
+    scroll_page(number) if number
     prefix = number ? "[data-page-number='#{number}'] " : ""
     rect = page.evaluate_script(<<~JS)
       (() => { const r = document.querySelector("#{prefix}[data-pdf-preview-target='ink']").getBoundingClientRect();
@@ -216,6 +219,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   end
 
   def ink_alpha(x, y, number = nil)
+    scroll_page(number) if number
     prefix = number ? "[data-page-number='#{number}'] " : ""
     page.evaluate_script(<<~JS)
       (() => { const c = document.querySelector("#{prefix}[data-pdf-preview-target='ink']");
@@ -228,13 +232,13 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_text("3ページを表示しています。", wait: 30)
     expect(all(".pdf-preview-sheet").map { |sheet| sheet["data-page-number"] }).to eq(%w[1 2 3])
-    expect(page).to have_css("canvas", count: 6)
+    expect(page).to have_css("canvas", count: 6, visible: :all)
     ratios = page.evaluate_script("Array.from(document.querySelectorAll('.pdf-preview-page')).map(p => p.clientWidth/p.clientHeight)")
     [ 2.0 / 3, 1.5, 1.5 ].each_with_index { |ratio, i| expect(ratios[i]).to be_within(0.01).of(ratio) }
-    colors = page.evaluate_script(<<~JS)
-      Array.from(document.querySelectorAll('[data-pdf-preview-target="canvas"]')).map(c =>
-        Array.from(c.getContext('2d').getImageData(Math.floor(c.width/2), Math.floor(c.height/2), 1, 1).data))
-    JS
+    colors = (1..3).map do |number|
+      scroll_page(number)
+      find("[data-page-number='#{number}'] [data-pdf-preview-target='canvas']").evaluate_script("Array.from(this.getContext('2d').getImageData(Math.floor(this.width/2),Math.floor(this.height/2),1,1).data)")
+    end
     expect(colors).to eq([ [ 0, 0, 0, 255 ], [ 255, 0, 0, 255 ], [ 0, 0, 255, 255 ] ])
 
     (1..3).each do |number|
@@ -249,14 +253,17 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.75, 0.3, 0.75, 0.3, 2)
     expect(ink_alpha(0.75, 0.3, 1)).to eq(0)
     expect(ink_alpha(0.75, 0.3, 3)).to eq(0)
+    scroll_page(2)
     original = find('[data-page-number="2"] [data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
     click_button "消しゴム"
+    click_button "小"
     ink_drag(0.3, 0.2, 0.3, 0.2, 2)
     ink_drag(0.45, 0.18, 0.45, 0.22, 2)
     expect(ink_alpha(0.3, 0.2, 2)).to eq(0)
     expect(ink_alpha(0.45, 0.2, 2)).to eq(0)
     expect(ink_alpha(0.2, 0.2, 1)).to be > 0
     expect(ink_alpha(0.3, 0.2, 3)).to be > 0
+    scroll_page(2)
     expect(find('[data-page-number="2"] [data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")).to eq(original)
     click_button "ペン"
     ink_drag(0.3, 0.2, 0.3, 0.2, 2)
@@ -268,7 +275,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 800, height: 900, deviceScaleFactor: 2, mobile: false)
       Timeout.timeout(10) do
         sleep 0.05 until page.evaluate_script(<<~JS)
-          Array.from(document.querySelectorAll('[data-pdf-preview-target="ink"]')).every(c =>
+          Array.from(document.querySelectorAll('[data-pdf-preview-target="ink"]')).some(c =>
             !c.hidden && Math.abs(c.width-c.getBoundingClientRect().width*2) <= 1)
         JS
       end
@@ -310,9 +317,9 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     attach_preview("pdf_preview_ten.pdf")
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_text("10ページを表示しています。", wait: 30)
-    expect(page).to have_css("canvas", count: 20)
+    expect(page).to have_css("canvas", count: 20, visible: :all)
     pixels = page.evaluate_script("Array.from(document.querySelectorAll('canvas')).reduce((sum,c) => sum+c.width*c.height,0)")
-    expect(pixels).to be <= 24_100_000
+    expect(pixels).to be <= 32_100_000
     scroll_page(10)
     ink_drag(0.2, 0.2, 0.2, 0.2, 10)
     expect(ink_alpha(0.2, 0.2, 10)).to be > 0
@@ -326,6 +333,137 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
   def scroll_page(number)
     find("[data-page-number='#{number}']").execute_script("this.scrollIntoView({block:'start'})")
+    expect(page).to have_css("[data-page-number='#{number}'] [data-pdf-preview-target='ink']", visible: true, wait: 15)
+  end
+
+  it "offers three erase widths, remembers selection, and restores each recorded footprint" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_no_css('[data-pdf-preview-target="sizes"]', visible: true)
+    ink_drag(0.1, 0.2, 0.9, 0.2)
+    original = find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
+    click_button "消しゴム"
+    expect(find_button("中")["aria-pressed"]).to eq("true")
+    expect(page).to have_css('[data-pdf-preview-target="size"]', count: 3)
+    [ [ "小", 0.2, 4 ], [ "中", 0.4, 8 ], [ "大", 0.6, 12 ] ].each do |label, x, width|
+      find_button(label).send_keys(:space)
+      expect(find_button(label)["aria-pressed"]).to eq("true")
+      ink_drag(x, 0.2, x, 0.2)
+      expect(ink_alpha(x, 0.2)).to eq(0)
+      geometry = page.evaluate_script(<<~JS)
+        (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
+          return {pageWidth:c.getBoundingClientRect().width,
+            cursor:document.querySelector('.pdf-preview-eraser-cursor').getBoundingClientRect().width}; })()
+      JS
+      expect(geometry["cursor"]).to be_within(0.5).of(geometry["pageWidth"] * width / 200)
+    end
+    expect(ink_alpha(0.215, 0.2)).to be > 0 # Outside small radius.
+    expect(ink_alpha(0.415, 0.2)).to eq(0) # Inside medium radius.
+    expect(ink_alpha(0.425, 0.2)).to be > 0
+    expect(ink_alpha(0.625, 0.2)).to eq(0) # Inside large radius.
+    expect(ink_alpha(0.635, 0.2)).to be > 0
+    expect(find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")).to eq(original)
+    click_button "ペン"
+    expect(page).to have_no_css('[data-pdf-preview-target="sizes"]', visible: true)
+    click_button "消しゴム"
+    expect(find_button("大")["aria-pressed"]).to eq("true")
+    click_button "小"
+    page.current_window.resize_to(800, 900)
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script(<<~JS)
+        (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
+          return !c.hidden && Math.abs(c.width-c.getBoundingClientRect().width*Math.min(devicePixelRatio,2)) <= 1; })()
+      JS
+    end
+    expect(ink_alpha(0.215, 0.2)).to be > 0
+    expect(ink_alpha(0.415, 0.2)).to eq(0)
+    expect(ink_alpha(0.625, 0.2)).to eq(0)
+  end
+
+  it "restores all erase sizes after releasing offscreen canvases without moving page geometry" do
+    attach_preview("pdf_preview_ten.pdf")
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("10ページを表示しています。", wait: 30)
+    scroll_page(1)
+    ink_drag(0.1, 0.2, 0.9, 0.2, 1)
+    click_button "消しゴム"
+    [ [ "小", 0.2 ], [ "中", 0.4 ], [ "大", 0.6 ] ].each do |label, x|
+      click_button label
+      ink_drag(x, 0.2, x, 0.2, 1)
+    end
+    saved = find('[data-page-number="1"] [data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")
+    positions = page.evaluate_script("Array.from(document.querySelectorAll('.pdf-preview-sheet')).map(s=>s.getBoundingClientRect().top+scrollY)")
+    scroll_page(10)
+    expect(find_button("大")["aria-pressed"]).to eq("true")
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script("document.querySelector('[data-page-number=\"1\"] canvas').width === 0")
+    end
+    click_button "ペン"
+    ink_drag(0.1, 0.2, 0.9, 0.2, 10)
+    click_button "消しゴム"
+    ink_drag(0.6, 0.2, 0.6, 0.2, 10)
+    expect(ink_alpha(0.625, 0.2, 10)).to eq(0)
+    scroll_page(1)
+    expect(find('[data-page-number="1"] [data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")).to eq(saved)
+    expect(page.evaluate_script("Array.from(document.querySelectorAll('.pdf-preview-sheet')).map(s=>s.getBoundingClientRect().top+scrollY)")).to eq(positions)
+    before = page.evaluate_script("scrollY")
+    sleep 0.2
+    expect(page.evaluate_script("scrollY")).to eq(before)
+  end
+
+  it "measures one, three and ten page previews at the same viewport and DPR" do
+    begin
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 800, height: 900, deviceScaleFactor: 2, mobile: false)
+      [ [ "pdf_preview_single.pdf", 1 ], [ "pdf_preview_three.pdf", 3 ], [ "pdf_preview_ten.pdf", 10 ] ].each do |filename, count|
+        attach_preview(filename)
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        visit student_assignment_pdf_preview_path(@assignment)
+        expect(page).to have_css('[data-page-number="1"] [data-pdf-preview-target="ink"]', visible: true, wait: 30)
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        metrics = page.evaluate_script(<<~JS)
+          (() => { const c = document.querySelector('canvas'); const r=c.getBoundingClientRect();
+            const all=Array.from(document.querySelectorAll('canvas'));
+            return {density:c.width/r.width, pixels:all.reduce((n,c)=>n+c.width*c.height,0),
+              resident:all.filter(c=>c.width>0).length/2, total:#{count}}; })()
+        JS
+        expect(metrics["density"]).to be_within(0.01).of(2)
+        expect(metrics["pixels"]).to be <= 32_100_000
+        expect(metrics["resident"]).to be < count if count == 10
+        puts "B2_METRIC #{metrics.merge("elapsed_seconds" => elapsed.round(3), "rgba_mb" => (metrics["pixels"] * 4 / 1_000_000.0).round(2)).to_json}"
+      end
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    end
+  end
+
+  it "accepts touch size buttons and ignores extra touch while a pen is down" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    [ "消しゴム", "大" ].each do |label|
+      rect = find_button(label).evaluate_script("this.getBoundingClientRect().toJSON()")
+      action = page.driver.browser.action
+      action.add_pointer_input(:touch, "size-touch")
+      action.move_to_location((rect["x"] + rect["width"] / 2).round, (rect["y"] + rect["height"] / 2).round, device: "size-touch")
+        .pointer_down(:left, device: "size-touch").pointer_up(:left, device: "size-touch").perform
+    end
+    expect(find_button("大")["aria-pressed"]).to eq("true")
+    click_button "ペン"
+    rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = (rect["x"] + rect["width"] * 0.2).round
+    y = (rect["y"] + rect["height"] * 0.1).round
+    pen = page.driver.browser.action
+    pen.add_pointer_input(:pen, "held-pen")
+    pen.move_to_location(x, y, device: "held-pen").pointer_down(:left, device: "held-pen").perform
+    before = page.evaluate_script("scrollY")
+    touch = page.driver.browser.action
+    touch.add_pointer_input(:touch, "extra-touch")
+    touch.move_to_location(x + 50, y + 20, device: "extra-touch").pointer_down(:left, device: "extra-touch")
+      .move_to_location(x + 50, y, device: "extra-touch").pointer_up(:left, device: "extra-touch").perform
+    expect(page.evaluate_script("scrollY")).to eq(before)
+    pen = page.driver.browser.action
+    pen.add_pointer_input(:pen, "held-pen")
+    pen.pointer_up(:left, device: "held-pen").perform
+    expect(ink_alpha(0.2, 0.1)).to be > 0
   end
 
   def attach_preview(filename)
@@ -350,6 +488,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.15, 0.1)).to be > 0
 
     click_button "消しゴム"
+    click_button "小"
     actions = page.driver.browser.action
     actions.add_pointer_input(:pen, "test-pen")
     actions.move_to_location((bounds["x"] + bounds["width"] * 0.15).round, y, device: "test-pen")

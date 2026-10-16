@@ -1,13 +1,21 @@
 // PDF coordinates are the source of truth. Canvas pixels are only a display cache.
+export const ERASER_WIDTHS = Object.freeze({ small: 4, medium: 8, large: 12 })
+
 export default class PdfInk {
   constructor(canvas, pageNumber = 1) {
     this.canvas = canvas
     this.pages = new Map([[pageNumber, []]])
     this.pageNumber = pageNumber
     this.width = 1.2 // PDF user-space units; scales with the page, not the screen.
-    this.eraserWidth = 4
+    this.eraserWidth = ERASER_WIDTHS.medium
     this.tool = "pen"
     this.nextOperationId = 1
+  }
+
+  setEraserSize(size) {
+    if (!Object.hasOwn(ERASER_WIDTHS, size)) return
+    if (this.stroke) this.end()
+    this.eraserWidth = ERASER_WIDTHS[size]
   }
 
   setTool(tool) {
@@ -77,6 +85,7 @@ export default class PdfInk {
   }
 
   redraw() {
+    if (!this.canvas.width || !this.canvas.height) return
     const context = this.canvas.getContext("2d")
     context.globalCompositeOperation = "source-over"
     context.resetTransform()

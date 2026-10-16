@@ -11,13 +11,20 @@
   data-controller="pdf-preview"
   data-pdf-preview-url-value="<%= material_student_assignment_path(@assignment) %>"
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
-  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput">
+  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput scroll@window->pdf-preview#scrolled">
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
   <div class="pdf-preview-tools" role="group" aria-label="手書きツール">
     <button type="button" aria-pressed="true" data-pdf-preview-target="tool"
       data-pdf-preview-tool-param="pen" data-action="pdf-preview#selectTool">ペン</button>
     <button type="button" aria-pressed="false" data-pdf-preview-target="tool"
       data-pdf-preview-tool-param="eraser" data-action="pdf-preview#selectTool">消しゴム</button>
+    <div class="pdf-preview-sizes" data-pdf-preview-target="sizes" role="group" aria-label="消しゴムの大きさ" hidden>
+      <span>消しゴムの大きさ：</span>
+      <% { small: "小", medium: "中", large: "大" }.each do |size, label| %>
+        <button type="button" aria-pressed="<%= size == :medium %>" data-pdf-preview-target="size"
+          data-pdf-preview-size-param="<%= size %>" data-action="pdf-preview#selectSize"><%= label %></button>
+      <% end %>
+    </div>
   </div>
   <div data-pdf-preview-target="container" class="pdf-preview-pages" aria-busy="true">
     <section class="pdf-preview-sheet" data-page-number="1" aria-label="教材PDFの1ページ目">
@@ -25,7 +32,8 @@
       <div class="pdf-preview-page">
         <canvas data-pdf-preview-target="canvas" aria-label="教材PDFの1ページ目" role="img" hidden></canvas>
         <canvas data-pdf-preview-target="ink" class="pdf-preview-ink" aria-label="ペン・消しゴムの手書き領域" hidden
-          data-action="pointerdown->pdf-preview#pointerDown pointermove->pdf-preview#pointerMove pointerup->pdf-preview#pointerEnd pointercancel->pdf-preview#pointerEnd lostpointercapture->pdf-preview#pointerEnd"></canvas>
+          data-action="pointerdown->pdf-preview#pointerDown pointermove->pdf-preview#pointerMove pointerup->pdf-preview#pointerEnd pointercancel->pdf-preview#pointerEnd lostpointercapture->pdf-preview#pointerEnd pointerenter->pdf-preview#showCursor pointerleave->pdf-preview#hideCursor"></canvas>
+        <span class="pdf-preview-eraser-cursor" aria-hidden="true" hidden></span>
       </div>
     </section>
   </div>

@@ -56,6 +56,7 @@ RSpec.describe "PDF ink coordinates and strokes" do
       assert.equal(ink.stroke, null, 'missing mouseup must not keep drawing');
       assert.equal(ink.tool, 'pen');
       ink.setTool('eraser');
+      ink.setEraserSize('small');
       ink.start(event(90, -400));
       assert.equal(ink.stroke.tool, 'eraser');
       assert.equal(ink.stroke.width, 4);
@@ -95,6 +96,22 @@ RSpec.describe "PDF ink coordinates and strokes" do
       assert.equal(second.pages.get(2).length, 2);
       assert.equal(second.pages.get(2)[1].points.length, 1);
       assert.equal(JSON.stringify([...ink.pages]), firstPage, 'page 2 erasing must not affect page 1');
+      const sizes = new PdfInk(canvas);
+      sizes.setViewport(viewport(1), 2);
+      assert.equal(sizes.eraserWidth, 8, 'initial size is medium');
+      sizes.setTool('eraser');
+      for (const size of ['small', 'medium', 'large']) {
+        sizes.setEraserSize(size);
+        sizes.start(event(90, -400)); sizes.end();
+      }
+      assert.deepEqual(sizes.pages.get(1).map(op => op.width), [4,8,12]);
+      sizes.setEraserSize('small');
+      sizes.setTool('pen'); sizes.start(event(90, -400)); sizes.end();
+      assert.equal(sizes.pages.get(1).at(-1).width, 1.2);
+      sizes.setTool('eraser');
+      const stored = JSON.stringify([...sizes.pages]);
+      sizes.setViewport(viewport(2), 1.5);
+      assert.equal(JSON.stringify([...sizes.pages]), stored, 'size changes cannot rewrite old erase widths');
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
       File.expand_path("../../app/javascript/pdf_ink.js", __dir__))

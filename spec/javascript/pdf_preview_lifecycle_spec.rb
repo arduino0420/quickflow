@@ -10,7 +10,7 @@ RSpec.describe "PDF preview rendering lifecycle" do
       const source = fs.readFileSync(process.argv[1], 'utf8').replace(/^import .*$/gm, '')
         .replace('export default class', 'class Preview');
       const c = vm.runInNewContext(source + '; new Preview()', {
-        Controller: class {}, window: { devicePixelRatio: 1, cancelAnimationFrame() {}, clearTimeout() {} }
+        Controller: class {}, window: { devicePixelRatio: 1, innerHeight: 900, cancelAnimationFrame() {}, clearTimeout() {} }
       });
       const tick = () => new Promise(resolve => setImmediate(resolve));
       (async () => {
@@ -23,7 +23,7 @@ RSpec.describe "PDF preview rendering lifecycle" do
               pending.push({number, resolve}); return {promise, cancel() {cancelled++}}; },
             cleanup() {cleaned++;}},
           canvas: {style:{}, getContext() {return {};}}, inkCanvas: {hidden:true},
-          sheet: {querySelector() {return {style:{}};}},
+          cursor: {}, sheet: {getBoundingClientRect() {return {top: (number-1)*300, bottom:number*300};}, querySelector() {return {style:{}};}},
           ink: {setViewport(viewport) {rendered.push([number, viewport.width]);}}
         }));
         c.updateCursor = () => {};
@@ -44,11 +44,15 @@ RSpec.describe "PDF preview rendering lifecycle" do
         let destroyed = 0;
         c.loadingTask = {destroy() {destroyed++; return Promise.resolve();}};
         c.pdfWorker = {destroy() {destroyed++;}}; c.worker = {terminate() {destroyed++;}};
+        let observers = 0;
+        c.observer = {disconnect() {observers++;}};
+        c.intersections = {disconnect() {observers++;}};
         c.disconnect();
         pending[2].resolve(); await latest; await first;
         assert.deepEqual(rendered, [[1,300]], 'late completion after navigation cannot change ink');
         assert.equal(pending.length, 3, 'page 3 must never render after disconnect');
         assert.equal(destroyed, 3); assert.equal(cleaned, 3); assert.equal(cancelled, 2);
+        assert.equal(observers, 2);
         assert(c.pageStates.every(s => s.canvas.width === 0 && s.inkCanvas.width === 0));
       })().catch(error => { console.error(error); process.exitCode = 1; });
     JAVASCRIPT

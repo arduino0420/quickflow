@@ -1,5 +1,8 @@
 .pdf-preview { margin-top: 1rem; }
-.pdf-preview-tools { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; position: sticky; top: 0; z-index: 1; padding: 0.5rem; background: var(--color-surface); }
+.pdf-preview-sizes { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.pdf-preview-sizes[hidden], .pdf-preview-eraser-cursor[hidden] { display: none; }
+.pdf-preview-eraser-cursor { position: absolute; border: 1px solid black; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 1px white; }
+.pdf-preview-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; position: sticky; top: 0; z-index: 1; padding: 0.5rem; background: var(--color-surface); }
 .pdf-preview-sheet + .pdf-preview-sheet { margin-top: 2rem; }
 .pdf-preview-page-number { margin: 0 0 0.5rem; color: var(--color-muted); }
 .pdf-preview-tools button[aria-pressed="true"] { outline: 3px solid var(--color-primary); outline-offset: 2px; background: var(--color-text); font-weight: bold; }
