@@ -206,3 +206,5 @@ legend { padding: 0 0.4rem; font-weight: 600; }
   .admin-dashboard-action, .admin-teacher-list tbody td { transition: none; }
   .admin-dashboard-action:hover { transform: none; }
 }
+
+.assignment-list--student .assignment-card--submitted .student-card-score { font-weight: 400; font-size: 1.1rem; }

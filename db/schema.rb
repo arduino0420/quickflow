@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_060000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_16_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -50,6 +50,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_060000) do
     t.datetime "updated_at", null: false
     t.index ["school_id"], name: "index_admins_on_school_id"
     t.index ["user_id"], name: "index_admins_on_user_id", unique: true
+  end
+
+  create_table "answer_drafts", force: :cascade do |t|
+    t.bigint "student_id", null: false
+    t.bigint "assignment_id", null: false
+    t.string "material_fingerprint", limit: 64, null: false
+    t.integer "format_version", default: 1, null: false
+    t.jsonb "page_data", default: [], null: false
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id"], name: "index_answer_drafts_on_assignment_id"
+    t.index ["student_id", "assignment_id"], name: "index_answer_drafts_on_student_id_and_assignment_id", unique: true
+    t.index ["student_id"], name: "index_answer_drafts_on_student_id"
   end
 
   create_table "assignment_classrooms", force: :cascade do |t|
@@ -170,6 +184,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_060000) do
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "admins", "schools"
+  add_foreign_key "answer_drafts", "assignments"
+  add_foreign_key "answer_drafts", "students"
   add_foreign_key "assignment_classrooms", "assignments"
   add_foreign_key "assignment_classrooms", "classrooms"
   add_foreign_key "assignments", "teachers"

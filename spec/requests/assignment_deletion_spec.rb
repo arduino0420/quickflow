@@ -12,6 +12,11 @@ RSpec.describe "Assignment deletion", type: :request do
     assignment.assignment_classrooms.create!(classroom: classroom)
   end
 
+  def create_draft(owner = assignment, writer = student)
+    AnswerDraft.create!(student: writer, assignment: owner,
+      material_fingerprint: "a" * 64, page_data: [ { page_number: 1, operations: [] } ])
+  end
+
   def document
     Nokogiri::HTML(response.body)
   end
@@ -40,6 +45,9 @@ RSpec.describe "Assignment deletion", type: :request do
         submission.grading_results.create!(question: question, ai_judgment: :needs_review,
           teacher_judgment: state == :needs_review ? nil : :correct, ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
       end
+      draft = create_draft
+      second_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+      second_draft = create_draft(assignment, second_student)
       other = Assignment.create!(teacher: teacher, title: "保持対象", point_per_question: 5)
       other.assignment_classrooms.create!(classroom: classroom)
       other_question = create_question(owner: other)
@@ -47,7 +55,8 @@ RSpec.describe "Assignment deletion", type: :request do
       other_submission.answer_file.attach(io: StringIO.new("%PDF-1.4\nkeep"), filename: "keep.pdf", content_type: "application/pdf")
       other_result = other_submission.grading_results.create!(question: other_question, ai_judgment: :correct,
         ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
-      kept = [ school, teacher, classroom, student, other, other_question, other_submission, other_result ]
+      other_draft = create_draft(other)
+      kept = [ school, teacher, classroom, student, other, other_question, other_submission, other_result, other_draft, second_student ]
       original = kept.map { |record| record.reload.attributes }
       login
       get assignment_path(assignment)
@@ -55,6 +64,8 @@ RSpec.describe "Assignment deletion", type: :request do
       delete assignment_path(assignment)
       expect(response).to redirect_to(assignments_path)
       expect(Assignment.exists?(assignment.id)).to be(false)
+      expect(AnswerDraft.exists?(draft.id)).to be(false)
+      expect(AnswerDraft.exists?(second_draft.id)).to be(false)
       expect(Submission.where(assignment_id: assignment.id)).to be_empty
       expect(Question.where(assignment_id: assignment.id)).to be_empty
       expect(AssignmentClassroom.where(assignment_id: assignment.id)).to be_empty
@@ -77,6 +88,8 @@ RSpec.describe "Assignment deletion", type: :request do
         target_school = actor == :foreign_teacher ? School.create!(school_code: "FOREIGN") : school
         login(Teacher.create!(school: target_school, user_id: "other", password: "password123"))
       end
+      draft = create_draft
+      original_draft = draft.attributes
       original = assignment.reload.attributes
       delete assignment_path(assignment)
       if [ :anonymous, :student ].include?(actor)
@@ -85,6 +98,7 @@ RSpec.describe "Assignment deletion", type: :request do
         expect(response).to have_http_status(:not_found)
       end
       expect(assignment.reload.attributes).to eq(original)
+      expect(draft.reload.attributes).to eq(original_draft)
       expect(assignment.material_file).to be_attached
     end
   end
@@ -113,6 +127,15 @@ RSpec.describe "Assignment deletion", type: :request do
     expect(assignment.material_file).to be_attached
     follow_redirect!
     expect(document.at_css("[role='alert']").text).to include("データは変更していません")
+  end
+
+  it "still deletes an assignment with no draft" do
+    distribute
+    login
+    expect(AnswerDraft.where(assignment: assignment)).to be_empty
+    delete assignment_path(assignment)
+    expect(response).to redirect_to(assignments_path)
+    expect(Assignment.exists?(assignment.id)).to be(false)
   end
 
   it "protects deletion with CSRF verification" do

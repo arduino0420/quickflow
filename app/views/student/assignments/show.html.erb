@@ -47,19 +47,25 @@
     </section>
   </div>
 <% else %>
-  <h2>解答PDFの提出</h2>
-  <% if @submission.errors.any? %>
-    <div role="alert">
-      <ul>
-        <% @submission.errors.full_messages.each do |message| %>
-          <li><%= message %></li>
-        <% end %>
-      </ul>
-    </div>
+  <% if @assignment.material_file.attached? %>
+    <%= link_to "PDFに解答する", student_assignment_pdf_preview_path(@assignment) %>
   <% end %>
-  <%= form_with model: @submission, url: student_assignment_submission_path(@assignment) do |form| %>
-    <%= form.label :answer_file, "解答PDF" %>
-    <%= form.file_field :answer_file, accept: "application/pdf,.pdf" %>
-    <%= form.submit "提出" %>
-  <% end %>
+  <details <%= "open" if @submission.errors.any? %>>
+    <summary>従来のPDFアップロード</summary>
+    <h2>解答PDFの提出</h2>
+    <% if @submission.errors.any? %>
+      <div role="alert">
+        <ul>
+          <% @submission.errors.full_messages.each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+    <%= form_with model: @submission, url: student_assignment_submission_path(@assignment) do |form| %>
+      <%= form.label :answer_file, "解答PDF" %>
+      <%= form.file_field :answer_file, accept: "application/pdf,.pdf" %>
+      <%= form.submit "提出" %>
+    <% end %>
+  </details>
 <% end %>

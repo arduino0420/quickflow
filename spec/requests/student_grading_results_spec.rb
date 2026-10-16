@@ -47,7 +47,7 @@ RSpec.describe "Student grading results", type: :request do
   end
 
   { nil => "未提出", submitted: "採点待ち", grading: "採点中", completed: "採点完了", failed: "採点失敗" }.each do |state, label|
-    it "shows #{label} with one action leading to the unified detail page" do
+    it "shows #{label} with one action leading to handwriting or existing results" do
       assignment
       if state
         result_for
@@ -68,7 +68,7 @@ RSpec.describe "Student grading results", type: :request do
       end
       expect(list_row[:class].split.include?("assignment-card--submitted")).to eq(!state.nil?)
       expect(list_row.css("a").size).to eq(1)
-      expect(list_row.at_css("a")[:href]).to eq(result_path)
+      expect(list_row.at_css("a")[:href]).to eq(state ? result_path : student_assignment_pdf_preview_path(assignment))
       expect(list_row.at_css("a")[:class]).to include("assignment-card-link")
       expect(list_row.css("a a, a button")).to be_empty
       expect(list_row.text).not_to include("採点状態：", "現在の点数：", "採点結果を見る", "詳細")

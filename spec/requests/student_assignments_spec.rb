@@ -44,7 +44,7 @@ RSpec.describe "Student assignments", type: :request do
     expect(response).to have_http_status(:ok)
     expect(document.at_css("h1").text).to eq("配信された小テスト")
     expect(document.css("li a").map { |link| link[:href] }).to eq([
-      student_assignment_path(latest), student_assignment_path(old)
+      student_assignment_pdf_preview_path(latest), student_assignment_pdf_preview_path(old)
     ])
     expect(document.css(".assignment-card-link").size).to eq(2)
     expect(response.body).not_to include("別クラス", "別学校", "未配信")
@@ -70,7 +70,7 @@ RSpec.describe "Student assignments", type: :request do
     expect(document.css("dt").map(&:text)).to eq([ "タイトル", "1問あたりの点数", "教材ファイル名" ])
     expect(document.css("dd").map(&:text)).to eq([ "式の計算", "5", "material.pdf" ])
     expect(document.css("main a").map { |link| link[:href] }).to eq([
-      student_assignments_path, material_student_assignment_path(item, download: "1")
+      student_assignments_path, material_student_assignment_path(item, download: "1"), student_assignment_pdf_preview_path(item)
     ])
     expect(document.at_css("form")[:action]).to eq(student_assignment_submission_path(item))
     expect(response.body).not_to include("/rails/active_storage", "再配信", "編集", "削除")
@@ -181,6 +181,8 @@ RSpec.describe "Student assignments", type: :request do
     login
     expect(response).to redirect_to(student_assignments_path)
     follow_redirect!
+    get document.at_css("a[href='#{student_assignment_pdf_preview_path(item)}']")[:href]
+    expect(response.body).to include("配信教材", "提出する")
     get document.at_css("a[href='#{student_assignment_path(item)}']")[:href]
     expect(response.body).to include("配信教材", "material.pdf")
     get document.at_css("a[href='#{material_student_assignment_path(item, download: "1")}']")[:href]
