@@ -9,6 +9,8 @@ export default class extends Controller {
   static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String, submissionUrl: String }
 
   connect() {
+    this.previousTurboSetting = document.documentElement.getAttribute("data-turbo")
+    document.documentElement.setAttribute("data-turbo", "false")
     this.exporting = false
     this.draftEditable = false
     this.sourceBytes = null
@@ -476,6 +478,8 @@ export default class extends Controller {
   }
 
   disconnect() {
+    if (this.previousTurboSetting === null) document.documentElement.removeAttribute("data-turbo")
+    else document.documentElement.setAttribute("data-turbo", this.previousTurboSetting)
     this.draft?.stop()
     this.sourceBytes = null
     this.active = false

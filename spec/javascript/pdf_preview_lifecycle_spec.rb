@@ -9,12 +9,17 @@ RSpec.describe "PDF preview rendering lifecycle" do
       const assert = require('node:assert/strict');
       const source = fs.readFileSync(process.argv[1], 'utf8').replace(/^import .*$/gm, '')
         .replace('export default class', 'class Preview');
+      let turboRestored = false;
       const c = vm.runInNewContext(source + '; new Preview()', {
-        Controller: class {}, window: { devicePixelRatio: 1, innerHeight: 900, cancelAnimationFrame() {}, clearTimeout() {} }
+        Controller: class {}, window: { devicePixelRatio: 1, innerHeight: 900, cancelAnimationFrame() {}, clearTimeout() {} },
+        document: { documentElement: { removeAttribute(name) {
+          assert.equal(name, 'data-turbo'); turboRestored = true;
+        } } }
       });
       const tick = () => new Promise(resolve => setImmediate(resolve));
       (async () => {
         c.active = true; c.session = Symbol(); c.revision = 0; c.renderQueue = Promise.resolve();
+        c.previousTurboSetting = null;
         c.containerTarget = {clientWidth: 200, setAttribute() {}};
         const pending = []; const rendered = []; let cancelled = 0; let cleaned = 0;
         c.pageStates = [1,2,3].map(number => ({
@@ -53,6 +58,7 @@ RSpec.describe "PDF preview rendering lifecycle" do
         assert.equal(pending.length, 3, 'page 3 must never render after disconnect');
         assert.equal(destroyed, 3); assert.equal(cleaned, 3); assert.equal(cancelled, 2);
         assert.equal(observers, 2);
+        assert(turboRestored, 'navigation setting must be restored when the editor disconnects');
         assert(c.pageStates.every(s => s.canvas.width === 0 && s.inkCanvas.width === 0));
       })().catch(error => { console.error(error); process.exitCode = 1; });
     JAVASCRIPT

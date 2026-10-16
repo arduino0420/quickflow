@@ -1,5 +1,6 @@
 <% content_for :head do %>
   <meta name="turbo-cache-control" content="no-cache">
+  <meta name="turbo-visit-control" content="reload">
 <% end %>
 
 <h1><%= @assignment.title %></h1>
@@ -13,7 +14,7 @@
   data-pdf-preview-draft-url-value="<%= student_assignment_answer_draft_path(@assignment) %>"
   data-pdf-preview-draft-context-value="<%= @draft_context %>"
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
-  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput scroll@window->pdf-preview#scrolled beforeunload@window->pdf-preview#warnUnsaved turbo:before-visit@document->pdf-preview#confirmLeave submit@document->pdf-preview#confirmLeave online@window->pdf-preview#retryDraft">
+  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput scroll@window->pdf-preview#scrolled beforeunload@window->pdf-preview#warnUnsaved turbo:before-visit@document->pdf-preview#confirmLeave online@window->pdf-preview#retryDraft">
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
   <p class="pdf-preview-draft-status" data-pdf-preview-target="draftStatus" role="status" aria-live="polite">下書きの復元中…</p>
   <button type="button" data-pdf-preview-target="retry" data-action="pdf-preview#retryDraft" hidden>保存を再試行</button>
