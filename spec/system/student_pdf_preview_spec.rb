@@ -398,7 +398,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
           return {pageWidth:c.getBoundingClientRect().width,
             cursor:document.querySelector('.pdf-preview-eraser-cursor').getBoundingClientRect().width}; })()
       JS
-      expect(geometry["cursor"]).to be_within(0.5).of(geometry["pageWidth"] * width / 200)
+      expect(geometry["cursor"]).to be_within(0.5).of(geometry["pageWidth"] * width / 200.0)
     end
     expect(ink_alpha(0.215, 0.2)).to be > 0 # Outside small radius.
     expect(ink_alpha(0.415, 0.2)).to eq(0) # Inside medium radius.
