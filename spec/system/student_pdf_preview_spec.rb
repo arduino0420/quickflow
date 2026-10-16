@@ -44,7 +44,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     JS
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_text("1ページ目を表示しています。", wait: 20)
-    expect(page).to have_css("canvas", count: 1)
+    expect(page).to have_css("canvas", count: 2)
     worker = page.evaluate_script("window.pdfPreviewWorkers")
     expect(worker.size).to eq(1)
     expect(worker.first).to eq("url" => "/vendor/pdfjs/6.4.299/pdf.worker.min.mjs", "type" => "module")
@@ -96,6 +96,90 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('[role="alert"]', text: "問題を表示できませんでした", wait: 20)
     expect(page).to have_no_css("canvas", visible: true)
+  end
+
+  it "draws separate mouse strokes and a dot on a transparent layer and keeps them aligned after resize" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    overlay = find('[data-pdf-preview-target="ink"]')
+    bounds = page.evaluate_script(<<~JS)
+      (() => {
+        const pdf = document.querySelector('[data-pdf-preview-target="canvas"]').getBoundingClientRect();
+        const ink = document.querySelector('[data-pdf-preview-target="ink"]').getBoundingClientRect();
+        return {aligned: ['x','y','width','height'].every(k => Math.abs(pdf[k]-ink[k]) < 0.1),
+          x: ink.x, y: ink.y, width: ink.width, height: ink.height};
+      })()
+    JS
+    expect(bounds["aligned"]).to be(true)
+    y = (bounds["y"] + bounds["height"] * 0.1).round
+    actions = page.driver.browser.action
+    [ [ 0.1, 0.2 ], [ 0.35, 0.45 ] ].each do |start_x, end_x|
+      actions.move_to_location((bounds["x"] + bounds["width"] * start_x).round, y)
+        .pointer_down(:left).move_to_location((bounds["x"] + bounds["width"] * end_x).round, y)
+        .pointer_up(:left)
+    end
+    actions.move_to_location((bounds["x"] + bounds["width"] * 0.7).round, y).click.perform
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.4, 0.1)).to be > 0
+    expect(ink_alpha(0.7, 0.1)).to be > 0
+    expect(ink_alpha(0.275, 0.1)).to eq(0)
+    expect(ink_alpha(0.9, 0.1)).to eq(0)
+    expect(page.evaluate_script("window.getSelection().toString()")).to eq("")
+    expect(overlay["class"]).to include("pdf-preview-ink")
+
+    page.current_window.resize_to(800, 900)
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script(<<~JS)
+        (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
+          return !c.hidden && Math.abs(c.width-c.getBoundingClientRect().width*Math.min(devicePixelRatio,2)) <= 1; })()
+      JS
+    end
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.7, 0.1)).to be > 0
+    expect(ink_alpha(0.275, 0.1)).to eq(0)
+    # The PDF itself remains intact and its original black square is still present.
+    assert_canvas
+    page.driver.browser.action.scroll_by(0, 150).perform
+    Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    page.refresh
+    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(ink_alpha(0.15, 0.1)).to eq(0)
+  end
+
+  def ink_alpha(x, y)
+    page.evaluate_script(<<~JS)
+      (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
+        return c.getContext('2d').getImageData(Math.round(c.width*#{x}), Math.round(c.height*#{y}), 1, 1).data[3]; })()
+    JS
+  end
+
+  it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    bounds = page.evaluate_script(<<~JS)
+      (() => { const r = document.querySelector('[data-pdf-preview-target="ink"]').getBoundingClientRect();
+        return {x:r.x, y:r.y, width:r.width, height:r.height}; })()
+    JS
+    y = (bounds["y"] + bounds["height"] * 0.1).round
+    actions = page.driver.browser.action
+    actions.add_pointer_input(:pen, "test-pen")
+    actions.move_to_location((bounds["x"] + bounds["width"] * 0.1).round, y, device: "test-pen")
+      .pointer_down(:left, device: "test-pen")
+      .move_to_location((bounds["x"] + bounds["width"] * 0.2).round, y, device: "test-pen")
+      .pointer_up(:left, device: "test-pen").perform
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+
+    before = find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")
+    actions = page.driver.browser.action
+    actions.add_pointer_input(:touch, "test-finger")
+    x = (bounds["x"] + bounds["width"] * 0.8).round
+    actions.move_to_location(x, y + 100, device: "test-finger")
+      .pointer_down(:left, device: "test-finger")
+      .move_to_location(x, y, device: "test-finger")
+      .pointer_up(:left, device: "test-finger").perform
+    Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")).to eq(before)
   end
 
   def install_browser_script(source)

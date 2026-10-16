@@ -1,4 +1,8 @@
 .pdf-preview { margin-top: 1rem; }
-.pdf-preview-page { width: 100%; min-width: 0; }
+.pdf-preview-page { position: relative; width: 100%; min-width: 0; }
 .pdf-preview-page canvas { display: block; width: 100%; height: auto; background: white; }
 .pdf-preview-page canvas[hidden] { display: none; }
+.pdf-preview-page .pdf-preview-ink {
+  position: absolute; inset: 0; width: 100%; height: 100%; background: transparent;
+  touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair;
+}

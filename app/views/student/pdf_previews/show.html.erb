@@ -2,18 +2,21 @@
   <meta name="turbo-cache-control" content="no-cache">
 <% end %>
 
-<h1><%= @assignment.title %>：PDF表示試作</h1>
-<p>1ページ目のみ表示します。</p>
+<h1><%= @assignment.title %>：PDF手書き試作</h1>
+<p>1ページ目にマウス・ペンで書けます。指で上下に移動できます。</p>
+<p role="note">書いた内容は保存されません。再読み込みや画面移動で消えます。</p>
 <%= link_to "小テストの詳細へ戻る", student_assignment_path(@assignment) %>
 
 <section class="pdf-preview" aria-label="教材PDFの1ページ目"
   data-controller="pdf-preview"
   data-pdf-preview-url-value="<%= material_student_assignment_path(@assignment) %>"
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
-  data-action="turbo:before-cache@document->pdf-preview#disconnect">
+  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#queueRender blur@window->pdf-preview#finishInput">
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
   <div data-pdf-preview-target="container" class="pdf-preview-page" aria-busy="true">
     <canvas data-pdf-preview-target="canvas" aria-label="教材PDFの1ページ目" role="img" hidden></canvas>
+    <canvas data-pdf-preview-target="ink" class="pdf-preview-ink" aria-label="黒ペンの手書き領域" hidden
+      data-action="pointerdown->pdf-preview#pointerDown pointermove->pdf-preview#pointerMove pointerup->pdf-preview#pointerEnd pointercancel->pdf-preview#pointerEnd lostpointercapture->pdf-preview#pointerEnd"></canvas>
   </div>
   <noscript><p role="alert">PDFの表示にはJavaScriptが必要です。ブラウザの設定を確認してください。</p></noscript>
 </section>

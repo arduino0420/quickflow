@@ -32,7 +32,9 @@ RSpec.describe "Student PDF previews", type: :request do
     expect(preview["data-pdf-preview-url-value"]).to eq(material_student_assignment_path(assignment))
     expect(preview["data-pdf-preview-assets-url-value"]).to eq("/vendor/pdfjs/6.4.299/")
     expect(preview.text).to include("問題を読み込んでいます")
-    expect(document.css("canvas").size).to eq(1)
+    expect(document.css("canvas").size).to eq(2)
+    expect(document.at_css('canvas[data-pdf-preview-target="ink"]')).to be_present
+    expect(response.body).to include("書いた内容は保存されません")
     expect(document.css('input[type="file"], input[type="submit"]')).to be_empty
 
     get material_student_assignment_path(assignment)

@@ -1,12 +1,18 @@
 import { Controller } from "@hotwired/stimulus"
+import PdfInk from "pdf_ink"
 
-// A1: display only. The material URL remains protected by the existing student controller.
+// The material URL remains protected by the existing student controller.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas"]
+  static targets = ["status", "container", "canvas", "ink"]
   static values = { url: String, assetsUrl: String }
 
   connect() {
     this.active = true
+    this.page = null
+    this.renderedWidth = null
+    this.renderedDpr = null
+    this.renderQueue = Promise.resolve()
+    this.ink = new PdfInk(this.inkTarget)
     this.load()
   }
 
@@ -53,9 +59,12 @@ export default class extends Controller {
   }
 
   async renderPage() {
-    if (!this.active) return
+    if (!this.active || !this.page) return
     const width = this.containerTarget.clientWidth
-    if (!width || width === this.renderedWidth) return
+    const dpr = window.devicePixelRatio || 1
+    if (!width || (width === this.renderedWidth && dpr === this.renderedDpr)) return
+    this.finishInput()
+    this.inkTarget.hidden = true
     const original = this.page.getViewport({ scale: 1 })
     const viewport = this.page.getViewport({ scale: width / original.width })
     // Bound backing-store memory on high-DPI / very large displays.
@@ -65,16 +74,69 @@ export default class extends Controller {
     canvas.hidden = true
     canvas.width = Math.ceil(viewport.width * ratio)
     canvas.height = Math.ceil(viewport.height * ratio)
+    canvas.style.height = `${viewport.height}px`
     this.renderTask = this.page.render({
       canvasContext: canvas.getContext("2d"), viewport,
-      transform: [ratio, 0, 0, ratio, 0, 0]
+      transform: [canvas.width / viewport.width, 0, 0, canvas.height / viewport.height, 0, 0]
     })
     await this.renderTask.promise
     if (!this.active) return
     this.renderedWidth = width
+    this.renderedDpr = dpr
+    this.ink.setViewport(viewport, ratio)
     canvas.hidden = false
+    this.inkTarget.hidden = false
     this.containerTarget.setAttribute("aria-busy", "false")
     this.statusTarget.textContent = "1ページ目を表示しています。"
+  }
+
+  pointerDown(event) {
+    if (this.inkTarget.hidden) return
+    if (event.pointerType === "touch") {
+      // touch-action:none prevents the browser from stealing pen strokes.
+      // Finger drags scroll the document here; wheel/trackpad events stay native.
+      if (!this.ink.stroke && !this.touch) {
+        this.touch = { id: event.pointerId, y: event.clientY }
+        this.inkTarget.setPointerCapture(event.pointerId)
+      }
+      return
+    }
+    if (this.ink.start(event)) {
+      this.touch = null
+      event.preventDefault()
+      this.inkTarget.setPointerCapture(event.pointerId)
+    }
+  }
+
+  pointerMove(event) {
+    if (event.pointerId === this.touch?.id) {
+      window.scrollBy(0, this.touch.y - event.clientY)
+      this.touch.y = event.clientY
+      return
+    }
+    this.ink.move(event)
+    if (this.ink.stroke && !this.inkFrame) {
+      this.inkFrame = window.requestAnimationFrame(() => {
+        this.inkFrame = null
+        this.ink.redraw()
+      })
+    }
+  }
+
+  pointerEnd(event) {
+    this.ink.end(event)
+    if (event.pointerId === this.touch?.id) this.touch = null
+    if (this.inkTarget.hasPointerCapture(event.pointerId)) this.inkTarget.releasePointerCapture(event.pointerId)
+  }
+
+  finishInput() {
+    if (!this.ink) return
+    const ids = [this.ink.pointerId, this.touch?.id]
+    this.ink.end()
+    this.touch = null
+    for (const id of ids) {
+      if (id != null && this.inkTarget.hasPointerCapture(id)) this.inkTarget.releasePointerCapture(id)
+    }
   }
 
   fail() {
@@ -82,12 +144,16 @@ export default class extends Controller {
     this.statusTarget.setAttribute("role", "alert")
     this.statusTarget.textContent = "問題を表示できませんでした。通信状態を確認して、ページを再読み込みしてください。"
     this.canvasTarget.hidden = true
+    this.inkTarget.hidden = true
     this.containerTarget.setAttribute("aria-busy", "false")
     this.disconnect()
   }
 
   disconnect() {
     this.active = false
+    this.finishInput()
+    window.cancelAnimationFrame(this.inkFrame)
+    this.inkFrame = null
     window.clearTimeout(this.resizeTimer)
     this.observer?.disconnect()
     this.renderTask?.cancel()
