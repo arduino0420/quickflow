@@ -1,9 +1,9 @@
 // PDF coordinates are the source of truth. Canvas pixels are only a display cache.
 export default class PdfInk {
-  constructor(canvas) {
+  constructor(canvas, pageNumber = 1) {
     this.canvas = canvas
-    this.pages = new Map([[1, []]])
-    this.pageNumber = 1
+    this.pages = new Map([[pageNumber, []]])
+    this.pageNumber = pageNumber
     this.width = 1.2 // PDF user-space units; scales with the page, not the screen.
     this.eraserWidth = 4
     this.tool = "pen"
@@ -12,7 +12,7 @@ export default class PdfInk {
 
   setTool(tool) {
     if (!["pen", "eraser"].includes(tool)) return
-    this.end()
+    if (this.stroke) this.end()
     this.tool = tool
   }
 
@@ -32,8 +32,14 @@ export default class PdfInk {
     )
   }
 
+  contains(event) {
+    const rect = this.canvas.getBoundingClientRect()
+    return event.clientX >= rect.left && event.clientX <= rect.left + rect.width &&
+      event.clientY >= rect.top && event.clientY <= rect.top + rect.height
+  }
+
   start(event) {
-    if (!this.viewport || this.stroke || !["mouse", "pen"].includes(event.pointerType) || event.button !== 0) return false
+    if (!this.viewport || this.stroke || !["mouse", "pen"].includes(event.pointerType) || event.button !== 0 || !this.contains(event)) return false
     this.pointerId = event.pointerId
     // Array order is replay order; the ID identifies each operation within this session.
     this.stroke = { id: this.nextOperationId++, tool: this.tool, color: "#000000",
@@ -50,6 +56,7 @@ export default class PdfInk {
       return
     }
     for (const sample of [...(event.getCoalescedEvents?.() || []), event]) {
+      if (!this.contains(sample)) { this.end(); return }
       const point = this.point(sample)
       const previous = this.stroke.points.at(-1)
       if (point[0] !== previous[0] || point[1] !== previous[1]) this.stroke.points.push(point)
@@ -59,7 +66,7 @@ export default class PdfInk {
   end(event) {
     if (event && event.pointerId !== this.pointerId) return
     // A pointerup may contain a last position absent from pointermove.
-    if (event?.type === "pointerup" && this.stroke) {
+    if (event?.type === "pointerup" && this.stroke && this.contains(event)) {
       const point = this.point(event)
       const previous = this.stroke.points.at(-1)
       if (point[0] !== previous[0] || point[1] !== previous[1]) this.stroke.points.push(point)

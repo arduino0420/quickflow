@@ -12,7 +12,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     Student.create!(classroom: classroom, attendance_number: 1, password: "password123")
     @assignment = Assignment.create!(teacher: teacher, title: "表示試験", point_per_question: 5)
     @assignment.assignment_classrooms.create!(classroom: classroom)
-    @assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files/pdf_preview.pdf")),
+    @assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")),
       filename: "preview.pdf", content_type: "application/pdf")
 
     visit student_login_path
@@ -203,9 +203,10 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
-  def ink_drag(x1, y1, x2, y2)
+  def ink_drag(x1, y1, x2, y2, number = nil)
+    prefix = number ? "[data-page-number='#{number}'] " : ""
     rect = page.evaluate_script(<<~JS)
-      (() => { const r = document.querySelector('[data-pdf-preview-target="ink"]').getBoundingClientRect();
+      (() => { const r = document.querySelector("#{prefix}[data-pdf-preview-target='ink']").getBoundingClientRect();
         return {x:r.x, y:r.y, width:r.width, height:r.height}; })()
     JS
     page.driver.browser.action.move_to_location((rect["x"] + rect["width"] * x1).round, (rect["y"] + rect["height"] * y1).round)
@@ -214,11 +215,122 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       .pointer_up(:left).perform
   end
 
-  def ink_alpha(x, y)
+  def ink_alpha(x, y, number = nil)
+    prefix = number ? "[data-page-number='#{number}'] " : ""
     page.evaluate_script(<<~JS)
-      (() => { const c = document.querySelector('[data-pdf-preview-target="ink"]');
+      (() => { const c = document.querySelector("#{prefix}[data-pdf-preview-target='ink']");
         return c.getContext('2d').getImageData(Math.round(c.width*#{x}), Math.round(c.height*#{y}), 1, 1).data[3]; })()
     JS
+  end
+
+  it "keeps three differently sized/rotated pages independent through erasing, scrolling, resizing and DPR changes" do
+    attach_preview("pdf_preview_three.pdf")
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("3ページを表示しています。", wait: 30)
+    expect(all(".pdf-preview-sheet").map { |sheet| sheet["data-page-number"] }).to eq(%w[1 2 3])
+    expect(page).to have_css("canvas", count: 6)
+    ratios = page.evaluate_script("Array.from(document.querySelectorAll('.pdf-preview-page')).map(p => p.clientWidth/p.clientHeight)")
+    [ 2.0 / 3, 1.5, 1.5 ].each_with_index { |ratio, i| expect(ratios[i]).to be_within(0.01).of(ratio) }
+    colors = page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll('[data-pdf-preview-target="canvas"]')).map(c =>
+        Array.from(c.getContext('2d').getImageData(Math.floor(c.width/2), Math.floor(c.height/2), 1, 1).data))
+    JS
+    expect(colors).to eq([ [ 0, 0, 0, 255 ], [ 255, 0, 0, 255 ], [ 0, 0, 255, 255 ] ])
+
+    (1..3).each do |number|
+      scroll_page(number)
+      expect(ink_alpha(0.2, 0.2, number)).to eq(0)
+      ink_drag(0.1, 0.2, 0.6, 0.2, number)
+      ink_drag(0.8, 0.2, 0.8, 0.2, number)
+      expect(ink_alpha(0.2, 0.2, number)).to be > 0
+    end
+    # Page 2's operations never appear on pages 1 or 3.
+    scroll_page(2)
+    ink_drag(0.75, 0.3, 0.75, 0.3, 2)
+    expect(ink_alpha(0.75, 0.3, 1)).to eq(0)
+    expect(ink_alpha(0.75, 0.3, 3)).to eq(0)
+    original = find('[data-page-number="2"] [data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
+    click_button "消しゴム"
+    ink_drag(0.3, 0.2, 0.3, 0.2, 2)
+    ink_drag(0.45, 0.18, 0.45, 0.22, 2)
+    expect(ink_alpha(0.3, 0.2, 2)).to eq(0)
+    expect(ink_alpha(0.45, 0.2, 2)).to eq(0)
+    expect(ink_alpha(0.2, 0.2, 1)).to be > 0
+    expect(ink_alpha(0.3, 0.2, 3)).to be > 0
+    expect(find('[data-page-number="2"] [data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")).to eq(original)
+    click_button "ペン"
+    ink_drag(0.3, 0.2, 0.3, 0.2, 2)
+    expect(ink_alpha(0.3, 0.2, 2)).to be > 0
+
+    begin
+      page.current_window.resize_to(1000, 900)
+      page.current_window.resize_to(900, 900)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 800, height: 900, deviceScaleFactor: 2, mobile: false)
+      Timeout.timeout(10) do
+        sleep 0.05 until page.evaluate_script(<<~JS)
+          Array.from(document.querySelectorAll('[data-pdf-preview-target="ink"]')).every(c =>
+            !c.hidden && Math.abs(c.width-c.getBoundingClientRect().width*2) <= 1)
+        JS
+      end
+      (1..3).each do |number|
+        scroll_page(number)
+        expect(ink_alpha(0.2, 0.2, number)).to be > 0
+        expect(ink_alpha(0.8, 0.2, number)).to be > 0
+      end
+      expect(ink_alpha(0.45, 0.2, 2)).to eq(0)
+      expect(ink_alpha(0.3, 0.2, 2)).to be > 0
+      expect(ink_alpha(0.75, 0.3, 1)).to eq(0)
+      expect(ink_alpha(0.75, 0.3, 2)).to be > 0
+      expect(find_button("ペン")["aria-pressed"]).to eq("true")
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    end
+  end
+
+  it "ends captured input at a page boundary without drawing on the next page" do
+    page.current_window.resize_to(800, 1100)
+    attach_preview("pdf_preview_three.pdf")
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("3ページを表示しています。", wait: 30)
+    scroll_page(2)
+    rect = find('[data-page-number="2"] [data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = (rect["x"] + rect["width"] * 0.2).round
+    y = (rect["bottom"] - 20).round
+    page.driver.browser.action.move_to_location(x, y).pointer_down(:left)
+      .move_to_location(x, (rect["bottom"] + 40).round).pointer_up(:left).perform
+    expect(ink_alpha(0.2, 0.05, 3)).to eq(0)
+    scroll_page(3)
+    ink_drag(0.2, 0.2, 0.2, 0.2, 3)
+    expect(ink_alpha(0.2, 0.2, 3)).to be > 0
+    scroll_page(2)
+    expect(ink_alpha(0.2, 0.2, 2)).to eq(0)
+  end
+
+  it "renders ten pages sequentially with a bounded total bitmap allocation and can leave the screen" do
+    attach_preview("pdf_preview_ten.pdf")
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("10ページを表示しています。", wait: 30)
+    expect(page).to have_css("canvas", count: 20)
+    pixels = page.evaluate_script("Array.from(document.querySelectorAll('canvas')).reduce((sum,c) => sum+c.width*c.height,0)")
+    expect(pixels).to be <= 24_100_000
+    scroll_page(10)
+    ink_drag(0.2, 0.2, 0.2, 0.2, 10)
+    expect(ink_alpha(0.2, 0.2, 10)).to be > 0
+    click_link "小テストの詳細へ戻る"
+    expect(page).to have_current_path(student_assignment_path(@assignment))
+    expect(page).to have_css('input[type="file"]')
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_text("10ページを表示しています。", wait: 30)
+    expect(ink_alpha(0.2, 0.2, 10)).to eq(0)
+  end
+
+  def scroll_page(number)
+    find("[data-page-number='#{number}']").execute_script("this.scrollIntoView({block:'start'})")
+  end
+
+  def attach_preview(filename)
+    @assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files", filename)),
+      filename: "preview.pdf", content_type: "application/pdf")
   end
 
   it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do

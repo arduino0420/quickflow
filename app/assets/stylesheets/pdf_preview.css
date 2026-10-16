@@ -1,5 +1,7 @@
 .pdf-preview { margin-top: 1rem; }
-.pdf-preview-tools { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.pdf-preview-tools { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; position: sticky; top: 0; z-index: 1; padding: 0.5rem; background: var(--color-surface); }
+.pdf-preview-sheet + .pdf-preview-sheet { margin-top: 2rem; }
+.pdf-preview-page-number { margin: 0 0 0.5rem; color: var(--color-muted); }
 .pdf-preview-tools button[aria-pressed="true"] { outline: 3px solid var(--color-primary); outline-offset: 2px; background: var(--color-text); font-weight: bold; }
 .pdf-preview-page { position: relative; width: 100%; min-width: 0; }
 .pdf-preview-page canvas { display: block; width: 100%; height: auto; background: white; }

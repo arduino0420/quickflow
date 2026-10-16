@@ -80,6 +80,21 @@ RSpec.describe "PDF ink coordinates and strokes" do
       assert(modes.includes('destination-out'));
       assert.equal(modes.at(-1), 'source-over', 'erase mode must not leak into subsequent drawing');
       assert.equal(ink.pages.get(1).at(-3).tool, 'eraser');
+      const second = new PdfInk(canvas, 2);
+      second.setViewport(viewport(2), 1);
+      second.start(event(90, -400));
+      second.end();
+      const firstPage = JSON.stringify([...ink.pages]);
+      second.setTool('eraser');
+      second.start(event(90, -400));
+      second.move(event(300, -400)); // Leaves the page while captured.
+      assert.equal(second.stroke, null);
+      second.move(event(90, -400)); // Re-entry while held cannot start another stroke.
+      second.end(event(300, -400, {type:'pointerup'}));
+      assert.equal(second.pages.has(1), false);
+      assert.equal(second.pages.get(2).length, 2);
+      assert.equal(second.pages.get(2)[1].points.length, 1);
+      assert.equal(JSON.stringify([...ink.pages]), firstPage, 'page 2 erasing must not affect page 1');
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
       File.expand_path("../../app/javascript/pdf_ink.js", __dir__))
