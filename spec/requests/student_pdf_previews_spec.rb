@@ -39,7 +39,9 @@ RSpec.describe "Student PDF previews", type: :request do
     expect(document.at_css('[data-pdf-preview-target="sizes"]')["hidden"]).not_to be_nil
     expect(document.css('[data-pdf-preview-target="size"]').map(&:text)).to eq(%w[小 中 大])
     expect(document.at_css('[data-pdf-preview-size-param="medium"]')["aria-pressed"]).to eq("true")
-    expect(response.body).to include("書いた内容は保存されません")
+    expect(response.body).not_to include("書いた内容は保存されません", "各ページにマウス", 'class="pdf-preview-page-number"')
+    expect(preview.text).to include("確認用PDFをダウンロード", "正式提出は行いません")
+    expect(document.at_css("a[href='#{student_assignment_path(assignment)}']").text).to eq("小テストの詳細へ戻る")
     expect(document.css('input[type="file"], input[type="submit"]')).to be_empty
 
     get material_student_assignment_path(assignment)

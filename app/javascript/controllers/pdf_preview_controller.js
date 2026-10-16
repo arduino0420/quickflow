@@ -1,12 +1,15 @@
 import { Controller } from "@hotwired/stimulus"
 import PdfInk from "pdf_ink"
+import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size"]
-  static values = { url: String, assetsUrl: String }
+  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "download", "exportStatus"]
+  static values = { url: String, assetsUrl: String, assignmentId: Number }
 
   connect() {
+    this.exporting = false
+    this.sourceBytes = null
     this.active = true
     this.session = Symbol()
     this.pageStates = []
@@ -60,7 +63,6 @@ export default class extends Controller {
         const sheet = template.cloneNode(true)
         sheet.dataset.pageNumber = number
         sheet.setAttribute("aria-label", `教材PDFの${number}ページ目`)
-        sheet.querySelector(".pdf-preview-page-number").textContent = `${number}ページ目`
         const canvas = sheet.querySelector('[data-pdf-preview-target="canvas"]')
         canvas.hidden = true
         canvas.setAttribute("aria-label", `教材PDFの${number}ページ目`)
@@ -179,10 +181,13 @@ export default class extends Controller {
     }
     if (!this.current(session) || revision !== this.revision) return
     this.containerTarget.setAttribute("aria-busy", "false")
-    this.statusTarget.textContent = this.pdf.numPages === 1 ? "1ページ目を表示しています。" : `${this.pdf.numPages}ページを表示しています。`
+    this.statusTarget.textContent = ""
+    this.statusTarget.hidden = true
+    if (this.hasDownloadTarget) this.downloadTarget.disabled = this.exporting
   }
 
   selectTool(event) {
+    if (this.exporting) return
     if (!["pen", "eraser"].includes(event.params.tool)) return
     this.finishInput()
     this.tool = event.params.tool
@@ -191,6 +196,7 @@ export default class extends Controller {
   }
 
   selectSize(event) {
+    if (this.exporting) return
     if (!["small", "medium", "large"].includes(event.params.size)) return
     this.finishInput()
     this.eraserSize = event.params.size
@@ -236,6 +242,7 @@ export default class extends Controller {
   }
 
   pointerDown(event) {
+    if (this.exporting) return
     this.showCursor(event)
     const state = this.statesByCanvas.get(event.currentTarget)
     if (!state || state.inkCanvas.hidden) return
@@ -257,6 +264,7 @@ export default class extends Controller {
   }
 
   pointerMove(event) {
+    if (this.exporting) return
     this.showCursor(event)
     if (event.pointerId === this.touch?.id) {
       window.scrollBy(0, this.touch.y - event.clientY)
@@ -306,6 +314,8 @@ export default class extends Controller {
 
   fail() {
     if (!this.active) return
+    this.statusTarget.hidden = false
+    if (this.hasDownloadTarget) this.downloadTarget.disabled = true
     this.statusTarget.setAttribute("role", "alert")
     this.statusTarget.textContent = "問題を表示できませんでした。通信状態を確認して、ページを再読み込みしてください。"
     for (const state of this.pageStates) state.canvas.hidden = state.inkCanvas.hidden = true
@@ -313,7 +323,52 @@ export default class extends Controller {
     this.disconnect()
   }
 
+  async download() {
+    if (this.exporting || !this.active || !this.pagesReady || !this.pdf) return
+    this.finishInput()
+    this.exporting = true
+    const session = this.session
+    const status = this.exportStatusTarget
+    status.hidden = false
+    status.setAttribute("role", "status")
+    status.textContent = "確認用PDFを生成しています。"
+    this.downloadTarget.disabled = true
+    for (const button of [...this.toolTargets, ...this.sizeTargets]) button.disabled = true
+    try {
+      const pages = snapshotPages(this.pageStates)
+      this.sourceBytes ||= await this.pdf.getData()
+      if (!this.current(session)) return
+      const bytes = await generateAnswerPdf({ source: this.sourceBytes, pages,
+        current: () => this.current(session),
+        progress: (number, total) => { if (this.current(session)) status.textContent = `確認用PDFを生成しています（${number}/${total}）。` }
+      })
+      if (!this.current(session)) return
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }))
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `quickflow_answer_assignment_${this.assignmentIdValue}.pdf`
+      document.body.append(link)
+      try { link.click() } finally {
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      }
+      status.textContent = "確認用PDFをダウンロードしました。正式提出は行っていません。"
+    } catch {
+      if (this.current(session)) {
+        status.setAttribute("role", "alert")
+        status.textContent = "PDFを生成できませんでした。手書き内容はこの画面に残っています。通信状態やPDFの形式・サイズを確認して、もう一度お試しください（暗号化・署名付きPDFには対応していません）。"
+      }
+    } finally {
+      this.exporting = false
+      if (this.current(session)) {
+        this.downloadTarget.disabled = false
+        for (const button of [...this.toolTargets, ...this.sizeTargets]) button.disabled = false
+      }
+    }
+  }
+
   disconnect() {
+    this.sourceBytes = null
     this.active = false
     this.resolutionQuery?.removeEventListener("change", this.resolutionChanged)
     this.finishInput()

@@ -43,7 +43,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       };
     JS
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(page).to have_css("canvas", count: 2)
     worker = page.evaluate_script("window.pdfPreviewWorkers")
     expect(worker.size).to eq(1)
@@ -52,7 +52,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
     assert_canvas
     page.current_window.resize_to(800, 900)
-    expect(page).to have_text("1ページ目を表示しています。")
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     # Wait for the debounced backing-store resize, not just CSS scaling.
     expect(page).to have_css("canvas", visible: true)
     Timeout.timeout(5) do
@@ -100,7 +100,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
   it "draws separate mouse strokes and a dot on a transparent layer and keeps them aligned after resize" do
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     overlay = find('[data-pdf-preview-target="ink"]')
     bounds = page.evaluate_script(<<~JS)
       (() => {
@@ -143,13 +143,13 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
     expect(ink_alpha(0.15, 0.1)).to be > 0
     page.refresh
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(ink_alpha(0.15, 0.1)).to eq(0)
   end
 
   it "partially erases only ink and replays pen/eraser/pen after resize and high-DPI rendering" do
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(find_button("ペン")["aria-pressed"]).to eq("true")
     expect(find_button("消しゴム")["aria-pressed"]).to eq("false")
     original_pdf = find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
@@ -230,7 +230,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "keeps three differently sized/rotated pages independent through erasing, scrolling, resizing and DPR changes" do
     attach_preview("pdf_preview_three.pdf")
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("3ページを表示しています。", wait: 30)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(all(".pdf-preview-sheet").map { |sheet| sheet["data-page-number"] }).to eq(%w[1 2 3])
     expect(page).to have_css("canvas", count: 6, visible: :all)
     ratios = page.evaluate_script("Array.from(document.querySelectorAll('.pdf-preview-page')).map(p => p.clientWidth/p.clientHeight)")
@@ -298,7 +298,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     page.current_window.resize_to(800, 1100)
     attach_preview("pdf_preview_three.pdf")
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("3ページを表示しています。", wait: 30)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     scroll_page(2)
     rect = find('[data-page-number="2"] [data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
     x = (rect["x"] + rect["width"] * 0.2).round
@@ -316,7 +316,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "renders ten pages sequentially with a bounded total bitmap allocation and can leave the screen" do
     attach_preview("pdf_preview_ten.pdf")
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("10ページを表示しています。", wait: 30)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(page).to have_css("canvas", count: 20, visible: :all)
     pixels = page.evaluate_script("Array.from(document.querySelectorAll('canvas')).reduce((sum,c) => sum+c.width*c.height,0)")
     expect(pixels).to be <= 32_100_000
@@ -327,18 +327,19 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page).to have_current_path(student_assignment_path(@assignment))
     expect(page).to have_css('input[type="file"]')
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("10ページを表示しています。", wait: 30)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(ink_alpha(0.2, 0.2, 10)).to eq(0)
   end
 
   def scroll_page(number)
     find("[data-page-number='#{number}']").execute_script("this.scrollIntoView({block:'start'})")
     expect(page).to have_css("[data-page-number='#{number}'] [data-pdf-preview-target='ink']", visible: true, wait: 15)
+    page.evaluate_async_script("const done=arguments[arguments.length-1]; requestAnimationFrame(()=>requestAnimationFrame(done))")
   end
 
   it "offers three erase widths, remembers selection, and restores each recorded footprint" do
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(page).to have_no_css('[data-pdf-preview-target="sizes"]', visible: true)
     ink_drag(0.1, 0.2, 0.9, 0.2)
     original = find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
@@ -383,7 +384,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "restores all erase sizes after releasing offscreen canvases without moving page geometry" do
     attach_preview("pdf_preview_ten.pdf")
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("10ページを表示しています。", wait: 30)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     scroll_page(1)
     ink_drag(0.1, 0.2, 0.9, 0.2, 1)
     click_button "消しゴム"
@@ -438,7 +439,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
   it "accepts touch size buttons and ignores extra touch while a pen is down" do
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     [ "消しゴム", "大" ].each do |label|
       rect = find_button(label).evaluate_script("this.getBoundingClientRect().toJSON()")
       action = page.driver.browser.action
@@ -466,6 +467,256 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.2, 0.1)).to be > 0
   end
 
+  [ [ "pdf_preview_single.pdf", 1 ], [ "pdf_preview_three.pdf", 3 ], [ "pdf_preview_ten.pdf", 10 ] ].each do |filename, count|
+    it "downloads and reopens #{count} pages including offscreen ink, ordered erasing and preserved source vectors" do
+      attach_preview(filename)
+      if count == 3
+        page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 1280, height: 900, deviceScaleFactor: 2, mobile: false)
+      end
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      expect(page).not_to have_text("書いた内容は保存されません")
+      expect(page).not_to have_text("ページを表示しています")
+      expect(page).not_to have_css(".pdf-preview-page-number")
+      expect(page).to have_link("小テストの詳細へ戻る")
+      ink_drag(0.1, 0.08, 0.35, 0.08, 1)
+      ink_drag(0.1, 0.08, 0.35, 0.08, count) if count > 1
+      reading_jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
+      scroll_page(1)
+      if count == 3
+        page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 900, height: 900, deviceScaleFactor: 2, mobile: false)
+        page.execute_script("document.body.style.zoom = '1.1'")
+        expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      end
+      page.execute_script(<<~JS)
+        const c = window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
+        window.exportSourceOperations = JSON.stringify(c.pageStates.map(s => [...s.ink.pages.values()]));
+        window.materialRequests = () => performance.getEntriesByType('resource').filter(r => new URL(r.name).pathname === new URL(c.urlValue, location.href).pathname).length;
+        window.sourceRequestCount = window.materialRequests();
+        window.exportBlobs = [];
+        const nativeURL = URL.createObjectURL;
+        URL.createObjectURL = blob => { window.exportBlobs.push(blob); window.exportGenerationMs = performance.now()-window.exportStartedAt; return nativeURL(blob); };
+        document.addEventListener('click', e => { if(e.target.download) {window.exportFilename = e.target.download; e.preventDefault();} });
+        window.exportStartedAt = performance.now();
+        c.download(); c.download();
+        window.exportLocked = c.exporting && c.downloadTarget.disabled && c.toolTargets.every(b => b.disabled);
+      JS
+      expect(page).to have_text("確認用PDFをダウンロードしました", wait: 40)
+      expect(page.evaluate_script("window.exportLocked")).to be(true)
+      expect(page.evaluate_script("window.exportBlobs.length")).to eq(1)
+      expect(page.evaluate_script("window.exportFilename")).to eq("quickflow_answer_assignment_#{@assignment.id}.pdf")
+      expect(page.evaluate_script("window.exportBlobs[0].type")).to eq("application/pdf")
+      result = page.evaluate_async_script(<<~JS)
+        const done = arguments[arguments.length - 1];
+        (async () => {
+          const c = window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
+          const {getDocument} = await import('pdfjs');
+          const output = await getDocument({data: new Uint8Array(await window.exportBlobs[0].arrayBuffer()), worker:c.pdfWorker}).promise;
+          const results = [];
+          for (let n=1;n<=output.numPages;n++) {
+            const p = await output.getPage(n), original = await c.pdf.getPage(n);
+            const v=p.getViewport({scale:2}), before=original.getViewport({scale:2});
+            const canvas=document.createElement('canvas'); canvas.width=v.width; canvas.height=v.height;
+            const ctx=canvas.getContext('2d');
+            await p.render({canvasContext:ctx,viewport:v}).promise;
+            const pixel=(x,y)=>Array.from(ctx.getImageData(Math.round(v.width*x),Math.round(v.height*y),1,1).data);
+            results.push({size:[v.width,v.height], originalSize:[before.width,before.height],
+              ink:pixel(.22,.08), untouched:pixel(.8,.08), center:pixel(.5,.5),
+              text:(await p.getTextContent()).items.map(i=>i.str), originalText:(await original.getTextContent()).items.map(i=>i.str)});
+            canvas.width=canvas.height=0;
+          }
+          done({pages:results, count:output.numPages, bytes:window.exportBlobs[0].size,
+            milliseconds:window.exportGenerationMs,
+            reusedSource:window.sourceRequestCount===window.materialRequests(),
+            localResources:performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin),
+            retained:window.exportSourceOperations===JSON.stringify(c.pageStates.map(s=>[...s.ink.pages.values()]))});
+        })().catch(e=>done({error:String(e)}));
+      JS
+      expect(result["error"]).to be_nil
+      expect(result["count"]).to eq(count)
+      expect(result["retained"]).to be(true)
+      expect(result["reusedSource"]).to be(true)
+      expect(result["localResources"]).to be(true)
+      result.fetch("pages").each_with_index do |item, index|
+        expect(item["size"]).to eq(item["originalSize"])
+        expect(item["text"]).to eq(item["originalText"])
+        color = count == 3 ? [ [ 0, 0, 0 ], [ 255, 0, 0 ], [ 0, 0, 255 ] ][index] : [ 0, 0, 0 ]
+        expect(item["center"].first(3)).to eq(color)
+        expect(item["untouched"].first(3)).to eq([ 255, 255, 255 ])
+        if index == 0 || index == count - 1
+          expect(item["ink"].first(3).max).to be < 80
+        else
+          expect(item["ink"].first(3)).to eq([ 255, 255, 255 ])
+        end
+      end
+      expect(Submission.where(assignment: @assignment)).to be_empty
+      expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(reading_jobs_before)
+      puts "C_EXPORT_METRIC #{result.except("pages", "retained").to_json}"
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride") if count == 3
+    end
+  end
+
+  it "retries after PNG failure without losing ink and keeps download separate from submission" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.3, 0.1)
+    page.execute_script(<<~JS)
+      window.nativeToBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function(callback) { callback(null); };
+    JS
+    click_button "確認用PDFをダウンロード"
+    expect(page).to have_text("PDFを生成できませんでした", wait: 30)
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+    expect(page).to have_button("確認用PDFをダウンロード", disabled: false)
+    page.execute_script("HTMLCanvasElement.prototype.toBlob = window.nativeToBlob")
+    click_button "確認用PDFをダウンロード"
+    expect(page).to have_text("確認用PDFをダウンロードしました", wait: 30)
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+    expect(Submission.where(assignment: @assignment)).to be_empty
+  end
+
+  it "exports rotations, offset CropBoxes, all eraser widths, dots and rewritten ink independently of screen resolution" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    result = page.evaluate_async_script(<<~JS)
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const {PDFDocument,degrees,rgb,StandardFonts}=await import('pdf-lib');
+        const {generateAnswerPdf}=await import('pdf_export');
+        const {getDocument}=await import('pdfjs');
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        const doc=await PDFDocument.create(), font=await doc.embedFont(StandardFonts.Helvetica);
+        for(const rotation of [0,90,180,270]) {
+          const p=doc.addPage([320,400]); p.setCropBox(20,30,240,300); p.setRotation(degrees(rotation));
+          p.drawText('x^2 + 1/2 = 0.5',{x:40,y:300,size:12,font});
+          p.drawRectangle({x:30,y:50,width:210,height:180,color:rgb(1,0,0)});
+        }
+        const source=await doc.save();
+        const input=await getDocument({data:source.slice(),worker:c.pdfWorker}).promise;
+        const pages=[];
+        const stroke=(tool,width,points)=>({tool,width,color:'#000000',points});
+        for(let n=1;n<=4;n++) {
+          const page=await input.getPage(n), operations=[];
+          for(const [i,width] of [4,8,12].entries()) {
+            const y=80+i*45;
+            operations.push(stroke('pen',1.2,[[40,y],[220,y]]), stroke('eraser',width,[[120,y-10],[120,y+10]]));
+          }
+          operations.push(stroke('pen',1.2,[[180,260]]),stroke('pen',1.2,[[110,200],[130,200]]));
+          pages.push({page,operations});
+        }
+        const started=performance.now();
+        const bytes=await generateAnswerPdf({source,pages});
+        const output=await getDocument({data:bytes.slice(),worker:c.pdfWorker}).promise;
+        const checks=[];
+        for(let n=1;n<=4;n++) {
+          const original=pages[n-1].page, p=await output.getPage(n), v=p.getViewport({scale:3});
+          const canvas=document.createElement('canvas');canvas.width=v.width;canvas.height=v.height;
+          const ctx=canvas.getContext('2d');await p.render({canvasContext:ctx,viewport:v}).promise;
+          const pixel=(x,y)=>{const [a,b]=v.convertToViewportPoint(x,y);return Array.from(ctx.getImageData(Math.round(a),Math.round(b),1,1).data).slice(0,3);};
+          const erasers=[4,8,12].map((w,i)=>({gap:pixel(120,80+i*45),edge:pixel(120+w/2+1,80+i*45),inside:pixel(120+w/2-1,80+i*45)}));
+          checks.push({rotation:p.rotate,view:p.view,originalView:original.view,
+            text:(await p.getTextContent()).items.map(i=>i.str).join(''),
+            dot:pixel(180,260),rewritten:pixel(120,200),erasers});
+          if(n===1) window.phaseCVisual=canvas.toDataURL('image/png');
+          canvas.width=canvas.height=0;
+        }
+        const loaded=await PDFDocument.load(bytes);
+        let signedRejected=false,largeRejected=false;
+        const signed=await PDFDocument.load(source);
+        const {PDFName}=await import('pdf-lib');signed.context.register(signed.context.obj({Type:'Sig',ByteRange:[0,1,2,3]}));
+        try {await generateAnswerPdf({source:await signed.save(),pages});}catch{signedRejected=true;}
+        const tooLarge=[...pages];tooLarge[0]={...pages[0],page:{view:[0,0,10000,10000],getViewport:()=>({width:40000,height:40000})}};
+        try {await generateAnswerPdf({source,pages:tooLarge});}catch{largeRejected=true;}
+        done({checks,bytes:bytes.length,milliseconds:performance.now()-started,signedRejected,largeRejected,
+          embeddedImages:loaded.getPages().map(p=>p.node.Resources().lookup(PDFName.of('XObject')).keys().length)});
+
+      })().catch(e=>done({error:String(e),stack:e.stack}));
+    JS
+    expect(result["error"]).to be_nil, result.inspect
+    expect(result["signedRejected"]).to be(true)
+    expect(result["largeRejected"]).to be(true)
+    expect(result["embeddedImages"]).to eq([ 1, 1, 1, 1 ])
+    expect(result.fetch("checks").map { |item| item["rotation"] }).to eq([ 0, 90, 180, 270 ])
+    result.fetch("checks").each do |item|
+      expect(item["view"]).to eq(item["originalView"])
+      expect(item["text"]).to include("x^2 + 1/2 = 0.5")
+      expect(item["dot"].max).to be < 80
+      expect(item["rewritten"].max).to be < 80
+      item["erasers"].each do |eraser|
+        expect(eraser["gap"]).to eq([ 255, 0, 0 ])
+        expect(eraser["inside"]).to eq([ 255, 0, 0 ])
+        expect(eraser["edge"].max).to be < 80
+      end
+    end
+    FileUtils.mkdir_p(Rails.root.join("tmp/pdfs"))
+    require "base64"
+    File.binwrite(Rails.root.join("tmp/pdfs/phase-c-composite.png"), Base64.decode64(page.evaluate_script("window.phaseCVisual").split(",").last))
+  end
+
+  it "shows the submitted score with the title weight and a smaller scoped font without changing its value" do
+    student = Student.find_by!(attendance_number: 1)
+    submission = Submission.create!(assignment: @assignment, student: student, submitted_at: Time.current, status: :completed)
+    question = @assignment.questions.create!(question_label: "1", position: 1, question_text: "1+1", correct_answer: "2", grading_rule: "一致",
+      answer_generation_model: "test", answer_generation_prompt_version: "v1", answer_generated_at: Time.current)
+    submission.grading_results.create!(question: question, ai_judgment: :correct,
+      student_answer: "2", ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
+    visit student_assignments_path
+    expect(page).to have_css(".student-card-score", text: "5点")
+    styles = page.evaluate_script(<<~JS)
+      (()=>{const card=document.querySelector('.assignment-card--submitted');
+        const title=getComputedStyle(card.querySelector('.assignment-list-title'));
+        const score=getComputedStyle(card.querySelector('.student-card-score'));
+        return {title:title.fontWeight,score:score.fontWeight,size:parseFloat(score.fontSize),root:parseFloat(getComputedStyle(document.documentElement).fontSize)};})()
+    JS
+    expect(styles["score"]).to eq(styles["title"])
+    expect(styles["size"]).to be_within(0.1).of(styles["root"] * 1.1)
+    expect(styles["size"]).to be < styles["root"] * 1.4
+    page.save_screenshot(Rails.root.join("tmp/pdfs/phase-c-score.png"))
+  end
+
+  it "measures one, three and ten A4 pages with mathematical ink at 240dpi using one temporary canvas at a time" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    result = using_wait_time(60) do
+      page.evaluate_async_script(<<~JS)
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const {PDFDocument}=await import('pdf-lib'), {getDocument}=await import('pdfjs');
+        const {generateAnswerPdf}=await import('pdf_export');
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        const results=[];
+        for(const count of [1,3,10]) {
+          const doc=await PDFDocument.create();for(let n=0;n<count;n++) doc.addPage([595,842]);
+          const source=await doc.save(), input=await getDocument({data:source.slice(),worker:c.pdfWorker}).promise;
+          const pages=[];
+          for(let n=1;n<=count;n++) {
+            // Fraction bar, numerator/denominator, superscript and decimal dot.
+            const lines=[[[60,700],[110,700]],[[70,710],[80,720],[90,710]],[[75,680],[90,680]],[[100,730],[105,735],[110,730]],[[115,700]]];
+            pages.push({page:await input.getPage(n),operations:lines.map((points,id)=>({id,tool:'pen',width:1.2,color:'#000000',points}))});
+          }
+          const native=document.createElement.bind(document), canvases=[];
+          document.createElement=function(tag,...args) {const node=native(tag,...args);if(tag==='canvas')canvases.push(node);return node;};
+          let bytes;const started=performance.now();
+          try {bytes=await generateAnswerPdf({source,pages});}finally{document.createElement=native;}
+          const milliseconds=performance.now()-started;
+          const reopened=await getDocument({data:bytes.slice(),worker:c.pdfWorker}).promise;
+          results.push({count,outputPages:reopened.numPages,bytes:bytes.length,milliseconds,
+            released:canvases.every(canvas=>canvas.width===0&&canvas.height===0),temporaryCanvases:canvases.length});
+        }
+        done({results});
+      })().catch(error=>done({error:String(error)}));
+      JS
+    end
+    expect(result["error"]).to be_nil, result.inspect
+    result.fetch("results").each do |metric|
+      expect(metric["outputPages"]).to eq(metric["count"])
+      expect(metric["temporaryCanvases"]).to eq(metric["count"])
+      expect(metric["released"]).to be(true)
+      puts "C_A4_EXPORT_METRIC #{metric.to_json}"
+    end
+  end
+
   def attach_preview(filename)
     @assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files", filename)),
       filename: "preview.pdf", content_type: "application/pdf")
@@ -473,7 +724,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
   it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do
     visit student_assignment_pdf_preview_path(@assignment)
-    expect(page).to have_text("1ページ目を表示しています。", wait: 20)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     bounds = page.evaluate_script(<<~JS)
       (() => { const r = document.querySelector('[data-pdf-preview-target="ink"]').getBoundingClientRect();
         return {x:r.x, y:r.y, width:r.width, height:r.height}; })()
@@ -489,6 +740,8 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
     click_button "消しゴム"
     click_button "小"
+    bounds = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    y = (bounds["y"] + bounds["height"] * 0.1).round
     actions = page.driver.browser.action
     actions.add_pointer_input(:pen, "test-pen")
     actions.move_to_location((bounds["x"] + bounds["width"] * 0.15).round, y, device: "test-pen")
