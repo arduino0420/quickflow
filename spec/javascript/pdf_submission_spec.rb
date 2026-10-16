@@ -61,4 +61,47 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
       File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
+
+  it "keeps ink when both submission and reconciliation lose connectivity, then retries safely" do
+    script = <<~JS
+      const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+      const source=fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/gm,'').replace('export default class','class Preview');
+      const locations=[];
+      const Preview=vm.runInNewContext(source+';Preview',{
+        Controller:class{},window:{location:{assign:url=>locations.push(url)}},
+        Blob,FormData,AbortSignal,document:{querySelector:()=>({content:'csrf'})},
+        snapshotPages:states=>structuredClone(states),generateAnswerPdf:async()=>new Uint8Array([37,80,68,70])
+      });
+      const c=new Preview();let posts=0,checks=0,flushes=0;
+      Object.assign(c,{active:true,session:Symbol(),pagesReady:true,exporting:false,
+        pdf:{getData:async()=>new Uint8Array([1])},pageStates:[{ink:'latest'}],toolTargets:[{}],sizeTargets:[{}],
+        submitTarget:{},submitStatusTarget:{setAttribute(){}},draftEditable:true,
+        draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,
+          flush:async()=>{flushes++;return 7},stop(){this.stopped=true}}});
+      c.finishInput=()=>{};
+      c.submissionState=async options=>{
+        if(options){posts++;throw TypeError('connection lost')}
+        checks++;
+        if(checks===2)throw TypeError('status unavailable');
+        return {submitted:false};
+      };
+      (async()=>{
+        await c.submitAnswer();
+        assert.equal(posts,1);assert.equal(checks,2);assert.equal(locations.length,0);
+        assert.equal(c.pageStates[0].ink,'latest');assert.equal(c.draft.dirty,true);
+        assert.equal(c.draft.allowed,true);assert.equal(c.submitTarget.disabled,false);
+        assert.equal(c.submitStatusTarget.textContent.includes('提出できませんでした'),true);
+        c.submissionState=async options=>{
+          if(options){posts++;return {submitted:true,location:'/result'}}
+          checks++;return {submitted:false};
+        };
+        await c.submitAnswer();
+        assert.equal(checks,3);assert.equal(posts,2);assert.equal(flushes,2);
+        assert.deepEqual(locations,['/result']);assert.equal(c.draft.stopped,true);
+      })().catch(error=>{console.error(error);process.exitCode=1});
+    JS
+    stdout, stderr, status = Open3.capture3("node", "-e", script,
+      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
 end

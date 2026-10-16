@@ -94,6 +94,19 @@ RSpec.describe "Student submissions", type: :request do
     expect(Submission.last.answer_file.filename.to_s).to eq("answer.PDF")
   end
 
+  it "rejects an oversized uploaded PDF without creating a submission, attachment or job" do
+    login
+    header = "%PDF-1.4\n"
+    contents = header + ("0" * (Student::SubmissionsController::MAX_PDF_BYTES + 1 - header.bytesize))
+    upload = Rack::Test::UploadedFile.new(StringIO.new(contents), "application/pdf", original_filename: "large.pdf")
+    before_counts = counts
+
+    expect { submit(upload) }.not_to have_enqueued_job(AnswerReadingJob)
+    expect(response).to have_http_status(:content_too_large)
+    expect(counts).to eq(before_counts)
+    expect(student.submissions).to be_empty
+  end
+
   it "allows another teacher's assignment distributed to multiple classes including the student's" do
     owner = Teacher.create!(school: school, user_id: "teacher2", password: "password123")
     assignment.update!(teacher: owner)
@@ -476,6 +489,26 @@ RSpec.describe "Student submissions", type: :request do
       expect(draft.reload).to be_persisted
     end
 
+    it "rejects an oversized generated PDF and preserves the draft without enqueueing a job" do
+      login
+      token = headers
+      original = draft.attributes
+      before_counts = counts
+      header = "%PDF-1.4\n"
+      contents = header + ("0" * (Student::SubmissionsController::MAX_PDF_BYTES + 1 - header.bytesize))
+      upload = Rack::Test::UploadedFile.new(StringIO.new(contents), "application/pdf", original_filename: "answer.pdf")
+
+      expect do
+        post student_assignment_submission_path(assignment), params: {
+          draft_version: draft.lock_version.to_s, submission: { answer_file: upload }
+        }, headers: token
+      end.not_to have_enqueued_job(AnswerReadingJob)
+      expect(response).to have_http_status(:content_too_large)
+      expect(response.parsed_body).to eq("error" => "file_too_large")
+      expect(counts).to eq(before_counts)
+      expect(draft.reload.attributes).to eq(original)
+    end
+
     it "preserves a committed answer when enqueueing fails and does not retry the job on POST retry" do
       login
       allow(AnswerReadingJob).to receive(:perform_later).and_return(false)
@@ -499,6 +532,57 @@ RSpec.describe "Student submissions", type: :request do
       expect(Submission.count).to eq(0)
     ensure
       ActionController::Base.allow_forgery_protection = previous unless previous.nil?
+    end
+
+    it "rejects another student in the same classroom using the owner's submission context" do
+      login
+      token = headers
+      other = Student.create!(classroom: classroom, attendance_number: 2, password: "other-password")
+      other_client = ActionDispatch::Integration::Session.new(Rails.application)
+      other_client.post student_login_path, params: { student_session: { school_code: school.school_code,
+        grade: classroom.grade, class_number: classroom.class_number,
+        attendance_number: other.attendance_number, password: "other-password" } }
+      before_counts = counts
+
+      other_client.get student_assignment_submission_path(assignment), headers: token
+      expect(other_client.response).to have_http_status(:conflict)
+      other_client.post student_assignment_submission_path(assignment), params: {
+        draft_version: draft.lock_version.to_s, submission: { answer_file: pdf }
+      }, headers: token
+      expect(other_client.response).to have_http_status(:conflict)
+      expect(counts).to eq(before_counts)
+      expect(draft.reload.student).to eq(student)
+      expect(other.submissions).to be_empty
+    end
+
+    it "does not let teacher or admin sessions use student draft and submission APIs" do
+      token = headers
+      admin = Admin.create!(school: school, user_id: "ink-admin", password: "admin-password")
+      before_counts = counts
+      [
+        [ login_path, { session: { user_id: teacher.user_id, password: "password123" } } ],
+        [ admin_login_path, { admin_session: { user_id: admin.user_id, password: "admin-password" } } ]
+      ].each do |path, credentials|
+        client = ActionDispatch::Integration::Session.new(Rails.application)
+        client.post path, params: credentials
+        client.get student_assignment_answer_draft_path(assignment), headers: token
+        expect(client.response).to have_http_status(:unauthorized)
+        client.patch student_assignment_answer_draft_path(assignment), params: {
+          expected_version: draft.lock_version, draft_data: { format_version: 1, pages: draft.page_data }
+        }, headers: token, as: :json
+        expect(client.response).to have_http_status(:unauthorized)
+        client.get student_assignment_submission_path(assignment), headers: token
+        expect(client.response).to have_http_status(:see_other)
+        expect(client.response.location).to end_with(student_login_path)
+        client.post student_assignment_submission_path(assignment), params: {
+          draft_version: draft.lock_version.to_s, submission: { answer_file: pdf }
+        }, headers: token
+        expect(client.response).to have_http_status(:see_other)
+        expect(client.response.location).to end_with(student_login_path)
+      end
+      expect(counts).to eq(before_counts)
+      expect(draft.reload).to be_persisted
+      expect(student.submissions).to be_empty
     end
 
     [ :classroom, :school ].each do |scope|

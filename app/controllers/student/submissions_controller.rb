@@ -1,4 +1,6 @@
 class Student::SubmissionsController < ApplicationController
+  MAX_PDF_BYTES = 25 * 1024 * 1024
+
   before_action :require_student_login
 
   def show
@@ -23,6 +25,7 @@ class Student::SubmissionsController < ApplicationController
         assignment: @assignment, status: :submitted, submitted_at: Time.current
       )
       upload = params.fetch(:submission, ActionController::Parameters.new).permit(:answer_file)[:answer_file]
+      return render_too_large if oversized_pdf?(upload)
       return render_errors unless valid_pdf?(upload)
 
       # Upload before committing the answer: storage failures must not leave a
@@ -127,6 +130,17 @@ class Student::SubmissionsController < ApplicationController
     pdf
   ensure
     upload.tempfile.rewind if upload.is_a?(ActionDispatch::Http::UploadedFile)
+  end
+
+  def oversized_pdf?(upload)
+    upload.is_a?(ActionDispatch::Http::UploadedFile) && upload.size > MAX_PDF_BYTES
+  end
+
+  def render_too_large
+    @submission.errors.add(:answer_file, "は25MiB以下のPDFを選択してください")
+    return render json: { error: "file_too_large" }, status: :content_too_large if handwritten?
+
+    render "student/assignments/show", status: :content_too_large
   end
 
   def render_errors

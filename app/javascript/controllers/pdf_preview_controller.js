@@ -458,7 +458,9 @@ export default class extends Controller {
         status.setAttribute("role", "alert")
         status.textContent = error.code === 409 ?
           "教材または下書きが変更されています。提出を停止しました。手書きが残るこの画面を閉じず、先生に確認してください。" :
-          "提出できませんでした。手書きはこの画面に残っています。保存状況と接続を確認して、もう一度お試しください。"
+          error.code === 413 ?
+            "PDFのサイズが上限を超えています。手書きと下書きは残っています。ページ数を減らすか先生に確認してください。" :
+            "提出できませんでした。手書きはこの画面に残っています。保存状況と接続を確認して、もう一度お試しください。"
         if ([401, 403, 409, 404].includes(error.code)) {
           this.draft.blocked = true
           this.draftEditable = false
