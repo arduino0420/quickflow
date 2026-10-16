@@ -79,9 +79,11 @@ export default class PdfInk {
       const previous = this.stroke.points.at(-1)
       if (point[0] !== previous[0] || point[1] !== previous[1]) this.stroke.points.push(point)
     }
+    const completed = this.stroke
     this.stroke = null
     this.pointerId = null
     if (this.viewport) this.redraw()
+    if (completed) this.onChange?.()
   }
 
   redraw() {

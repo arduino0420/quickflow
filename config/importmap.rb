@@ -9,3 +9,4 @@ pin "pdfjs", to: "/vendor/pdfjs/6.4.299/pdf.min.mjs", preload: false
 pin "pdf_ink", to: "pdf_ink.js", preload: false
 pin "pdf_export", to: "pdf_export.js", preload: false
 pin "pdf-lib", to: "/vendor/pdf-lib/1.17.1/pdf-lib.esm.min.js", preload: false
+pin "pdf_draft", to: "pdf_draft.js", preload: false

@@ -6,6 +6,7 @@ class Student::PdfPreviewsController < ApplicationController
     @assignment = current_student.classroom.assignments.joins(:teacher)
       .where(teachers: { school_id: current_student.classroom.school_id })
       .find(params[:assignment_id])
+    @draft_context = AnswerDraftContext.issue(current_student, @assignment)
   end
 
   private

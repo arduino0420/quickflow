@@ -142,9 +142,10 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     page.driver.browser.action.scroll_by(0, 150).perform
     Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
     expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(page).to have_text("保存済み", wait: 10)
     page.refresh
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
-    expect(ink_alpha(0.15, 0.1)).to eq(0)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
   end
 
   it "partially erases only ink and replays pen/eraser/pen after resize and high-DPI rendering" do
@@ -323,12 +324,13 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     scroll_page(10)
     ink_drag(0.2, 0.2, 0.2, 0.2, 10)
     expect(ink_alpha(0.2, 0.2, 10)).to be > 0
+    expect(page).to have_text("保存済み", wait: 10)
     click_link "小テストの詳細へ戻る"
     expect(page).to have_current_path(student_assignment_path(@assignment))
     expect(page).to have_css('input[type="file"]')
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
-    expect(ink_alpha(0.2, 0.2, 10)).to eq(0)
+    expect(ink_alpha(0.2, 0.2, 10)).to be > 0
   end
 
   def scroll_page(number)
@@ -714,6 +716,242 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(metric["temporaryCanvases"]).to eq(metric["count"])
       expect(metric["released"]).to be(true)
       puts "C_A4_EXPORT_METRIC #{metric.to_json}"
+    end
+  end
+
+  context "server drafts" do
+    it "restores all pages, erase widths and pen/erase/pen after reload, resizing, logout and another browser session" do
+      attach_preview("pdf_preview_three.pdf")
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      ink_drag(0.1, 0.25, 0.9, 0.25, 1)
+      click_button "消しゴム"
+      [ [ "小", 0.2 ], [ "中", 0.4 ], [ "大", 0.6 ] ].each do |label, x|
+        click_button label
+        ink_drag(x, 0.25, x, 0.25, 1)
+      end
+      click_button "ペン"
+      ink_drag(0.4, 0.25, 0.4, 0.25, 1)
+      ink_drag(0.8, 0.25, 0.8, 0.25, 3)
+      expect(page).to have_text("保存済み", wait: 10)
+      draft = AnswerDraft.find_by!(assignment: @assignment)
+      expect(draft.page_data.length).to eq(3)
+      expect(draft.page_data.first["operations"].select { |op| op["tool"] == "eraser" }.map { |op| op["width"] }).to eq([ 4, 8, 12 ])
+      page.current_window.resize_to(900, 900)
+      page.refresh
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      expect(page).to have_text("保存済み")
+      expect(ink_alpha(0.2, 0.25, 1)).to eq(0)
+      expect(ink_alpha(0.4, 0.25, 1)).to be > 0
+      expect(ink_alpha(0.6, 0.25, 1)).to eq(0)
+      expect(ink_alpha(0.8, 0.25, 3)).to be > 0
+      page.execute_script(<<~JS)
+        const native = URL.createObjectURL;
+        URL.createObjectURL = blob => {window.restoredPdf=blob;return native(blob)};
+      JS
+      click_button "確認用PDFをダウンロード"
+      expect(page).to have_text("確認用PDFをダウンロードしました", wait: 30)
+      pixels = page.evaluate_async_script(<<~JS)
+        const done=arguments[arguments.length-1];
+        (async()=>{
+          const {getDocument}=await import('pdfjs');
+          const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+          const pdf=await getDocument({data:new Uint8Array(await window.restoredPdf.arrayBuffer()),worker:c.pdfWorker}).promise;
+          const results=[];
+          for(const [n,x] of [[1,.2],[1,.4],[3,.8]]) {
+            const p=await pdf.getPage(n),v=p.getViewport({scale:3});const canvas=document.createElement('canvas');
+            canvas.width=v.width;canvas.height=v.height;const ctx=canvas.getContext('2d');
+            await p.render({canvasContext:ctx,viewport:v}).promise;
+            results.push(Array.from(ctx.getImageData(Math.round(v.width*x),Math.round(v.height*.25),1,1).data).slice(0,3));
+            canvas.width=canvas.height=0;
+          }
+          done(results);
+        })().catch(e=>done({error:String(e)}));
+      JS
+      expect(pixels.first).to eq([ 255, 255, 255 ])
+      expect(pixels[1].max).to be < 20
+      expect(pixels[2].max).to be < 20
+      visit student_assignments_path
+      click_button "ログアウト"
+      expect(page).to have_field("学校コード", wait: 10)
+      login_draft_student
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      expect(ink_alpha(0.4, 0.25, 1)).to be > 0
+      using_session(:other_device) do
+        login_draft_student
+        visit student_assignment_pdf_preview_path(@assignment)
+        expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+        expect(ink_alpha(0.2, 0.25, 1)).to eq(0)
+        expect(ink_alpha(0.8, 0.25, 3)).to be > 0
+      end
+      expect(Submission.where(assignment: @assignment)).to be_empty
+    end
+
+    it "keeps edits made during a save and debounces consecutive strokes" do
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      page.execute_script(<<~JS)
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        const native=c.draft.request;window.draftPuts=0;
+        c.draft.request=(url,options)=>{
+          if(options.method==='PUT' && ++window.draftPuts===1) return new Promise(resolve=>window.releaseDraftSave=()=>resolve(native(url,options)));
+          return native(url,options);
+        };
+      JS
+      ink_drag(0.1, 0.15, 0.2, 0.15)
+      ink_drag(0.3, 0.15, 0.4, 0.15)
+      expect(page).to have_text("保存中…", wait: 8)
+      expect(page.evaluate_script("window.draftPuts")).to eq(1)
+      ink_drag(0.5, 0.15, 0.6, 0.15)
+      page.execute_script("window.releaseDraftSave()")
+      expect(page).to have_text("保存済み", wait: 12)
+      expect(page.evaluate_script("window.draftPuts")).to eq(2)
+      expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(3)
+    end
+
+    it "preserves unsaved ink after a network error and saves it on retry" do
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      page.execute_script(<<~JS)
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        window.draftNativeRequest=c.draft.request;c.draft.request=async()=>{throw new TypeError('offline')};
+      JS
+      ink_drag(0.1, 0.2, 0.6, 0.2, 1)
+      expect(page).to have_text("保存できませんでした", wait: 8)
+      expect(ink_alpha(0.3, 0.2)).to be > 0
+      expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+      page.execute_script(<<~JS)
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        c.draft.request=window.draftNativeRequest;
+      JS
+      click_button "保存を再試行"
+      expect(page).to have_text("保存済み", wait: 10)
+      page.refresh
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      expect(ink_alpha(0.3, 0.2)).to be > 0
+    end
+
+    it "stops a stale tab without overwriting the other tab or dropping local strokes" do
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      ink_drag(0.1, 0.2, 0.6, 0.2, 1)
+      expect(page).to have_text("保存済み", wait: 10)
+      first = current_window
+      second = open_new_window
+      within_window(second) do
+        visit student_assignment_pdf_preview_path(@assignment)
+        expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+        ink_drag(0.1, 0.3, 0.6, 0.3, 1)
+        expect(page).to have_text("保存済み", wait: 10)
+      end
+      within_window(first) do
+        ink_drag(0.1, 0.4, 0.6, 0.4, 1)
+        expect(page).to have_text("保存を停止しました", wait: 10)
+        expect(ink_alpha(0.3, 0.4)).to be > 0
+        expect(page).to have_button("確認用PDFをダウンロード", disabled: false)
+      end
+      expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(2)
+      within_window(second) do
+        page.refresh
+        expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+        expect(ink_alpha(0.3, 0.3)).to be > 0
+        expect(ink_alpha(0.3, 0.4)).to eq(0)
+      end
+    end
+
+    it "blocks input until restoration completes and preserves the loaded operation IDs" do
+      AnswerDraft.create!(student: Student.find_by!(attendance_number: 1), assignment: @assignment,
+        material_fingerprint: AnswerDraftContext.fingerprint(@assignment),
+        page_data: [ { page_number: 1, operations: [ { id: 7, tool: "pen", color: "#000000", width: 1.2, points: [ [ 40, 240 ] ] } ] } ])
+      install_browser_script(<<~JS)
+        const nativeFetch=window.fetch.bind(window);
+        window.fetch=(url,options)=>String(url).includes('/answer_draft') && options.method==='GET'
+          ? new Promise(resolve=>window.releaseRestore=()=>resolve(nativeFetch(url,options))) : nativeFetch(url,options);
+      JS
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_text("下書きの復元中…")
+      expect(page).not_to have_css('[data-pdf-preview-target="ink"]', visible: true)
+      expect(page).to have_button("確認用PDFをダウンロード", disabled: true)
+      Timeout.timeout(10) { sleep 0.05 until page.evaluate_script("typeof window.releaseRestore === 'function'") }
+      page.execute_script("window.releaseRestore()")
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      expect(ink_alpha(0.2, 0.2)).to be > 0
+      ink_drag(0.3, 0.2, 0.4, 0.2, 1)
+      expect(page).to have_text("保存済み", wait: 10)
+      expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].map { |op| op["id"] }).to eq([ 7, 8 ])
+    end
+
+    it "does not overlay an old draft onto a replacement material" do
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      ink_drag(0.1, 0.2, 0.5, 0.2, 1)
+      expect(page).to have_text("保存済み", wait: 10)
+      original = AnswerDraft.find_by!(assignment: @assignment).attributes
+      attach_preview("pdf_preview_three.pdf")
+      page.refresh
+      expect(page).to have_text("下書きを復元できません。ログイン状態・教材の変更を確認してください。", wait: 20)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      expect(page).to have_button("確認用PDFをダウンロード", disabled: true)
+      expect(ink_alpha(0.3, 0.2, 1)).to eq(0)
+      ink_drag(0.1, 0.2, 0.5, 0.2, 1)
+      expect(ink_alpha(0.3, 0.2, 1)).to eq(0)
+      expect(AnswerDraft.find_by!(assignment: @assignment).attributes).to eq(original)
+    end
+
+    it "recovers from an initial restore failure and enables PDF download only after successful restoration" do
+      AnswerDraft.create!(student: Student.find_by!(attendance_number: 1), assignment: @assignment,
+        material_fingerprint: AnswerDraftContext.fingerprint(@assignment),
+        page_data: [ { page_number: 1, operations: [ { id: 1, tool: "pen", color: "#000000", width: 1.2, points: [ [ 40, 240 ] ] } ] } ])
+      install_browser_script(<<~JS)
+        const originalFetch=window.fetch.bind(window);let failed=false;
+        window.fetch=(url,options)=>{
+          if(String(url).includes('/answer_draft') && options.method==='GET' && !failed) {
+            failed=true;return Promise.resolve(new Response('{}',{status:503,headers:{'Content-Type':'application/json'}}));
+          }
+          return originalFetch(url,options);
+        };
+      JS
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_text("下書きを復元できませんでした", wait: 20)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      state = page.evaluate_script("(()=>{const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'),'pdf-preview');return {active:c.active,blocked:c.draft.blocked,disposed:!!c.draft.disposed,ready:!!c.draft.ready};})()")
+      expect(state).to eq("active" => true, "blocked" => false, "disposed" => false, "ready" => false)
+      expect(page).to have_button("確認用PDFをダウンロード", disabled: true)
+      click_button "保存を再試行"
+      expect(page).to have_text("保存済み", wait: 15)
+      expect(page).to have_button("確認用PDFをダウンロード", disabled: false)
+      expect(ink_alpha(0.2, 0.2)).to be > 0
+    end
+
+    it "allows finger scrolling of submitted quizzes while preventing new pen strokes and drafts" do
+      Submission.create!(student: Student.find_by!(attendance_number: 1), assignment: @assignment, submitted_at: Time.current)
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_text("提出済みです。下書きは変更できません。", wait: 20)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      ink_drag(0.1, 0.1, 0.3, 0.1, 1)
+      expect(ink_alpha(0.2, 0.1)).to eq(0)
+      rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+      x = (rect["x"] + rect["width"] * 0.8).round
+      y = (rect["y"] + 180).round
+      before = page.evaluate_script("scrollY")
+      action = page.driver.browser.action
+      action.add_pointer_input(:touch, "readonly-finger")
+      action.move_to_location(x, y, device: "readonly-finger").pointer_down(:left, device: "readonly-finger")
+        .move_to_location(x, y - 90, device: "readonly-finger").pointer_up(:left, device: "readonly-finger").perform
+      Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("scrollY") > before }
+      expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+    end
+
+    def login_draft_student
+      visit student_login_path
+      select "1年", from: "学年"
+      select "1組", from: "クラス番号"
+      select "1番", from: "出席番号"
+      fill_in "学校コード", with: "PDFSYS"
+      fill_in "パスワード", with: "password123"
+      click_button "ログイン"
+      expect(page).to have_current_path(student_assignments_path)
     end
   end
 

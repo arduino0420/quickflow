@@ -26,6 +26,9 @@ class Student::AssignmentsController < ApplicationController
   end
 
   def material
+    if params[:draft_context].present? && !AnswerDraftContext.valid?(params[:draft_context], current_student, @assignment)
+      return head :conflict
+    end
     send_assignment_file(@assignment.material_file)
   end
 

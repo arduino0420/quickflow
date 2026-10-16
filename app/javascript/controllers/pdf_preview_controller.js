@@ -1,14 +1,16 @@
 import { Controller } from "@hotwired/stimulus"
 import PdfInk from "pdf_ink"
+import PdfDraft from "pdf_draft"
 import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "download", "exportStatus"]
-  static values = { url: String, assetsUrl: String, assignmentId: Number }
+  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "download", "exportStatus", "draftStatus", "retry"]
+  static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String }
 
   connect() {
     this.exporting = false
+    this.draftEditable = false
     this.sourceBytes = null
     this.active = true
     this.session = Symbol()
@@ -70,6 +72,7 @@ export default class extends Controller {
         inkCanvas.hidden = true
         inkCanvas.setAttribute("aria-label", `${number}ページ目のペン・消しゴム領域`)
         const ink = new PdfInk(inkCanvas, number)
+        ink.onChange = () => this.draft?.changed()
         ink.setTool(this.tool)
         ink.setEraserSize(this.eraserSize)
         const cursor = sheet.querySelector(".pdf-preview-eraser-cursor")
@@ -78,6 +81,8 @@ export default class extends Controller {
         this.statesByCanvas.set(inkCanvas, state)
         this.containerTarget.append(sheet)
       }
+      await this.restoreDraft(session)
+      if (!this.current(session)) return
       this.pagesReady = true
       this.layoutPages()
       this.intersections = new IntersectionObserver(() => this.queueRender(), { rootMargin: "200px 0px" })
@@ -183,7 +188,7 @@ export default class extends Controller {
     this.containerTarget.setAttribute("aria-busy", "false")
     this.statusTarget.textContent = ""
     this.statusTarget.hidden = true
-    if (this.hasDownloadTarget) this.downloadTarget.disabled = this.exporting
+    if (this.hasDownloadTarget) this.downloadTarget.disabled = this.exporting || !this.draft?.ready
   }
 
   selectTool(event) {
@@ -253,11 +258,12 @@ export default class extends Controller {
       }
       return
     }
-    if (event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) return
+    if (!this.draftEditable || event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) return
     if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) return
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
+      this.draftStatusTarget.textContent = "未保存"
       event.preventDefault()
       state.inkCanvas.setPointerCapture(event.pointerId)
     }
@@ -323,8 +329,67 @@ export default class extends Controller {
     this.disconnect()
   }
 
+  async restoreDraft(session) {
+    this.draft = new PdfDraft({ url: this.draftUrlValue, context: this.draftContextValue,
+      read: () => ({ format_version: 1, pages: this.pageStates.map((state, index) => ({
+        page_number: index + 1,
+        operations: state.ink.pages.get(index + 1).filter(operation => operation !== state.ink.stroke)
+      })) }),
+      restore: draft => {
+        if (draft.format_version !== 1 || !Array.isArray(draft.pages) || draft.pages.length !== this.pageStates.length) throw new Error("invalid draft")
+        // Validate the whole restored snapshot before changing any page.
+        draft.pages.forEach((data, index) => {
+          const view = this.pageStates[index].page.view
+          if (data.page_number !== index + 1 || !Array.isArray(data.operations)) throw new Error("invalid page")
+          for (const operation of data.operations) {
+            if (!Number.isSafeInteger(operation.id) || !["pen", "eraser"].includes(operation.tool) ||
+                operation.color !== "#000000" || !Array.isArray(operation.points) || !operation.points.length ||
+                !(operation.tool === "pen" ? [1.2] : [4, 8, 12]).includes(operation.width)) throw new Error("invalid operation")
+            for (const point of operation.points) {
+              if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite) ||
+                  point[0] < view[0] - 0.01 || point[0] > view[2] + 0.01 ||
+                  point[1] < view[1] - 0.01 || point[1] > view[3] + 0.01) throw new Error("invalid coordinates")
+            }
+          }
+        })
+        draft.pages.forEach((data, index) => {
+          const ink = this.pageStates[index].ink
+          ink.pages.set(index + 1, structuredClone(data.operations))
+          ink.nextOperationId = data.operations.reduce((maximum, operation) => Math.max(maximum, operation.id + 1), 1)
+          if (ink.viewport) ink.redraw()
+        })
+      },
+      status: (message, retry = false) => {
+        if (!this.current(session)) return
+        this.draftStatusTarget.textContent = message === "保存済み" && this.inputState?.ink.stroke ? "未保存" : message
+        this.retryTarget.hidden = !retry
+      },
+      editable: value => {
+        if (!this.current(session)) return
+        this.draftEditable = value
+        if (!value) this.finishInput()
+      }
+    })
+    await this.draft.start()
+  }
+
+  async retryDraft() {
+    await this.draft?.retry()
+    if (this.active) this.queueRender()
+  }
+
+  warnUnsaved(event) {
+    this.finishInput()
+    if (this.draft?.dirty) { event.preventDefault(); event.returnValue = "" }
+  }
+
+  confirmLeave(event) {
+    this.finishInput()
+    if (this.draft?.dirty && !window.confirm("未保存の手書きがあります。保存済みを確認してから移動してください。移動しますか？")) event.preventDefault()
+  }
+
   async download() {
-    if (this.exporting || !this.active || !this.pagesReady || !this.pdf) return
+    if (this.exporting || !this.active || !this.pagesReady || !this.pdf || !this.draft?.ready) return
     this.finishInput()
     this.exporting = true
     const session = this.session
@@ -368,6 +433,7 @@ export default class extends Controller {
   }
 
   disconnect() {
+    this.draft?.stop()
     this.sourceBytes = null
     this.active = false
     this.resolutionQuery?.removeEventListener("change", this.resolutionChanged)

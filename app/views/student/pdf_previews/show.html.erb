@@ -8,10 +8,14 @@
 <section class="pdf-preview" aria-label="教材PDFの手書き試作"
   data-controller="pdf-preview"
   data-pdf-preview-assignment-id-value="<%= @assignment.id %>"
-  data-pdf-preview-url-value="<%= material_student_assignment_path(@assignment) %>"
+  data-pdf-preview-url-value="<%= material_student_assignment_path(@assignment, draft_context: @draft_context) %>"
+  data-pdf-preview-draft-url-value="<%= student_assignment_answer_draft_path(@assignment) %>"
+  data-pdf-preview-draft-context-value="<%= @draft_context %>"
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
-  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput scroll@window->pdf-preview#scrolled">
+  data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput scroll@window->pdf-preview#scrolled beforeunload@window->pdf-preview#warnUnsaved turbo:before-visit@document->pdf-preview#confirmLeave submit@document->pdf-preview#confirmLeave online@window->pdf-preview#retryDraft">
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
+  <p class="pdf-preview-draft-status" data-pdf-preview-target="draftStatus" role="status" aria-live="polite">下書きの復元中…</p>
+  <button type="button" data-pdf-preview-target="retry" data-action="pdf-preview#retryDraft" hidden>保存を再試行</button>
   <div class="pdf-preview-tools" role="group" aria-label="手書きツール">
     <button type="button" aria-pressed="true" data-pdf-preview-target="tool"
       data-pdf-preview-tool-param="pen" data-action="pdf-preview#selectTool">ペン</button>

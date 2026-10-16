@@ -14,3 +14,6 @@
 }
 
 .pdf-preview-download-note { margin: 0 0 0.75rem; color: var(--color-muted); }
+
+.pdf-preview [hidden] { display: none; }
+.pdf-preview .pdf-preview-draft-status { margin: 0 0 0.5rem; padding: 0; border: 0; background: transparent; color: var(--color-text); }
