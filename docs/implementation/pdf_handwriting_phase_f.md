@@ -1,5 +1,17 @@
 # PDF手書き Phase F 最終品質検証
 
+## 現在の正式完了状態（PR前整理時点）
+
+Phase Fは合意したローカル開発・検証の範囲で正式完了。ローカルコミットは`8608e1f590e2907d0d61fd76e760a55884b72ca3`（`test: finalize PDF handwriting security and reliability`）。追加承認されたBrakeman修正とPDF本体25MiB・提出HTTP本文32MiBの制限を含む。
+
+- 最終確認済みのローカル検証: 全RSpec 1,380件成功・失敗0件、Brakeman 79 checks・警告0件、RuboCop 172ファイル・指摘0件。PR前総点検でも同じ結果を確認済み。今回の文書整理では再実行していない。
+- 開発者によるMac Chrome総合動作確認8項目は成功済み。
+- GitHub Actions上のCI成功、Windows・Chromebook実機確認、実通信断試験、実答案PDFサイズ分布は未確認。サイズ上限追加後のブラウザ操作も未確認。
+
+以下は各Phase実施当時の作業記録として保存する。「未コミット」「確認待ち」「未実行」等は当時の状態であり、現在の状態は本節を参照する。Phaseごとの成功件数も当時の検証結果として残す。
+
+## 実施当時の記録
+
 ## 検証範囲
 
 Phase Eをローカルコミットし、`feature/pdf-handwriting-f`で既存機能の異常系・認可・CIを確認する。Phase Fでは画面、業務ロジック、DB構造を変更しない。
