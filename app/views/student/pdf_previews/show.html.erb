@@ -1,0 +1,19 @@
+<% content_for :head do %>
+  <meta name="turbo-cache-control" content="no-cache">
+<% end %>
+
+<h1><%= @assignment.title %>：PDF表示試作</h1>
+<p>1ページ目のみ表示します。</p>
+<%= link_to "小テストの詳細へ戻る", student_assignment_path(@assignment) %>
+
+<section class="pdf-preview" aria-label="教材PDFの1ページ目"
+  data-controller="pdf-preview"
+  data-pdf-preview-url-value="<%= material_student_assignment_path(@assignment) %>"
+  data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
+  data-action="turbo:before-cache@document->pdf-preview#disconnect">
+  <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
+  <div data-pdf-preview-target="container" class="pdf-preview-page" aria-busy="true">
+    <canvas data-pdf-preview-target="canvas" aria-label="教材PDFの1ページ目" role="img" hidden></canvas>
+  </div>
+  <noscript><p role="alert">PDFの表示にはJavaScriptが必要です。ブラウザの設定を確認してください。</p></noscript>
+</section>
