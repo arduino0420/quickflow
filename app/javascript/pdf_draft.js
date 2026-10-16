@@ -15,7 +15,7 @@ export default class PdfDraft {
 
   async call(method, body) {
     const response = await this.request(this.url, {
-      method, credentials: "same-origin", cache: "no-store", redirect: "error", signal: this.abort.signal,
+      method, credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(30_000)]),
       headers: { "Accept": "application/json", "Content-Type": "application/json", "X-Draft-Context": this.context,
         "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" },
       ...(body ? { body: JSON.stringify(body) } : {})
@@ -89,10 +89,10 @@ export default class PdfDraft {
     this.blocked = [401, 403, 409, 413, 422].includes(error.code)
     if ([413, 422].includes(error.code)) {
       this.editable(false)
-      this.status("保存できませんでした。下書きの容量・形式が上限に達しました。確認用PDFをダウンロードして先生に確認してください。")
+      this.status("保存できませんでした。下書きの容量・形式が上限に達しました。この画面を閉じず、先生に確認してください。")
     } else if (this.blocked) {
       this.editable(false)
-      this.status("保存を停止しました。別のタブ・端末、教材変更、提出・ログイン状態を確認してください。未保存分は確認用PDFで退避し、保存済みの下書きは別タブで開いて確認してください。")
+      this.status("保存を停止しました。別のタブ・端末、教材変更、提出・ログイン状態を確認してください。手書きが残るこの画面を閉じず、先生に確認してください。")
     } else {
       this.status("保存できませんでした。手書きはこの画面に残っています。接続を確認して再試行してください。", true)
     }
@@ -118,6 +118,21 @@ export default class PdfDraft {
     } catch (error) {
       if (!this.disposed) this.failure(error)
     } finally { this.retrying = false }
+  }
+
+  async flush() {
+    if (!this.ready || !this.allowed || this.blocked || this.failed || this.disposed) throw new Error("draft unavailable")
+    // A blank answer also needs a saved version to bind the final PDF to this editor.
+    if (this.version === null && !this.dirty && !this.saving) this.changed()
+    const deadline = Date.now() + 30_000
+    while (this.saving || this.retrying) {
+      if (Date.now() > deadline || this.disposed) throw new Error("draft timeout")
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    if (this.failed || this.blocked) throw new Error("draft failed")
+    if (this.dirty) await this.save()
+    if (this.dirty || this.failed || this.blocked || this.disposed) throw new Error("draft unsaved")
+    return this.version
   }
 
   stop() {

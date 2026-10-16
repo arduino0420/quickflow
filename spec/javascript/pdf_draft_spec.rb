@@ -50,4 +50,22 @@ RSpec.describe "PDF draft autosave lifecycle" do
       File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
+  it "flushes a pending save and its newer strokes before returning the final version" do
+    script = <<~JS
+      import fs from 'node:fs';import assert from 'node:assert/strict';
+      const {default:PdfDraft}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
+      globalThis.document={querySelector:()=>({content:'csrf'})};
+      let release,version=-1,puts=0;
+      const d=new PdfDraft({url:'/draft',context:'ctx',read:()=>({format_version:1,pages:[]}),restore:()=>{},status:()=>{},editable:()=>{},delay:60000,
+        fetch:async(url,o)=>{if(o.method==='GET')return {ok:true,json:async()=>({draft:null,editable:true})};puts++;
+          if(puts===1)await new Promise(r=>release=r);
+          return {ok:true,json:async()=>({draft:{version:++version}})};}});
+      await d.start();d.changed();const save=d.save();d.changed();const flush=d.flush();
+      release();await save;assert.equal(await flush,1);assert.equal(puts,2);assert.equal(d.dirty,false);
+      d.failed=true;await assert.rejects(()=>d.flush());d.stop();
+    JS
+    stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
+      File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
 end

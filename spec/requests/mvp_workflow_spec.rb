@@ -97,7 +97,13 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
       follow_redirect!
       row = document.at_css("#assignment_#{assignment.id}")
       expect(row.at_css("a")[:class]).to include("assignment-card-link")
+      expect(row.at_css("a")[:href]).to eq(student_assignment_pdf_preview_path(assignment))
       get row.at_css("a")[:href]
+      expect(document.at_css('[data-pdf-preview-target="submit"]').text).to eq("提出する")
+      expect(document.at_css("input[type='file']")).to be_nil
+      # Keep this workflow's legacy-upload regression coverage; handwritten
+      # PDF generation and submission are covered by the browser/system tests.
+      get document.at_css("a[href='#{student_assignment_path(assignment)}']")[:href]
       expect(document.at_css("input[type='file']")).to be_present
       get material_student_assignment_path(assignment)
       expect(response.body.b).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))

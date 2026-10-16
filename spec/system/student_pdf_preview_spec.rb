@@ -6,6 +6,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   before do
     Selenium::WebDriver.logger.level = :warn
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    page.driver.browser.execute_cdp("Browser.setDownloadBehavior", behavior: "deny")
     school = School.create!(school_code: "PDFSYS")
     teacher = Teacher.create!(school: school, user_id: "pdf-system", password: "password123")
     classroom = Classroom.create!(school: school, grade: 1, class_number: 1)
@@ -65,6 +66,44 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     resources = page.evaluate_script("performance.getEntriesByType('resource').map(r => r.name)")
     expect(resources).to all(start_with(URI.parse(page.current_url).then { |uri| "#{uri.scheme}://#{uri.host}:#{uri.port}/" }))
     expect(Submission.count).to eq(0)
+  end
+
+  it "shows only the quiz title, hides routine notices and fits the wide submit button on narrow screens" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_css("h1", exact_text: @assignment.title)
+    expect(page).to have_no_button("確認用PDFをダウンロード")
+    expect(page).to have_no_text("確認用のダウンロードです。")
+    expect(page).to have_no_css('[data-pdf-preview-target="submitStatus"]', visible: true)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "未保存")
+    ink_drag(0.1, 0.2, 0.4, 0.2)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(1)
+    [ 1280, 360 ].each do |width|
+      page.current_window.resize_to(width, 900)
+      layout = page.evaluate_script(<<~JS)
+        (()=>{const button=document.querySelector('[data-pdf-preview-target="submit"]');
+          const notice=document.querySelector('[data-pdf-preview-target="draftStatus"]');
+          const r=button.getBoundingClientRect(), n=notice.getBoundingClientRect();
+          const style=getComputedStyle(button);
+          return {width:r.width,height:r.height,font:style.fontSize,fits:r.right<=innerWidth&&r.left>=0,
+            clipped:getComputedStyle(notice).clipPath,noticeHeight:n.height,
+            overflow:document.documentElement.scrollWidth>innerWidth};})()
+      JS
+      expect(layout["width"]).to be <= 480
+      expect(layout["width"]).to be > 200
+      expect(layout["height"]).to be >= 52
+      expect(layout["font"]).to eq("18px")
+      expect(layout["fits"]).to be(true)
+      expect(layout["overflow"]).to be(false)
+      expect(layout["clipped"]).to eq("inset(50%)")
+      expect(layout["noticeHeight"]).to eq(1)
+    end
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.2, 0.2)).to be > 0
+  ensure
+    page.current_window.resize_to(1280, 900)
   end
 
   it "shows an error instead of a blank canvas when the PDF is corrupt" do
@@ -142,7 +181,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     page.driver.browser.action.scroll_by(0, 150).perform
     Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
     expect(ink_alpha(0.15, 0.1)).to be > 0
-    expect(page).to have_text("保存済み", wait: 10)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
     page.refresh
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(ink_alpha(0.15, 0.1)).to be > 0
@@ -324,10 +363,11 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     scroll_page(10)
     ink_drag(0.2, 0.2, 0.2, 0.2, 10)
     expect(ink_alpha(0.2, 0.2, 10)).to be > 0
-    expect(page).to have_text("保存済み", wait: 10)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
     click_link "小テストの詳細へ戻る"
     expect(page).to have_current_path(student_assignment_path(@assignment))
-    expect(page).to have_css('input[type="file"]')
+    expect(page).to have_link("PDFに解答する")
+    expect(page).to have_css('details input[type="file"]', visible: :all)
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(ink_alpha(0.2, 0.2, 10)).to be > 0
@@ -470,7 +510,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   end
 
   [ [ "pdf_preview_single.pdf", 1 ], [ "pdf_preview_three.pdf", 3 ], [ "pdf_preview_ten.pdf", 10 ] ].each do |filename, count|
-    it "downloads and reopens #{count} pages including offscreen ink, ordered erasing and preserved source vectors" do
+    it "generates and reopens #{count} pages including offscreen ink, ordered erasing and preserved source vectors" do
       attach_preview(filename)
       if count == 3
         page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 1280, height: 900, deviceScaleFactor: 2, mobile: false)
@@ -481,8 +521,8 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(page).not_to have_text("ページを表示しています")
       expect(page).not_to have_css(".pdf-preview-page-number")
       expect(page).to have_link("小テストの詳細へ戻る")
-      ink_drag(0.1, 0.08, 0.35, 0.08, 1)
-      ink_drag(0.1, 0.08, 0.35, 0.08, count) if count > 1
+      ink_drag(0.1, 0.15, 0.35, 0.15, 1)
+      ink_drag(0.1, 0.15, 0.35, 0.15, count) if count > 1
       reading_jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
       scroll_page(1)
       if count == 3
@@ -490,23 +530,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         page.execute_script("document.body.style.zoom = '1.1'")
         expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
       end
-      page.execute_script(<<~JS)
-        const c = window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
-        window.exportSourceOperations = JSON.stringify(c.pageStates.map(s => [...s.ink.pages.values()]));
-        window.materialRequests = () => performance.getEntriesByType('resource').filter(r => new URL(r.name).pathname === new URL(c.urlValue, location.href).pathname).length;
-        window.sourceRequestCount = window.materialRequests();
-        window.exportBlobs = [];
-        const nativeURL = URL.createObjectURL;
-        URL.createObjectURL = blob => { window.exportBlobs.push(blob); window.exportGenerationMs = performance.now()-window.exportStartedAt; return nativeURL(blob); };
-        document.addEventListener('click', e => { if(e.target.download) {window.exportFilename = e.target.download; e.preventDefault();} });
-        window.exportStartedAt = performance.now();
-        c.download(); c.download();
-        window.exportLocked = c.exporting && c.downloadTarget.disabled && c.toolTargets.every(b => b.disabled);
-      JS
-      expect(page).to have_text("確認用PDFをダウンロードしました", wait: 40)
-      expect(page.evaluate_script("window.exportLocked")).to be(true)
-      expect(page.evaluate_script("window.exportBlobs.length")).to eq(1)
-      expect(page.evaluate_script("window.exportFilename")).to eq("quickflow_answer_assignment_#{@assignment.id}.pdf")
+      generate_preview_pdf
       expect(page.evaluate_script("window.exportBlobs[0].type")).to eq("application/pdf")
       result = page.evaluate_async_script(<<~JS)
         const done = arguments[arguments.length - 1];
@@ -523,7 +547,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
             await p.render({canvasContext:ctx,viewport:v}).promise;
             const pixel=(x,y)=>Array.from(ctx.getImageData(Math.round(v.width*x),Math.round(v.height*y),1,1).data);
             results.push({size:[v.width,v.height], originalSize:[before.width,before.height],
-              ink:pixel(.22,.08), untouched:pixel(.8,.08), center:pixel(.5,.5),
+              ink:pixel(.22,.15), untouched:pixel(.8,.15), center:pixel(.5,.5),
               text:(await p.getTextContent()).items.map(i=>i.str), originalText:(await original.getTextContent()).items.map(i=>i.str)});
             canvas.width=canvas.height=0;
           }
@@ -559,7 +583,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
-  it "retries after PNG failure without losing ink and keeps download separate from submission" do
+  it "retains ink after submission PDF generation fails and succeeds on retry" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     ink_drag(0.1, 0.1, 0.3, 0.1)
@@ -567,15 +591,16 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       window.nativeToBlob = HTMLCanvasElement.prototype.toBlob;
       HTMLCanvasElement.prototype.toBlob = function(callback) { callback(null); };
     JS
-    click_button "確認用PDFをダウンロード"
-    expect(page).to have_text("PDFを生成できませんでした", wait: 30)
+    click_button "提出する"
+    expect(page).to have_text("提出できませんでした", wait: 30)
     expect(ink_alpha(0.2, 0.1)).to be > 0
-    expect(page).to have_button("確認用PDFをダウンロード", disabled: false)
-    page.execute_script("HTMLCanvasElement.prototype.toBlob = window.nativeToBlob")
-    click_button "確認用PDFをダウンロード"
-    expect(page).to have_text("確認用PDFをダウンロードしました", wait: 30)
-    expect(ink_alpha(0.2, 0.1)).to be > 0
+    expect(page).to have_button("提出する", disabled: false)
     expect(Submission.where(assignment: @assignment)).to be_empty
+    expect(AnswerDraft.find_by!(assignment: @assignment)).to be_persisted
+    page.execute_script("HTMLCanvasElement.prototype.toBlob = window.nativeToBlob")
+    click_button "提出する"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(Submission.find_by!(assignment: @assignment).answer_file).to be_attached
   end
 
   it "exports rotations, offset CropBoxes, all eraser widths, dots and rewritten ink independently of screen resolution" do
@@ -733,24 +758,20 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       click_button "ペン"
       ink_drag(0.4, 0.25, 0.4, 0.25, 1)
       ink_drag(0.8, 0.25, 0.8, 0.25, 3)
-      expect(page).to have_text("保存済み", wait: 10)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       draft = AnswerDraft.find_by!(assignment: @assignment)
       expect(draft.page_data.length).to eq(3)
       expect(draft.page_data.first["operations"].select { |op| op["tool"] == "eraser" }.map { |op| op["width"] }).to eq([ 4, 8, 12 ])
       page.current_window.resize_to(900, 900)
       page.refresh
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
-      expect(page).to have_text("保存済み")
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み")
       expect(ink_alpha(0.2, 0.25, 1)).to eq(0)
       expect(ink_alpha(0.4, 0.25, 1)).to be > 0
       expect(ink_alpha(0.6, 0.25, 1)).to eq(0)
       expect(ink_alpha(0.8, 0.25, 3)).to be > 0
-      page.execute_script(<<~JS)
-        const native = URL.createObjectURL;
-        URL.createObjectURL = blob => {window.restoredPdf=blob;return native(blob)};
-      JS
-      click_button "確認用PDFをダウンロード"
-      expect(page).to have_text("確認用PDFをダウンロードしました", wait: 30)
+      generate_preview_pdf
+      page.execute_script("window.restoredPdf = window.exportBlobs[0]")
       pixels = page.evaluate_async_script(<<~JS)
         const done=arguments[arguments.length-1];
         (async()=>{
@@ -801,11 +822,11 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       JS
       ink_drag(0.1, 0.15, 0.2, 0.15)
       ink_drag(0.3, 0.15, 0.4, 0.15)
-      expect(page).to have_text("保存中…", wait: 8)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存中…", wait: 8)
       expect(page.evaluate_script("window.draftPuts")).to eq(1)
       ink_drag(0.5, 0.15, 0.6, 0.15)
       page.execute_script("window.releaseDraftSave()")
-      expect(page).to have_text("保存済み", wait: 12)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 12)
       expect(page.evaluate_script("window.draftPuts")).to eq(2)
       expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(3)
     end
@@ -826,7 +847,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         c.draft.request=window.draftNativeRequest;
       JS
       click_button "保存を再試行"
-      expect(page).to have_text("保存済み", wait: 10)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       page.refresh
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
       expect(ink_alpha(0.3, 0.2)).to be > 0
@@ -836,20 +857,20 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       visit student_assignment_pdf_preview_path(@assignment)
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
       ink_drag(0.1, 0.2, 0.6, 0.2, 1)
-      expect(page).to have_text("保存済み", wait: 10)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       first = current_window
       second = open_new_window
       within_window(second) do
         visit student_assignment_pdf_preview_path(@assignment)
         expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
         ink_drag(0.1, 0.3, 0.6, 0.3, 1)
-        expect(page).to have_text("保存済み", wait: 10)
+        expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       end
       within_window(first) do
         ink_drag(0.1, 0.4, 0.6, 0.4, 1)
         expect(page).to have_text("保存を停止しました", wait: 10)
         expect(ink_alpha(0.3, 0.4)).to be > 0
-        expect(page).to have_button("確認用PDFをダウンロード", disabled: false)
+        expect(page).to have_button("提出する", disabled: true)
       end
       expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(2)
       within_window(second) do
@@ -872,13 +893,13 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       visit student_assignment_pdf_preview_path(@assignment)
       expect(page).to have_text("下書きの復元中…")
       expect(page).not_to have_css('[data-pdf-preview-target="ink"]', visible: true)
-      expect(page).to have_button("確認用PDFをダウンロード", disabled: true)
+      expect(page).to have_button("提出する", disabled: true)
       Timeout.timeout(10) { sleep 0.05 until page.evaluate_script("typeof window.releaseRestore === 'function'") }
       page.execute_script("window.releaseRestore()")
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
       expect(ink_alpha(0.2, 0.2)).to be > 0
       ink_drag(0.3, 0.2, 0.4, 0.2, 1)
-      expect(page).to have_text("保存済み", wait: 10)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].map { |op| op["id"] }).to eq([ 7, 8 ])
     end
 
@@ -886,20 +907,20 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       visit student_assignment_pdf_preview_path(@assignment)
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
       ink_drag(0.1, 0.2, 0.5, 0.2, 1)
-      expect(page).to have_text("保存済み", wait: 10)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       original = AnswerDraft.find_by!(assignment: @assignment).attributes
       attach_preview("pdf_preview_three.pdf")
       page.refresh
       expect(page).to have_text("下書きを復元できません。ログイン状態・教材の変更を確認してください。", wait: 20)
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
-      expect(page).to have_button("確認用PDFをダウンロード", disabled: true)
+      expect(page).to have_button("提出する", disabled: true)
       expect(ink_alpha(0.3, 0.2, 1)).to eq(0)
       ink_drag(0.1, 0.2, 0.5, 0.2, 1)
       expect(ink_alpha(0.3, 0.2, 1)).to eq(0)
       expect(AnswerDraft.find_by!(assignment: @assignment).attributes).to eq(original)
     end
 
-    it "recovers from an initial restore failure and enables PDF download only after successful restoration" do
+    it "recovers from an initial restore failure and enables submission only after successful restoration" do
       AnswerDraft.create!(student: Student.find_by!(attendance_number: 1), assignment: @assignment,
         material_fingerprint: AnswerDraftContext.fingerprint(@assignment),
         page_data: [ { page_number: 1, operations: [ { id: 1, tool: "pen", color: "#000000", width: 1.2, points: [ [ 40, 240 ] ] } ] } ])
@@ -917,10 +938,10 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
       state = page.evaluate_script("(()=>{const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'),'pdf-preview');return {active:c.active,blocked:c.draft.blocked,disposed:!!c.draft.disposed,ready:!!c.draft.ready};})()")
       expect(state).to eq("active" => true, "blocked" => false, "disposed" => false, "ready" => false)
-      expect(page).to have_button("確認用PDFをダウンロード", disabled: true)
+      expect(page).to have_button("提出する", disabled: true)
       click_button "保存を再試行"
-      expect(page).to have_text("保存済み", wait: 15)
-      expect(page).to have_button("確認用PDFをダウンロード", disabled: false)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 15)
+      expect(page).to have_button("提出する", disabled: false)
       expect(ink_alpha(0.2, 0.2)).to be > 0
     end
 
@@ -953,6 +974,90 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       click_button "ログイン"
       expect(page).to have_current_path(student_assignments_path)
     end
+  end
+
+  it "opens from the list, saves the latest strokes and submits all pages without file selection" do
+    attach_preview("pdf_preview_three.pdf")
+    click_link "表示試験"
+    expect(page).to have_current_path(student_assignment_pdf_preview_path(@assignment))
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_no_css('input[type="file"]')
+    expect(page.evaluate_script(<<~JS)).to be(true)
+      (()=>{const c=document.querySelector('[data-pdf-preview-target="container"]');
+        const b=document.querySelector('[data-pdf-preview-target="submit"]');
+        return !!(c.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING) &&
+          document.querySelectorAll('[data-pdf-preview-target="submit"]').length===1;})()
+    JS
+    ink_drag(0.2, 0.15, 0.2, 0.15, 1)
+    click_button "消しゴム"
+    click_button "大"
+    ink_drag(0.2, 0.15, 0.2, 0.15, 1)
+    click_button "ペン"
+    ink_drag(0.4, 0.15, 0.4, 0.15, 1)
+    ink_drag(0.8, 0.15, 0.8, 0.15, 3)
+    jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
+    click_button "提出する"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(page).to have_text("採点待ち")
+    item = Submission.find_by!(assignment: @assignment)
+    expect(item.answer_file).to be_attached
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.last["operations"].length).to eq(1)
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(jobs_before + 1)
+    result = page.evaluate_async_script(<<~JS)
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const {getDocument,PDFWorker}=await import('pdfjs');
+        const nativeWorker=new Worker('/vendor/pdfjs/6.4.299/pdf.worker.min.mjs',{type:'module'});
+        const worker=new PDFWorker({port:nativeWorker});
+        const bytes=await (await fetch(#{answer_student_assignment_path(@assignment).to_json})).arrayBuffer();
+        const pdf=await getDocument({data:new Uint8Array(bytes),worker}).promise;
+        const original=await getDocument({url:#{material_student_assignment_path(@assignment).to_json},worker}).promise;
+        const pixels=[], texts=[];
+        for(const [n,x] of [[1,.2],[1,.4],[3,.8]]) {
+          const p=await pdf.getPage(n), v=p.getViewport({scale:3}), canvas=document.createElement('canvas');
+          canvas.width=v.width;canvas.height=v.height;const ctx=canvas.getContext('2d');
+          await p.render({canvasContext:ctx,viewport:v}).promise;
+          pixels.push(Array.from(ctx.getImageData(Math.round(v.width*x),Math.round(v.height*.15),1,1).data).slice(0,3));
+          canvas.width=canvas.height=0;
+        }
+        for(let n=1;n<=pdf.numPages;n++) {
+          const p=await pdf.getPage(n), o=await original.getPage(n);
+          texts.push(JSON.stringify((await p.getTextContent()).items.map(i=>i.str))===JSON.stringify((await o.getTextContent()).items.map(i=>i.str)));
+        }
+        done({count:pdf.numPages,pixels,texts});
+      })().catch(e=>done({error:String(e)}));
+    JS
+    expect(result["error"]).to be_nil
+    expect(result["count"]).to eq(3)
+    expect(result["pixels"][0]).to eq([ 255, 255, 255 ])
+    expect(result["pixels"][1].max).to be < 20
+    expect(result["pixels"][2].max).to be < 20
+    expect(result["texts"]).to eq([ true, true, true ])
+    visit student_assignments_path
+    click_link "表示試験"
+    expect(page).to have_current_path(student_assignment_path(@assignment))
+  end
+
+  # Exercise the same PDF module used by formal submission, without a download UI.
+  def generate_preview_pdf
+    result = page.evaluate_async_script(<<~JS)
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        const {snapshotPages,generateAnswerPdf}=await import('pdf_export');
+        c.finishInput();
+        window.exportSourceOperations=JSON.stringify(c.pageStates.map(s=>[...s.ink.pages.values()]));
+        window.materialRequests=()=>performance.getEntriesByType('resource').filter(r=>new URL(r.name).pathname===new URL(c.urlValue,location.href).pathname).length;
+        window.sourceRequestCount=window.materialRequests();
+        const started=performance.now();
+        const source=await c.pdf.getData();
+        const bytes=await generateAnswerPdf({source,pages:snapshotPages(c.pageStates)});
+        window.exportGenerationMs=performance.now()-started;
+        window.exportBlobs=[new Blob([bytes],{type:'application/pdf'})];
+        done({ok:true});
+      })().catch(e=>done({error:String(e)}));
+    JS
+    expect(result).to eq("ok" => true)
   end
 
   def attach_preview(filename)

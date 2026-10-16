@@ -1,28 +1,55 @@
 class Student::SubmissionsController < ApplicationController
   before_action :require_student_login
 
+  def show
+    @assignment = current_student.classroom.assignments.find(params[:assignment_id])
+    return head :not_found unless @assignment.teacher.school_id == current_student.classroom.school_id
+    return head :conflict unless AnswerDraftContext.valid?(request.headers["X-Draft-Context"], current_student, @assignment)
+
+    response.headers["Cache-Control"] = "private, no-store"
+    render json: { submitted: existing_submission.present?, location: student_assignment_path(@assignment) }
+  end
+
   def create
     @assignment = current_student.classroom.assignments.find(params[:assignment_id])
-    return redirect_already_submitted if existing_submission
-
-    @submission = current_student.submissions.build(
-      assignment: @assignment, status: :submitted, submitted_at: Time.current
-    )
-    upload = params.fetch(:submission, ActionController::Parameters.new).permit(:answer_file)[:answer_file]
-    return render_errors unless valid_pdf?(upload)
-
-    @submission.answer_file = upload
+    if handwritten?
+      return head :not_found unless @assignment.teacher.school_id == current_student.classroom.school_id
+      return head :conflict unless AnswerDraftContext.valid?(request.headers["X-Draft-Context"], current_student, @assignment)
+    end
     AssignmentLifecycleLock.synchronize(@assignment.id) do
-      # KEY SHARE is compatible with question generation's NO KEY UPDATE lock.
-      @assignment.with_lock("FOR KEY SHARE") { @submission.save! }
+      return redirect_already_submitted if existing_submission
 
-      unless enqueue_answer_reading
-        return redirect_to student_assignment_path(@assignment),
-          alert: "答案PDFは保存されましたが、採点処理を開始できませんでした。再提出せず、先生に確認してください。",
-          status: :see_other
+      @submission = current_student.submissions.build(
+        assignment: @assignment, status: :submitted, submitted_at: Time.current
+      )
+      upload = params.fetch(:submission, ActionController::Parameters.new).permit(:answer_file)[:answer_file]
+      return render_errors unless valid_pdf?(upload)
+
+      # Upload before committing the answer: storage failures must not leave a
+      # formally submitted record without its PDF. The usual PDF validation above applies.
+      if handwritten?
+        return head :conflict unless valid_draft?
+
+        @uploaded_blob = ActiveStorage::Blob.build_after_unfurling(io: upload.tempfile,
+          filename: upload.original_filename, content_type: "application/pdf")
+        @uploaded_blob.save!
+        @uploaded_blob.upload_without_unfurling(upload.tempfile)
+        @submission.answer_file = @uploaded_blob
+      else
+        @submission.answer_file = upload
+      end
+      @assignment.with_lock(handwritten? ? "FOR UPDATE" : "FOR KEY SHARE") do
+        return head :conflict if handwritten? && !valid_draft?
+        return redirect_already_submitted if existing_submission
+
+        @submission.save!
       end
 
-      redirect_to student_assignment_path(@assignment), notice: "提出しました", status: :see_other
+      unless enqueue_answer_reading
+        return submitted_response("答案PDFは保存されましたが、採点処理を開始できませんでした。再提出せず、先生に確認してください。")
+      end
+
+      submitted_response
     end
   rescue ActiveRecord::RecordInvalid
     return redirect_already_submitted if existing_submission
@@ -32,9 +59,34 @@ class Student::SubmissionsController < ApplicationController
     return redirect_already_submitted if existing_submission
 
     raise
+  ensure
+    @uploaded_blob&.purge unless @uploaded_blob&.attachments&.exists?
   end
 
   private
+
+  def handwritten?
+    request.headers["X-Handwritten-Submission"] == "1"
+  end
+
+  def valid_draft?
+    return false unless AnswerDraftContext.valid?(request.headers["X-Draft-Context"], current_student, @assignment)
+
+    draft = AnswerDraft.find_by(student: current_student, assignment: @assignment)
+    version = params[:draft_version]
+    draft && version.is_a?(String) && version.match?(/\A[0-9]+\z/) &&
+      draft.lock_version == version.to_i && draft.material_fingerprint == AnswerDraftContext.fingerprint(@assignment)
+  end
+
+  def submitted_response(alert = nil)
+    if handwritten?
+      alert ? flash[:alert] = alert : flash[:notice] = "提出しました"
+      render json: { submitted: true, location: student_assignment_path(@assignment), alert: alert }
+    else
+      redirect_to student_assignment_path(@assignment),
+        **(alert ? { alert: alert } : { notice: "提出しました" }), status: :see_other
+    end
+  end
 
   def enqueue_answer_reading
     raise "Could not enqueue answer reading" unless AnswerReadingJob.perform_later(@submission)
@@ -57,6 +109,8 @@ class Student::SubmissionsController < ApplicationController
   end
 
   def redirect_already_submitted
+    return submitted_response if handwritten?
+
     redirect_to student_assignment_path(@assignment), notice: "すでに提出済みです", status: :see_other
   end
 
@@ -76,6 +130,8 @@ class Student::SubmissionsController < ApplicationController
   end
 
   def render_errors
+    return render json: { error: "invalid_pdf" }, status: :unprocessable_entity if handwritten?
+
     failed_submission = @submission
     @submission = current_student.submissions.build(assignment: @assignment)
     @submission.errors.copy!(failed_submission.errors)

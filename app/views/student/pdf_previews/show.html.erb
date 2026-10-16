@@ -2,13 +2,14 @@
   <meta name="turbo-cache-control" content="no-cache">
 <% end %>
 
-<h1><%= @assignment.title %>：PDF手書き試作</h1>
+<h1><%= @assignment.title %></h1>
 <%= link_to "小テストの詳細へ戻る", student_assignment_path(@assignment) %>
 
-<section class="pdf-preview" aria-label="教材PDFの手書き試作"
+<section class="pdf-preview" aria-label="教材PDFの手書き解答"
   data-controller="pdf-preview"
   data-pdf-preview-assignment-id-value="<%= @assignment.id %>"
   data-pdf-preview-url-value="<%= material_student_assignment_path(@assignment, draft_context: @draft_context) %>"
+  data-pdf-preview-submission-url-value="<%= student_assignment_submission_path(@assignment) %>"
   data-pdf-preview-draft-url-value="<%= student_assignment_answer_draft_path(@assignment) %>"
   data-pdf-preview-draft-context-value="<%= @draft_context %>"
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
@@ -29,9 +30,6 @@
       <% end %>
     </div>
   </div>
-  <button type="button" data-pdf-preview-target="download" data-action="pdf-preview#download" disabled>確認用PDFをダウンロード</button>
-  <p class="pdf-preview-download-note">確認用のダウンロードです。正式提出は行いません。</p>
-  <p data-pdf-preview-target="exportStatus" role="status" aria-live="polite" hidden></p>
   <div data-pdf-preview-target="container" class="pdf-preview-pages" aria-busy="true">
     <section class="pdf-preview-sheet" data-page-number="1" aria-label="教材PDFの1ページ目">
       <div class="pdf-preview-page">
@@ -41,6 +39,10 @@
         <span class="pdf-preview-eraser-cursor" aria-hidden="true" hidden></span>
       </div>
     </section>
+  </div>
+  <div class="pdf-preview-submit">
+    <button type="button" data-pdf-preview-target="submit" data-action="pdf-preview#submitAnswer" disabled>提出する</button>
+    <p data-pdf-preview-target="submitStatus" role="status" aria-live="polite"></p>
   </div>
   <noscript><p role="alert">PDFの表示にはJavaScriptが必要です。ブラウザの設定を確認してください。</p></noscript>
 </section>

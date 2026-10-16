@@ -5,8 +5,8 @@ import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "download", "exportStatus", "draftStatus", "retry"]
-  static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String }
+  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus"]
+  static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String, submissionUrl: String }
 
   connect() {
     this.exporting = false
@@ -188,7 +188,7 @@ export default class extends Controller {
     this.containerTarget.setAttribute("aria-busy", "false")
     this.statusTarget.textContent = ""
     this.statusTarget.hidden = true
-    if (this.hasDownloadTarget) this.downloadTarget.disabled = this.exporting || !this.draft?.ready
+    if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || !this.draft?.ready || !this.draft?.allowed || this.draft?.blocked
   }
 
   selectTool(event) {
@@ -263,7 +263,7 @@ export default class extends Controller {
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
-      this.draftStatusTarget.textContent = "未保存"
+      this.showDraftStatus(this.draft?.failed ? "保存できませんでした。接続を確認して再試行してください。" : "未保存", !!this.draft?.failed)
       event.preventDefault()
       state.inkCanvas.setPointerCapture(event.pointerId)
     }
@@ -321,7 +321,6 @@ export default class extends Controller {
   fail() {
     if (!this.active) return
     this.statusTarget.hidden = false
-    if (this.hasDownloadTarget) this.downloadTarget.disabled = true
     this.statusTarget.setAttribute("role", "alert")
     this.statusTarget.textContent = "問題を表示できませんでした。通信状態を確認して、ページを再読み込みしてください。"
     for (const state of this.pageStates) state.canvas.hidden = state.inkCanvas.hidden = true
@@ -361,16 +360,22 @@ export default class extends Controller {
       },
       status: (message, retry = false) => {
         if (!this.current(session)) return
-        this.draftStatusTarget.textContent = message === "保存済み" && this.inputState?.ink.stroke ? "未保存" : message
-        this.retryTarget.hidden = !retry
+        this.showDraftStatus(message === "保存済み" && this.inputState?.ink.stroke ? "未保存" : message, retry)
       },
       editable: value => {
         if (!this.current(session)) return
         this.draftEditable = value
+        if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || !this.pagesReady || !value
         if (!value) this.finishInput()
       }
     })
     await this.draft.start()
+  }
+
+  showDraftStatus(message, retry = false) {
+    this.draftStatusTarget.textContent = message
+    this.draftStatusTarget.classList.toggle("pdf-preview-status-quiet", ["未保存", "保存中…", "保存済み"].includes(message))
+    this.retryTarget.hidden = !retry
   }
 
   async retryDraft() {
@@ -385,48 +390,84 @@ export default class extends Controller {
 
   confirmLeave(event) {
     this.finishInput()
-    if (this.draft?.dirty && !window.confirm("未保存の手書きがあります。保存済みを確認してから移動してください。移動しますか？")) event.preventDefault()
+    if (this.draft?.dirty && !window.confirm("保存が完了していない手書きがあります。このまま移動すると失われる可能性があります。移動しますか？")) event.preventDefault()
   }
 
-  async download() {
+  async submissionState(options = {}) {
+    const response = await fetch(this.submissionUrlValue, {
+      credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000),
+      headers: { "Accept": "application/json", "X-Draft-Context": this.draftContextValue,
+        "X-Handwritten-Submission": "1", "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" },
+      ...options
+    })
+    if (!response.ok) {
+      const error = new Error("submission failed")
+      error.code = response.status
+      throw error
+    }
+    return response.json()
+  }
+
+  async submitAnswer() {
     if (this.exporting || !this.active || !this.pagesReady || !this.pdf || !this.draft?.ready) return
     this.finishInput()
     this.exporting = true
     const session = this.session
-    const status = this.exportStatusTarget
-    status.hidden = false
-    status.setAttribute("role", "status")
-    status.textContent = "確認用PDFを生成しています。"
-    this.downloadTarget.disabled = true
+    this.submitTarget.disabled = true
     for (const button of [...this.toolTargets, ...this.sizeTargets]) button.disabled = true
+    const status = this.submitStatusTarget
+    status.setAttribute("role", "status")
+    status.textContent = "提出状況を確認しています…"
     try {
-      const pages = snapshotPages(this.pageStates)
-      this.sourceBytes ||= await this.pdf.getData()
+      // Reconcile a successful POST whose response was lost before attempting another upload.
+      let result = await this.submissionState()
       if (!this.current(session)) return
-      const bytes = await generateAnswerPdf({ source: this.sourceBytes, pages,
-        current: () => this.current(session),
-        progress: (number, total) => { if (this.current(session)) status.textContent = `確認用PDFを生成しています（${number}/${total}）。` }
-      })
-      if (!this.current(session)) return
-      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }))
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `quickflow_answer_assignment_${this.assignmentIdValue}.pdf`
-      document.body.append(link)
-      try { link.click() } finally {
-        link.remove()
-        window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      if (result.submitted && this.draft.dirty) {
+        const error = new Error("another submission exists")
+        error.code = 409
+        throw error
       }
-      status.textContent = "確認用PDFをダウンロードしました。正式提出は行っていません。"
-    } catch {
+      if (!result.submitted) {
+        status.textContent = "答案を準備しています…"
+        const version = await this.draft.flush()
+        if (!this.current(session)) return
+        const pages = snapshotPages(this.pageStates)
+        this.sourceBytes ||= await this.pdf.getData()
+        const bytes = await generateAnswerPdf({ source: this.sourceBytes, pages, current: () => this.current(session) })
+        if (!this.current(session)) return
+        const body = new FormData()
+        body.append("submission[answer_file]", new Blob([bytes], { type: "application/pdf" }), "answer.pdf")
+        body.append("draft_version", String(version))
+        status.textContent = "提出しています…"
+        try {
+          result = await this.submissionState({ method: "POST", body })
+        } catch (error) {
+          // A 409 must remain a conflict even if another tab has since submitted.
+          if (error.code) throw error
+          result = await this.submissionState()
+          if (!result.submitted) throw error
+        }
+      }
+      if (!this.current(session) || !result.submitted) throw new Error("not submitted")
+      this.draft.allowed = this.draftEditable = false
+      this.draft.stop()
+      status.textContent = result.alert || "提出が完了しました。"
+      window.location.assign(result.location)
+    } catch (error) {
       if (this.current(session)) {
         status.setAttribute("role", "alert")
-        status.textContent = "PDFを生成できませんでした。手書き内容はこの画面に残っています。通信状態やPDFの形式・サイズを確認して、もう一度お試しください（暗号化・署名付きPDFには対応していません）。"
+        status.textContent = error.code === 409 ?
+          "教材または下書きが変更されています。提出を停止しました。手書きが残るこの画面を閉じず、先生に確認してください。" :
+          "提出できませんでした。手書きはこの画面に残っています。保存状況と接続を確認して、もう一度お試しください。"
+        if ([401, 403, 409, 404].includes(error.code)) {
+          this.draft.blocked = true
+          this.draftEditable = false
+        }
       }
     } finally {
       this.exporting = false
       if (this.current(session)) {
-        this.downloadTarget.disabled = false
+        this.submitTarget.disabled = !this.draft.allowed || this.draft.blocked
         for (const button of [...this.toolTargets, ...this.sizeTargets]) button.disabled = false
       }
     }

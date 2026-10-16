@@ -32,7 +32,7 @@ Rails.application.routes.draw do
       get :answer, on: :member
       resource :answer_draft, only: [ :show, :update ]
       resource :pdf_preview, only: [ :show ], controller: "pdf_previews"
-      resource :submission, only: [ :create ]
+      resource :submission, only: [ :show, :create ]
     end
   end
 

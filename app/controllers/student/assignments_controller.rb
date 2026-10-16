@@ -69,7 +69,8 @@ class Student::AssignmentsController < ApplicationController
   end
 
   def available_assignments
-    current_student.classroom.assignments
+    current_student.classroom.assignments.joins(:teacher)
+      .where(teachers: { school_id: current_student.classroom.school_id })
   end
 
   def set_assignment
