@@ -7,7 +7,7 @@ RSpec.describe "Read-only recovery tasks" do
 
   before do
     Rails.application.load_tasks unless Rake::Task.task_defined?("recovery:inspect")
-    %w[recovery:inspect recovery:candidates].each { |name| Rake::Task[name].reenable }
+    %w[recovery:inspect recovery:eligibility recovery:candidates].each { |name| Rake::Task[name].reenable }
   end
 
   it "inspects the specified answer without exposing content or changing its state" do
@@ -24,6 +24,29 @@ RSpec.describe "Read-only recovery tasks" do
     expect { Rake::Task["recovery:candidates"].invoke }.to output(
       a_string_including('"limit": 100', '"selection_reason": "採点失敗"')
     ).to_stdout
+  end
+
+  it "prints only the eligibility result and reason codes without private content" do
+    submission.update!(status: :failed, extracted_text: '{"private_answer":"PRIVATE-ANSWER"}')
+    safe_json = satisfy do |output|
+      parsed = JSON.parse(output)
+      parsed.keys == %w[result reason_codes] && parsed.fetch("result") == "ineligible" &&
+        !output.include?("PRIVATE-ANSWER") && !output.include?(teacher.user_id) && !output.include?(assignment.title)
+    end
+    expect { Rake::Task["recovery:eligibility"].invoke(submission.id.to_s) }.to output(safe_json).to_stdout
+  end
+
+  [ nil, "0", "-1", "abc", "9" * 40 ].each do |invalid|
+    it "rejects an invalid eligibility answer ID: #{invalid.inspect}" do
+      expect(Submission).not_to receive(:find_by)
+      expect { expect { Rake::Task["recovery:eligibility"].invoke(invalid) }.to raise_error(SystemExit) }
+        .to output(/答案IDは正の整数/).to_stderr
+    end
+  end
+
+  it "reports a missing eligibility answer without a database error" do
+    expect { expect { Rake::Task["recovery:eligibility"].invoke("9223372036854775807") }.to raise_error(SystemExit) }
+      .to output(/指定した答案が見つかりません/).to_stderr
   end
 
   it "passes explicit candidate arguments to the finder" do
