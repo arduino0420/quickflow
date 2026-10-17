@@ -11,6 +11,20 @@ namespace :recovery do
     puts JSON.pretty_generate(Recovery::SubmissionInspector.new.call(submission))
   end
 
+  desc "Check whether one failed submission meets the read-only grading recovery criteria"
+  task :eligibility, [ :submission_id ] => :environment do |_task, args|
+    submission_id = args[:submission_id].to_s
+    unless submission_id.match?(/\A[1-9][0-9]*\z/) &&
+        submission_id.length <= 19 && submission_id.to_i <= Recovery::GradingEligibility::MAX_SUBMISSION_ID
+      abort "答案IDは正の整数で指定してください。例: bin/rails 'recovery:eligibility[123]'"
+    end
+
+    submission = Submission.find_by(id: submission_id.to_i)
+    abort "指定した答案が見つかりません。" unless submission
+
+    puts JSON.pretty_generate(Recovery::GradingEligibility.new.call(submission))
+  end
+
   desc "List failed or long-unchanged submissions without changing data (defaults: 30 minutes, 100 rows)"
   task :candidates, [ :minutes, :limit ] => :environment do |_task, args|
     begin
