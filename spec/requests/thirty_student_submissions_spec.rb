@@ -42,16 +42,34 @@ RSpec.describe "Thirty concurrent student submissions", type: :request do
   after do
     STUDENT_COUNT.times { @start << true }
     @unlock << true
-    @threads.each { |thread| raise "Live submission worker" unless thread.join(30) }
-    raise "Live worker prevents safe cleanup" if @threads.any?(&:alive?)
+    join_errors = @threads.filter_map do |thread|
+      begin
+        raise "Live submission worker" unless thread.join(30)
+      rescue StandardError => error
+        error
+      end
+    end
+    if @threads.any?(&:alive?)
+      raise "Live worker prevents safe cleanup" unless RSpec.current_example.exception
 
-    AssignmentDeletion.new.call(@assignment, teacher: @teacher) if @assignment && Assignment.exists?(@assignment.id)
-    perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
-    @students&.each(&:destroy!)
-    @classroom&.destroy!
-    @teacher&.destroy!
-    @school&.destroy!
-    clear_enqueued_jobs
+      warn "Live worker prevents safe cleanup after test failure"
+    else
+      begin
+        AssignmentDeletion.new.call(@assignment, teacher: @teacher) if @assignment && Assignment.exists?(@assignment.id)
+        perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
+        @students&.each(&:destroy!)
+        @classroom&.destroy!
+        @teacher&.destroy!
+        @school&.destroy!
+      rescue StandardError => error
+        raise unless RSpec.current_example.exception
+
+        warn "Test fixture cleanup failed: #{error.class}"
+      ensure
+        clear_enqueued_jobs
+      end
+      raise join_errors.first if join_errors.any? && !RSpec.current_example.exception
+    end
   end
 
   def submit_together(handwritten:)
@@ -73,7 +91,7 @@ RSpec.describe "Thirty concurrent student submissions", type: :request do
           held = true
         end
         if hold
-          @locked << true
+          @locked << ActiveRecord::Base.connection.select_value("SELECT pg_backend_pid()")
           Timeout.timeout(20) { @unlock.pop }
         end
         block.call
@@ -105,8 +123,8 @@ RSpec.describe "Thirty concurrent student submissions", type: :request do
     end
     STUDENT_COUNT.times { Timeout.timeout(10) { @ready.pop } }
     STUDENT_COUNT.times { @start << true }
-    Timeout.timeout(15) { @locked.pop }
-    expect(waiting_advisory_locks(observer)).to be > 0
+    holder_pid = Timeout.timeout(15) { @locked.pop }
+    expect(waiting_advisory_locks(observer, holder_pid)).to be > 0
     @unlock << true
 
     statuses = @threads.map { |thread| Timeout.timeout(30) { thread.value } }
@@ -116,11 +134,17 @@ RSpec.describe "Thirty concurrent student submissions", type: :request do
     ActiveRecord::Base.connection_pool.checkin(observer) if observer
   end
 
-  def waiting_advisory_locks(connection)
+  def waiting_advisory_locks(connection, holder_pid)
     Timeout.timeout(10) do
       loop do
-        count = connection.select_value(
-          "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted").to_i
+        count = connection.select_value(<<~SQL).to_i
+          SELECT count(*) FROM pg_locks AS waiting
+          JOIN pg_locks AS held ON held.locktype = 'advisory' AND held.granted
+            AND held.pid = #{Integer(holder_pid)}
+            AND held.database = waiting.database AND held.classid = waiting.classid
+            AND held.objid = waiting.objid AND held.objsubid = waiting.objsubid
+          WHERE waiting.locktype = 'advisory' AND NOT waiting.granted
+        SQL
         break count if count.positive?
 
         sleep 0.01
