@@ -30,13 +30,13 @@ class AnswerGradingJob < ApplicationJob
           submission.update!(status: :completed)
         end
       rescue StandardError => error
-        submission.reload.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
+        submission.reload.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
         Rails.logger.error("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}")
       end
     end
   rescue StandardError => error
     submission.with_lock do
-      submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
+      submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
     end
     Rails.logger.error("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}")
   end

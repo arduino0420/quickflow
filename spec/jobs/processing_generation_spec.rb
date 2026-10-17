@@ -89,6 +89,28 @@ RSpec.describe "Submission processing generations", type: :job do
     expect(submission.grading_results.sole).to be_teacher_judgment_incorrect
   end
 
+  [ :reading, :questions ].each do |stage|
+    it "preserves grading status and teacher judgment when #{stage} validation raises before the result guard" do
+      question = create_question
+      result = submission.grading_results.create!(question: question, ai_judgment: :correct,
+        teacher_judgment: :incorrect, ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
+      submission.update!(processing_generation: 1, status: :grading)
+      if stage == :reading
+        allow(AnswerGrader).to receive(:reading_problems).and_raise("invalid reading")
+      else
+        generator = instance_double(QuestionGenerator, saved_questions: nil)
+        allow(QuestionGenerator).to receive(:new).and_return(generator)
+        allow(generator).to receive(:saved_questions).and_raise("invalid saved questions")
+      end
+
+      AnswerGradingJob.perform_now(submission, 1)
+
+      expect(submission.reload).to be_grading
+      expect(submission.grading_results.pluck(:id)).to eq([ result.id ])
+      expect(result.reload).to be_teacher_judgment_incorrect
+    end
+  end
+
   it "does not let an old question job fail a newer submission" do
     submission.update!(processing_generation: 1, status: :grading)
     generator = instance_double(QuestionGenerator)
