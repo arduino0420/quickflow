@@ -11,7 +11,7 @@ module Recovery
       :problems, :questions, :answer_pdf, :material_pdf, :result_count, :teacher_judgment_present,
       :reason_codes, keyword_init: true)
 
-    def call(submission)
+    def call(submission, expected_status: :failed)
       submission_id = if submission.respond_to?(:id)
         submission.id
       elsif submission.to_s.match?(/\A[1-9][0-9]*\z/)
@@ -21,7 +21,7 @@ module Recovery
         return result(RESULT_INELIGIBLE, :invalid_submission_id)
       end
 
-      initial = capture_snapshot(submission_id)
+      initial = capture_snapshot(submission_id, expected_status)
       return result(RESULT_INDETERMINATE, :submission_missing) unless initial
 
       return result(RESULT_INELIGIBLE, *initial.reason_codes) if initial.reason_codes.any?
@@ -31,7 +31,7 @@ module Recovery
         return pdf_result unless pdf_result[:result] == RESULT_CANDIDATE
       end
 
-      verify_locked_snapshot(initial)
+      verify_locked_snapshot(initial, expected_status) { |locked| block_given? ? yield(locked) : nil }
     rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked, PG::LockNotAvailable
       result(RESULT_INDETERMINATE, :database_lock_unavailable)
     rescue ActiveRecord::RecordNotFound
@@ -42,25 +42,25 @@ module Recovery
 
     private
 
-    def capture_snapshot(submission_id)
-      return capture_snapshot_records(submission_id) if ActiveRecord::Base.connection.transaction_open?
+    def capture_snapshot(submission_id, expected_status)
+      return capture_snapshot_records(submission_id, expected_status) if ActiveRecord::Base.connection.transaction_open?
 
       Submission.transaction(isolation: :repeatable_read, requires_new: true) do
-        capture_snapshot_records(submission_id)
+        capture_snapshot_records(submission_id, expected_status)
       end
     end
 
-    def capture_snapshot_records(submission_id)
+    def capture_snapshot_records(submission_id, expected_status)
       submission = Submission.find_by(id: submission_id)
       return unless submission
 
       assignment = Assignment.find_by(id: submission.assignment_id)
       return unless assignment
 
-      build_snapshot(submission, assignment)
+      build_snapshot(submission, assignment, expected_status)
     end
 
-    def build_snapshot(submission, assignment)
+    def build_snapshot(submission, assignment, expected_status)
       questions = assignment.questions.order(:position, :id).to_a
       results = submission.grading_results.order(:id).to_a
       answer_attachment = submission.answer_file_attachment
@@ -70,7 +70,7 @@ module Recovery
       problems, reading_reason_codes = validated_problems(submission.extracted_text)
       question_reason_codes = validated_questions(assignment, questions, problems)
       reason_codes = []
-      reason_codes << :status_not_failed unless submission.failed?
+      reason_codes << :status_not_failed unless submission.status == expected_status.to_s
       reason_codes.concat(reading_reason_codes)
       reason_codes.concat(question_reason_codes)
       reason_codes << :grading_results_present if results.any?
@@ -195,7 +195,7 @@ module Recovery
       result(RESULT_INDETERMINATE, :pdf_storage_unavailable)
     end
 
-    def verify_locked_snapshot(initial)
+    def verify_locked_snapshot(initial, expected_status)
       outcome = nil
       ActiveRecord::Base.transaction(requires_new: true) do
         connection = ActiveRecord::Base.connection
@@ -219,13 +219,13 @@ module Recovery
         blobs = [ initial.answer_pdf, initial.material_pdf ].map { |pdf| pdf[:blob_id] }.compact.uniq.sort
         ActiveStorage::Attachment.where(id: attachments).order(:id).lock("FOR UPDATE NOWAIT").load
         ActiveStorage::Blob.where(id: blobs).order(:id).lock("FOR SHARE NOWAIT").load
-        current = build_snapshot(submission, assignment)
+        current = build_snapshot(submission, assignment, expected_status)
         outcome = if current.fingerprint != initial.fingerprint
           result(RESULT_INDETERMINATE, :state_changed)
         elsif current.reason_codes.any?
           result(RESULT_INELIGIBLE, *current.reason_codes)
         else
-          result(RESULT_CANDIDATE, :all_conditions_met_at_observation)
+          yield(submission) || result(RESULT_CANDIDATE, :all_conditions_met_at_observation)
         end
       end
       outcome
