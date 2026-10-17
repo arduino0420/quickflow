@@ -61,7 +61,7 @@ RSpec.describe "AI response and error log safety", type: :job do
           if stage == :reading
             expect(submission.reload).to be_grading
             expect(JSON.parse(submission.extracted_text)).to eq(JSON.parse(JSON.generate(data)))
-            expect(AnswerGradingJob).to have_been_enqueued.with(submission)
+            expect(AnswerGradingJob).to have_been_enqueued.with(submission, 0)
           else
             expect(submission.reload).to be_completed
             expect(submission.grading_results.map(&:final_judgment)).to contain_exactly("correct", "needs_review")
