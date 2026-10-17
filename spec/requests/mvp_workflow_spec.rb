@@ -116,13 +116,13 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
       follow_redirect!
       expect(document.at_css("#grading-status").text).to include("採点待ち")
       perform_enqueued_jobs(only: AnswerReadingJob)
-      expect(AnswerGradingJob).to have_been_enqueued.with(item).once
+      expect(AnswerGradingJob).to have_been_enqueued.with(item, 0).once
       expect(item.reload).to be_grading
       perform_enqueued_jobs(only: AnswerGradingJob)
       expect(item.reload).to be_completed
       expect(item.extracted_text).to be_present
       expect(item.grading_results.count).to eq(3)
-      expect(AnswerGradingJob).to have_been_performed.with(item).once
+      expect(AnswerGradingJob).to have_been_performed.with(item, 0).once
       get student_assignments_path
       row = document.at_css("#assignment_#{assignment.id}")
       expect(row.css("a").size).to eq(1)
