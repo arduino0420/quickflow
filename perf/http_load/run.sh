@@ -54,7 +54,7 @@ for i in $(seq 1 60); do
 done
 docker exec "$database" pg_isready -U load -d quickflow_test >/dev/null
 
-docker run -d --name "$application" --network "$network" --label "quickflow.http_load.run_id=$run_id" \
+docker run -d --name "$application" --network "$network" --user 1000:1000 --label "quickflow.http_load.run_id=$run_id" \
   -e RAILS_ENV=test -e RAILS_MAX_THREADS=3 -e "QUICKFLOW_HTTP_LOAD_RUN_ID=$run_id" \
   -e "SECRET_KEY_BASE=$(openssl rand -hex 64)" \
   -e "DATABASE_URL=postgresql://load:${password}@db:5432/quickflow_test" \
