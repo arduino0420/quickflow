@@ -430,13 +430,14 @@ RSpec.describe "Student submissions", type: :request do
       draft
       allow_any_instance_of(ActiveStorage::Blob).to receive(:upload_without_unfurling).and_wrap_original do |original, *args|
         original.call(*args)
-        draft.update!(page_data: [ { page_number: 1, operations: [] } ], lock_version: draft.lock_version + 1)
+        AnswerDraft.find(draft.id).touch
       end
       token = headers
       before_counts = counts
       submit_ink(version: "0", context: token)
       expect(response).to have_http_status(:conflict)
       expect(counts).to eq(before_counts)
+      expect(draft.reload.lock_version).to eq(1)
     end
 
     it "rejects a changed source PDF, a different student's context and deleted assignments" do
@@ -461,7 +462,10 @@ RSpec.describe "Student submissions", type: :request do
       draft
       before_counts = counts
       allow_any_instance_of(ActiveStorage::Blob).to receive(:upload_without_unfurling).and_raise(IOError, "storage failed")
-      expect { submit_ink }.to raise_error(IOError)
+      submit_ink
+      expect(response).to have_http_status(:service_unavailable)
+      expect(response.parsed_body).to include("error" => "storage_unavailable", "message" => a_string_including("答案PDFを保存できませんでした"))
+      expect(response.body).not_to include("storage failed")
       expect(counts).to eq(before_counts)
       expect(draft.reload).to be_persisted
       expect(enqueued_jobs.none? { |job| job[:job] == AnswerReadingJob }).to be(true)
