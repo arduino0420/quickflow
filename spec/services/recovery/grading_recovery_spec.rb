@@ -80,6 +80,19 @@ RSpec.describe Recovery::GradingRecovery do
     expect(submission.reload.processing_generation).to eq(2)
   end
 
+  it "leaves a recoverable grading state if the process stops after the state commit" do
+    allow(AnswerGradingJob).to receive(:perform_later).and_raise(SystemExit)
+    expect { service.call(submission.id) }.to raise_error(SystemExit)
+    expect(submission.reload).to be_grading
+    expect(submission.processing_generation).to eq(1)
+    expect(submission.grading_results).to be_empty
+
+    allow(service).to receive(:queue_clear?).and_return(true)
+    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+    expect(service.call(submission.id, interrupted_generation: 1)[:result]).to eq("enqueued")
+    expect(submission.reload.processing_generation).to eq(2)
+  end
+
   it "treats a queued job for the same submission as active" do
     job = double(arguments: { "arguments" => [ { "_aj_globalid" => "gid://quickflow/Submission/#{submission.id}" }, 1 ] })
     relation = double
