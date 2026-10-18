@@ -4,15 +4,17 @@ class SubmissionsController < ApplicationController
 
   def show
     set_grading_results
+    @grading_recovery_candidate = Recovery::GradingRecovery.new.stopped_grading_candidate?(@submission) if grading_recovery_enabled? && @submission.grading?
   end
 
   def resume_grading
-    unless grading_recovery_enabled? && @submission.failed?
+    unless grading_recovery_enabled? && (@submission.failed? || @submission.grading?)
       return redirect_to assignment_submission_path(@assignment, @submission),
         alert: "現在は採点を再開できません。運用担当者に確認してください。", status: :see_other
     end
 
-    report = Recovery::GradingRecovery.new.call(@submission.id)
+    report = Recovery::GradingRecovery.new.call(@submission.id,
+      interrupted_generation: (@submission.processing_generation if @submission.grading?))
     if report[:result] == "enqueued"
       redirect_to assignment_submission_path(@assignment, @submission),
         notice: "採点を再開しました。処理中です。", status: :see_other

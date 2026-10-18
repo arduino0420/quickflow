@@ -93,7 +93,7 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
 
     worker = run_thread { AnswerGradingJob.perform_now(Submission.find(@submission_id)) }
     Timeout.timeout(10) { entered.pop }
-    expect(Recovery::GradingRecovery).not_to receive(:new)
+    expect(AnswerGradingJob).not_to receive(:perform_later)
     session.post(resume_path)
     expect(session.response.status).to eq(303)
     expect(session.response.location).to end_with(assignment_submission_path(@assignment_id, @submission_id))
