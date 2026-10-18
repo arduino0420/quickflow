@@ -85,7 +85,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(empty_row.css("a")).to be_empty
       expect(document.css(".review-filters a").map(&:text)).to eq([ "すべての生徒", "要確認のある生徒" ])
       expect(document.at_css(".review-filters a[aria-current]").text).to eq("すべての生徒")
-      patch detail_path, params: { judgments: { result.id.to_s => "correct" } }
+      patch detail_path, params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       get assignment_path(assignment)
       expect(document.at_css("#grade_student_#{student.id}")[:class]).not_to include("grade-needs-review")
       expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("なし")
@@ -229,7 +229,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         get assignment_path(assignment)
         expect(summary_cells[3]).to eq(original_label)
 
-        patch detail_path, params: { judgments: { result.id.to_s => teacher_value } }
+        patch detail_path, params: { judgments: { result.id.to_s => teacher_value }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
         follow_redirect!
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{corrected_label}")
         get assignment_path(assignment)
@@ -237,7 +237,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(grade_cells[1]).to eq(corrected_label)
         expect(summary_cells[4]).to eq("なし")
 
-        patch detail_path, params: { judgments: { result.id.to_s => "" } }
+        patch detail_path, params: { judgments: { result.id.to_s => "" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
         follow_redirect!
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{original_label}")
         get assignment_path(assignment)
@@ -392,7 +392,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment, classroom_id: second_classroom.id)
       get document.at_css("#grade_student_#{second_student.id} a")[:href]
-      patch detail_path(second_submission), params: { judgments: { result.id.to_s => "correct" } }
+      patch detail_path(second_submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       follow_redirect!
       back_link = document.css("a").find { |link| link.text == "小テスト詳細へ戻る" }
       expect(back_link[:href]).to eq(assignment_path(assignment, classroom_id: second_classroom.id))
@@ -571,13 +571,13 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(document.at_css("#question_#{pending.question_id}").text).to include("要確認")
     expect(document.at_css("iframe")[:src]).to eq(pdf_path)
     expect(response.body).not_to include("答案PDFを開く", "答案をダウンロード")
-    patch detail_path, params: { judgments: { pending.id.to_s => "correct" } }
+    patch detail_path, params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     follow_redirect!
     expect(document.css(".teacher-grading-result.judgment-needs_review")).to be_empty
     expect(document.at_css("#question_#{pending.question_id}")[:class]).to include("judgment-correct")
     fields = document.at_css("#question_#{pending.question_id}").css("dt, dd").map(&:text).each_slice(2).to_h
     expect(fields.slice("AI判定", "最終判定")).to eq("最終判定" => "正解")
-    patch detail_path, params: { judgments: { pending.id.to_s => "" } }
+    patch detail_path, params: { judgments: { pending.id.to_s => "" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     follow_redirect!
     expect(document.at_css("#question_#{pending.question_id}")[:class]).to include("judgment-needs_review")
   end
@@ -733,7 +733,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   describe "saving teacher judgments" do
     def save_judgments(values, parent = assignment)
-      patch assignment_submission_path(parent, submission), params: { judgments: values }
+      patch assignment_submission_path(parent, submission), params: { judgments: values, original_final_judgments: GradingResult.where(id: values.keys).to_h { |result| [ result.id.to_s, result.final_judgment ] } }
     end
 
     [ [ :correct, "incorrect" ], [ :incorrect, "correct" ],
@@ -778,7 +778,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     it "accepts explicit JSON null as a return to AI" do
       result = result_for(teacher_judgment: :incorrect)
       login
-      patch detail_path, params: { judgments: { result.id.to_s => nil } }, as: :json
+      patch detail_path, params: { judgments: { result.id.to_s => nil }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }, as: :json
       expect(response).to have_http_status(:see_other)
       expect(result.reload.teacher_judgment).to be_nil
     end
@@ -828,7 +828,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
         first = result_for
         second = result_for(position: 2)
         login
-        patch detail_path, params: { judgments: { first.id.to_s => "correct", second.id.to_s => invalid } }, as: :json
+        patch detail_path, params: { judgments: { first.id.to_s => "correct", second.id.to_s => invalid },
+          original_final_judgments: { first.id.to_s => first.final_judgment, second.id.to_s => second.final_judgment } }, as: :json
         expect(response).to have_http_status(422)
         expect(first.reload.teacher_judgment).to be_nil
         expect(second.reload.teacher_judgment).to be_nil
@@ -860,7 +861,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       result = result_for
       original = result.reload.attributes.except("teacher_judgment", "updated_at")
       login
-      patch detail_path, params: { judgments: { result.id.to_s => "correct" },
+      patch detail_path, params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment },
         ai_judgment: "incorrect", feedback: "forged", graded_at: "2000-01-01", question_id: 999, submission_id: 999 }
       expect(response).to have_http_status(:see_other)
       expect(result.reload.attributes.except("teacher_judgment", "updated_at")).to eq(original)

@@ -78,7 +78,7 @@ RSpec.describe "Many-to-many classroom access", type: :request do
       get path
       expect(response).to have_http_status(:not_found)
     end
-    patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "incorrect" } }
+    patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "incorrect" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to have_http_status(:not_found)
     expect(result.reload.attributes).to eq(original)
   end

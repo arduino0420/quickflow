@@ -143,7 +143,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
     result = first_submission.grading_results.find_by!(question_id: question_ids[1])
     review = first_submission.grading_results.find_by!(question_id: question_ids[2])
     original_ai = [ result, review ].map { |item| item.attributes.except("teacher_judgment", "updated_at") }
-    patch assignment_submission_path(assignment, first_submission), params: { judgments: { result.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, first_submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to redirect_to(login_path)
     expect(result.reload.teacher_judgment).to be_nil
 

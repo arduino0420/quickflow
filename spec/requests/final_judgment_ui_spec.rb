@@ -100,8 +100,66 @@ RSpec.describe "Final judgment form", type: :request do
     result.update!(teacher_judgment: :incorrect)
     original = result.reload.attributes
     patch path, params: values
-    expect(response).to have_http_status(:see_other)
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.body).to include("再読み込み")
     expect(result.reload.attributes).to eq(original)
+  end
+
+  it "rejects a stale batch before changing any problem" do
+    first = result_for(1)
+    second = result_for(2)
+    values = form_values
+    values["final_judgments"].transform_values! { "incorrect" }
+    second.update!(teacher_judgment: :correct)
+    original = [ first.reload.attributes, second.reload.attributes ]
+    score = submission.reload.score
+
+    patch path, params: values
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.body).to include("再読み込み")
+    expect([ first.reload.attributes, second.reload.attributes ]).to eq(original)
+    expect(submission.reload.score).to eq(score)
+  end
+
+  it "checks the current decisions after acquiring the Submission lock" do
+    result = result_for(1)
+    values = form_values
+    values["final_judgments"][result.id.to_s] = "incorrect"
+    original = nil
+    allow_any_instance_of(Submission).to receive(:with_lock).and_wrap_original do |method, *args, **options, &block|
+      result.update!(teacher_judgment: :correct)
+      original = result.reload.attributes
+      method.call(*args, **options, &block)
+    end
+
+    patch path, params: values
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(result.reload.attributes).to eq(original)
+  end
+
+  [ :missing, :stale ].each do |condition|
+    it "rejects #{condition} originals through the legacy API, including clearing" do
+      first = result_for(1, teacher_value: :correct)
+      second = result_for(2, teacher_value: :correct)
+      original = [ first.attributes, second.attributes ]
+      values = { judgments: { first.id.to_s => "incorrect", second.id.to_s => "" } }
+      if condition == :stale
+        values[:original_final_judgments] = { first.id.to_s => "correct", second.id.to_s => "incorrect" }
+      end
+      patch path, params: values
+      expect(response).to have_http_status(:unprocessable_content)
+      expect([ first.reload.attributes, second.reload.attributes ]).to eq(original)
+    end
+  end
+
+  it "still clears a teacher judgment through the legacy API with matching originals" do
+    result = result_for(1, ai: :incorrect, teacher_value: :correct)
+    patch path, params: { judgments: { result.id.to_s => "" }, original_final_judgments: { result.id.to_s => "correct" } }
+    expect(response).to have_http_status(:see_other)
+    expect(result.reload.teacher_judgment).to be_nil
+    expect(result.final_judgment).to eq("incorrect")
   end
 
   [ "needs_review", "invalid", nil, [], { value: "correct" } ].each do |invalid|

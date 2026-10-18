@@ -87,13 +87,13 @@ RSpec.describe ClassroomGradeExporter do
     result = item.grading_results.order(:question_id).first
     expect(xlsx_value(xlsx_worksheet(exporter.call(assignment, classroom)), "C2")).to eq("0")
 
-    item.update_teacher_judgments!(result.id.to_s => "correct")
+    item.update_teacher_judgments!({ result.id.to_s => "correct" }, { result.id.to_s => result.reload.final_judgment })
     attributes = item.grading_results.order(:id).map(&:attributes)
     expect(xlsx_value(xlsx_worksheet(exporter.call(assignment, classroom)), "C2")).to eq("5")
     expect(item.grading_results.order(:id).map(&:attributes)).to eq(attributes)
     expect(result.reload.ai_judgment).to eq("incorrect")
 
-    item.update_teacher_judgments!(result.id.to_s => "")
+    item.update_teacher_judgments!({ result.id.to_s => "" }, { result.id.to_s => result.reload.final_judgment })
     expect(xlsx_value(xlsx_worksheet(exporter.call(assignment, classroom)), "C2")).to eq("0")
   end
 
