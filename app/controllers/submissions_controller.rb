@@ -6,6 +6,26 @@ class SubmissionsController < ApplicationController
     set_grading_results
   end
 
+  def resume_grading
+    unless grading_recovery_enabled? && @submission.failed?
+      return redirect_to assignment_submission_path(@assignment, @submission),
+        alert: "現在は採点を再開できません。運用担当者に確認してください。", status: :see_other
+    end
+
+    report = Recovery::GradingRecovery.new.call(@submission.id)
+    if report[:result] == "enqueued"
+      redirect_to assignment_submission_path(@assignment, @submission),
+        notice: "採点を再開しました。処理中です。", status: :see_other
+    else
+      redirect_to assignment_submission_path(@assignment, @submission),
+        alert: "現在は採点を再開できません。運用担当者に確認してください。", status: :see_other
+    end
+  rescue StandardError => error
+    Rails.logger.error("Teacher grading recovery failed: submission_id=#{@submission.id} #{error.class}")
+    redirect_to assignment_submission_path(@assignment, @submission),
+      alert: "現在は採点を再開できません。運用担当者に確認してください。", status: :see_other
+  end
+
   def update
     if params.key?(:final_judgments)
       update_final_judgments
@@ -63,6 +83,10 @@ class SubmissionsController < ApplicationController
     @pending_review_count = results.pending_review.count
     @grading_results = results.joins(:question).includes(:question).order("questions.position")
     @score = @submission.score if @submission.completed?
+  end
+
+  helper_method def grading_recovery_enabled?
+    ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] == "true"
   end
 
   def render_update_error(message)

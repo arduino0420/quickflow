@@ -4,6 +4,11 @@
 <%= link_to "小テスト詳細へ戻る", assignment_path(@assignment, classroom_id: @submission.student.classroom_id) %>
 <p><%= @assignment.title %> ／ <%= classroom_label(@submission.student.classroom) %> <%= @submission.student.attendance_number %>番</p>
 <% unless @submission.completed? %><p>採点状態：<%= submission_status_label(@submission) %></p><% end %>
+<% if @submission.failed? && grading_recovery_enabled? %>
+  <%= button_to "採点を再開する", resume_grading_assignment_submission_path(@assignment, @submission), method: :post %>
+<% elsif @submission.grading? || @submission.submitted? %>
+  <p>この状態の答案は画面から採点を再開できません。処理が進まない場合は運用担当者に確認してください。</p>
+<% end %>
 <p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
 <p id="submission-score">現在の得点：<%= submission_score_label(@submission, @score, pending_review_count: @pending_review_count) %></p>
 <% if !@score.nil? && @pending_review_count.positive? %>

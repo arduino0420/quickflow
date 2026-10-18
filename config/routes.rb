@@ -22,6 +22,7 @@ Rails.application.routes.draw do
     get :export, on: :member, defaults: { format: :xlsx }
     resources :submissions, only: [ :show, :update ] do
       get :answer, on: :member
+      post :resume_grading, on: :member
     end
   end
 
