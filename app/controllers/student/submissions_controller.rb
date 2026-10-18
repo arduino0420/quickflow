@@ -30,17 +30,10 @@ class Student::SubmissionsController < ApplicationController
 
       # Upload before committing the answer: storage failures must not leave a
       # formally submitted record without its PDF. The usual PDF validation above applies.
-      if handwritten?
-        return head :conflict unless valid_draft?
+      return head :conflict if handwritten? && !valid_draft?
+      return render_upload_error unless upload_answer_pdf(upload)
 
-        @uploaded_blob = ActiveStorage::Blob.build_after_unfurling(io: upload.tempfile,
-          filename: upload.original_filename, content_type: "application/pdf")
-        @uploaded_blob.save!
-        @uploaded_blob.upload_without_unfurling(upload.tempfile)
-        @submission.answer_file = @uploaded_blob
-      else
-        @submission.answer_file = upload
-      end
+      @submission.answer_file = @uploaded_blob
       @assignment.with_lock(handwritten? ? "FOR UPDATE" : "FOR KEY SHARE") do
         return head :conflict if handwritten? && !valid_draft?
         return redirect_already_submitted if existing_submission
@@ -63,10 +56,41 @@ class Student::SubmissionsController < ApplicationController
 
     raise
   ensure
-    @uploaded_blob&.purge unless @uploaded_blob&.attachments&.exists?
+    cleanup_unattached_upload
   end
 
   private
+
+  def upload_answer_pdf(upload)
+    @uploaded_blob = ActiveStorage::Blob.build_after_unfurling(io: upload.tempfile,
+      filename: upload.original_filename, content_type: "application/pdf")
+    @uploaded_blob.save!
+    begin
+      @uploaded_blob.upload_without_unfurling(upload.tempfile)
+      true
+    rescue StandardError => error
+      Rails.logger.error("Answer PDF upload failed: #{error.class}")
+      false
+    end
+  end
+
+  def cleanup_unattached_upload
+    return unless @uploaded_blob&.persisted?
+
+    @uploaded_blob.purge unless @uploaded_blob.attachments.exists?
+  rescue StandardError => error
+    Rails.logger.error("Answer PDF upload cleanup failed: blob_id=#{@uploaded_blob.id} #{error.class}")
+  end
+
+  def render_upload_error
+    message = "答案PDFを保存できませんでした。時間をおいて、もう一度提出してください。"
+    if handwritten?
+      render json: { error: "storage_unavailable", message: message }, status: :service_unavailable
+    else
+      @submission.errors.add(:base, message)
+      render "student/assignments/show", status: :service_unavailable
+    end
+  end
 
   def handwritten?
     request.headers["X-Handwritten-Submission"] == "1"
