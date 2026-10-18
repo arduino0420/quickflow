@@ -1072,6 +1072,23 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(document.at_css("[role='alert']").text).to include("現在は採点を再開できません")
     end
 
+    it "shows and accepts the button for a stopped grading answer" do
+      question = create_question
+      question.update!(grading_rule: JSON.generate(criteria: "同類項をまとめる。", requires_work: false,
+        material_blob_id: assignment.material_file.blob.id))
+      submission.update!(status: :grading, processing_generation: 1)
+      allow_any_instance_of(Recovery::GradingRecovery).to receive(:queue_clear?).and_return(true)
+      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+      login
+      get detail_path
+      expect(document.at_css("form[action='#{resume_path}'] button").text).to eq("採点を再開する")
+      post resume_path
+      expect(response).to redirect_to(detail_path)
+      expect(submission.reload.processing_generation).to eq(2)
+      follow_redirect!
+      expect(document.at_css("[role='status']").text).to include("採点を再開しました")
+    end
+
     [ :submitted, :grading, :completed ].each do |state|
       it "does not offer or resume #{state} answers" do
         submission.update!(status: state)
@@ -1079,7 +1096,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         get detail_path
         expect(document.text).not_to include("採点を再開する")
         expect(document.text).to include("画面から採点を再開できません") unless state == :completed
-        expect(Recovery::GradingRecovery).not_to receive(:new)
+        expect_any_instance_of(Recovery::GradingRecovery).not_to receive(:call) unless state == :grading
         post resume_path
         expect(submission.reload.status).to eq(state.to_s)
       end
