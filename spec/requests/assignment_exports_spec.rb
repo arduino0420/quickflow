@@ -74,7 +74,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
     get export_path
     expect(xlsx_value(xlsx_worksheet(response.body), "C2")).to eq("0")
 
-    patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to have_http_status(:see_other)
     get export_path
     expect(xlsx_value(xlsx_worksheet(response.body), "C2")).to eq("5")

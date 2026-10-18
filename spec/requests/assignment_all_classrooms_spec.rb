@@ -64,7 +64,7 @@ RSpec.describe "All distributed classroom grades", type: :request do
     expect(grade_rows).to eq([ [ "1年2組", "1番", "0点（暫定）" ] ])
     expect(document.at_css("#classroom-selection input[name='filter']")[:value]).to eq("needs_review")
 
-    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     get assignment_path(assignment, classroom_id: "all")
     expect(grade_rows).to include([ "1年2組", "1番", "5点" ])
     expect(document.at_css("#pending-review-count").text).to include("0件")
@@ -106,7 +106,7 @@ RSpec.describe "All distributed classroom grades", type: :request do
       expect(workbook.xpath("/workbook/sheets/sheet").size).to eq(1)
     end
 
-    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     get export_assignment_path(assignment, classroom_id: "all", filter: "all")
     expect(xlsx_value(xlsx_worksheet(response.body), "C42")).to eq("5")
   end

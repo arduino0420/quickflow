@@ -175,7 +175,7 @@ RSpec.describe "Student grading results", type: :request do
       expect(document.at_css("#student-score").text).to eq("現在の点数：#{original_score}")
 
       post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
-      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => teacher_value } }
+      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => teacher_value }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       expect(response).to have_http_status(:see_other)
       login
       get result_path
@@ -185,7 +185,7 @@ RSpec.describe "Student grading results", type: :request do
       expect(list_row.text).to include("#{corrected_score}")
 
       post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
-      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "" } }
+      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       login
       get result_path
       expect(document.at_css("#student-score").text).to eq("現在の点数：#{original_score}")
@@ -406,12 +406,12 @@ RSpec.describe "Student grading results", type: :request do
     original = records.map { |record| record.reload.attributes }
     login
     [ :patch, :put ].each do |method|
-      public_send(method, assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" } })
+      public_send(method, assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } })
       expect(response).to redirect_to(login_path)
       public_send(method, student_assignment_path(assignment), params: { teacher_judgment: "correct", score: 100 })
       expect(response).to have_http_status(:not_found)
     end
-    post result_student_assignment_path(assignment), params: { judgments: { result.id.to_s => "correct" } }
+    post result_student_assignment_path(assignment), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to have_http_status(:not_found)
     expect(records.map { |record| record.reload.attributes }).to eq(original)
   end

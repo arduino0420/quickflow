@@ -68,7 +68,7 @@ RSpec.describe Submission, type: :model do
       results = questions.map { |question| create_score_result(question, ai_judgment: :incorrect) }
       expect(submission.score).to eq(0)
 
-      submission.update_teacher_judgments!(results.first.id.to_s => "correct")
+      submission.update_teacher_judgments!({ results.first.id.to_s => "correct" }, { results.first.id.to_s => results.first.reload.final_judgment })
 
       expect(submission.score).to eq(10)
       expect(results.first.reload.ai_judgment).to eq("incorrect")
@@ -78,7 +78,7 @@ RSpec.describe Submission, type: :model do
       results = questions.map { |question| create_score_result(question) }
       expect(submission.score).to eq(30)
 
-      submission.update_teacher_judgments!(results.first.id.to_s => "incorrect")
+      submission.update_teacher_judgments!({ results.first.id.to_s => "incorrect" }, { results.first.id.to_s => results.first.reload.final_judgment })
 
       expect(submission.score).to eq(20)
       expect(results.first.reload.ai_judgment).to eq("correct")
@@ -88,7 +88,7 @@ RSpec.describe Submission, type: :model do
       results = questions.map { |question| create_score_result(question, ai_judgment: :needs_review) }
       expect(submission.score).to eq(0)
 
-      submission.update_teacher_judgments!(results.first.id.to_s => "correct")
+      submission.update_teacher_judgments!({ results.first.id.to_s => "correct" }, { results.first.id.to_s => results.first.reload.final_judgment })
 
       expect(submission.score).to eq(10)
     end
@@ -102,7 +102,8 @@ RSpec.describe Submission, type: :model do
         initial_score = ai_judgment == :correct ? 0 : 30
         expect(submission.score).to eq(initial_score)
 
-        submission.update_teacher_judgments!(results.to_h { |result| [ result.id.to_s, "" ] })
+        submission.update_teacher_judgments!(results.to_h { |result| [ result.id.to_s, "" ] },
+          results.to_h { |result| [ result.id.to_s, result.reload.final_judgment ] })
 
         expect(submission.score).to eq(ai_judgment == :correct ? 30 : 0)
         expect(results.map { |result| result.reload.teacher_judgment }).to all(be_nil)
@@ -223,7 +224,7 @@ RSpec.describe Submission, type: :model do
     described_class.find(submission.id).update!(status: :failed)
     expect(submission).to be_completed
 
-    expect { submission.update_teacher_judgments!(result.id.to_s => "incorrect") }
+    expect { submission.update_teacher_judgments!({ result.id.to_s => "incorrect" }, { result.id.to_s => result.reload.final_judgment }) }
       .to raise_error(Submission::InvalidTeacherJudgments)
     expect(result.reload.teacher_judgment).to be_nil
   end

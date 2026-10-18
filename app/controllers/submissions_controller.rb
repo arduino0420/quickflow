@@ -34,7 +34,9 @@ class SubmissionsController < ApplicationController
     else
       input = params[:judgments]
       judgments = input.is_a?(ActionController::Parameters) ? input.each_pair.to_h : nil
-      @submission.update_teacher_judgments!(judgments)
+      original = params[:original_final_judgments]
+      original = original.is_a?(ActionController::Parameters) ? original.each_pair.to_h : nil
+      @submission.update_teacher_judgments!(judgments, original)
     end
     redirect_to assignment_submission_path(@assignment, @submission), notice: "判定を保存しました。", status: :see_other
   rescue Submission::InvalidTeacherJudgments => error
@@ -72,11 +74,10 @@ class SubmissionsController < ApplicationController
     @submission.with_lock do
       raise Submission::InvalidTeacherJudgments, "採点が完了した答案だけ修正できます。" unless @submission.completed?
 
-      ids = @submission.grading_results.where(question: @assignment.questions).where(id: input.keys).pluck(:id).map(&:to_s)
-      raise ActiveRecord::RecordNotFound unless ids.sort == input.keys.sort
+      @submission.checked_teacher_judgment_results!(input.keys, original.each_pair.to_h)
 
       changes = input.each_pair.to_h.reject { |id, value| value.empty? || value == original[id] }
-      @submission.update_teacher_judgments!(changes) if changes.any?
+      @submission.update_teacher_judgments!(changes, original.each_pair.to_h.slice(*changes.keys)) if changes.any?
     end
   end
 
