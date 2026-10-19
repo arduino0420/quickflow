@@ -1466,6 +1466,60 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")).to eq(before)
   end
 
+  it "scopes the stylus touch guard to connected ink canvases through reconnects" do
+    click_link "表示試験"
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      window.touchGuardCanvas = document.querySelector('[data-pdf-preview-target="ink"]');
+      window.sendGuardTouch = (target, type, changed, active) => {
+        const event = new Event(type, {bubbles:true, cancelable:true});
+        Object.defineProperties(event, {
+          changedTouches:{value:changed.map(touchType => ({touchType}))},
+          touches:{value:active.map(touchType => ({touchType}))}
+        });
+        let calls=0;
+        const prevent=event.preventDefault.bind(event);
+        event.preventDefault=()=>{calls++; prevent()};
+        target.dispatchEvent(event);
+        return [event.defaultPrevented,calls];
+      };
+    JS
+    expect(page.evaluate_script(<<~JS)).to eq([ [ true, 1 ], [ true, 1 ], [ false, 0 ], [ false, 0 ], [ false, 0 ], [ false, 0 ] ])
+      [
+        sendGuardTouch(touchGuardCanvas,'touchstart',['stylus'],['stylus']),
+        sendGuardTouch(touchGuardCanvas,'touchend',['stylus'],[]),
+        sendGuardTouch(touchGuardCanvas,'touchstart',['direct'],['direct']),
+        sendGuardTouch(touchGuardCanvas,'touchstart',[undefined],[undefined]),
+        sendGuardTouch(touchGuardCanvas,'touchstart',['direct'],['direct','direct']),
+        sendGuardTouch(touchGuardCanvas,'touchend',['stylus'],['direct'])
+      ]
+    JS
+    expect(page.evaluate_script("getComputedStyle(touchGuardCanvas).touchAction")).to eq("pinch-zoom")
+
+    # Target removal must detach its listeners even while the controller remains connected.
+    page.execute_script("touchGuardCanvas.remove()")
+    expect(page).to have_no_css('[data-pdf-preview-target="ink"]')
+    expect(page.evaluate_script("sendGuardTouch(touchGuardCanvas,'touchstart',['stylus'],['stylus'])")).to eq([ false, 0 ])
+    page.execute_script("document.querySelector('.pdf-preview-page').append(touchGuardCanvas)")
+    expect(page).to have_css('[data-pdf-preview-target="ink"]')
+    expect(page.evaluate_script("sendGuardTouch(touchGuardCanvas,'touchstart',['stylus'],['stylus'])")).to eq([ true, 1 ])
+
+    page.execute_script(<<~JS)
+      window.touchGuardRoot=document.querySelector('[data-controller="pdf-preview"]');
+      touchGuardRoot.removeAttribute('data-controller');
+    JS
+    expect(page.evaluate_script("sendGuardTouch(touchGuardCanvas,'touchend',['stylus'],[])")).to eq([ false, 0 ])
+    page.execute_script("touchGuardRoot.setAttribute('data-controller','pdf-preview')")
+    expect(page).to have_css('[data-pdf-preview-target="ink"]', wait: 30) { |canvas|
+      canvas.evaluate_script("this !== window.touchGuardCanvas && this.width > 0")
+    }
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page.evaluate_script(<<~JS)).to eq([ [ false, 0 ], [ true, 1 ] ])
+      [sendGuardTouch(touchGuardCanvas,'touchstart',['stylus'],['stylus']),
+       sendGuardTouch(document.querySelector('[data-pdf-preview-target="ink"]'),'touchstart',['stylus'],['stylus'])]
+    JS
+  end
+
   def install_browser_script(source)
     result = page.driver.browser.execute_cdp("Page.addScriptToEvaluateOnNewDocument", source: source)
     (@browser_script_ids ||= []) << result.fetch("identifier")
