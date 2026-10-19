@@ -1170,6 +1170,39 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       filename: "preview.pdf", content_type: "application/pdf")
   end
 
+  it "enables memory-only input diagnostics explicitly and correlates real document/controller events" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page.evaluate_script(<<~JS)).to be(true)
+      (() => {
+        window.diagnosticPreview = window.Stimulus.getControllerForElementAndIdentifier(
+          document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
+        return !window.diagnosticPreview.inputDiagnostics;
+      })()
+    JS
+    page.execute_script("window.diagnosticPreview.startInputDiagnostics()")
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    ink_drag(0.3, 0.1, 0.4, 0.1)
+    rows = page.evaluate_script("window.diagnosticPreview.inputDiagnostics.snapshot().rows")
+    documents = rows.select { |row| row["source"] == "document" && row["type"] == "pointerdown" }
+    starts = rows.select { |row| row["reason"] == "stroke-started" }
+    expect(documents.length).to eq(2)
+    expect(starts.length).to eq(2)
+    expect(documents.map { |row| row["eventId"] }).to eq(starts.map { |row| row["eventId"] })
+    expect(starts.map { |row| row["inputActive"] }).to eq([ true, true ])
+    expect(rows.count { |row| row["reason"] == "stroke-ended" }).to eq(2)
+    expect(rows.map(&:keys).flatten.uniq).not_to include("clientX", "clientY", "points", "url", "draftContext")
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(2)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.35, 0.1)).to be > 0
+    page.execute_script("window.diagnosticPreview.stopInputDiagnostics()")
+    expect(page.evaluate_script("window.diagnosticPreview.inputDiagnostics")).to be_nil
+    ink_drag(0.5, 0.1, 0.6, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(3)
+  end
+
   it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)

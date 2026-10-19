@@ -1,5 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
 import PdfInk from "pdf_ink"
+import PdfInputDiagnostics from "controllers/pdf_input_diagnostics"
 import PdfDraft from "pdf_draft"
 import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
@@ -169,6 +170,7 @@ export default class extends Controller {
       if (state.renderedWidth === width && state.renderedDpr === dpr && state.ratio === ratio) continue
       if (state === this.inputState) this.finishInput()
       const { canvas, inkCanvas } = state
+      this.inputDiagnostics?.record("controller", null, "pdf-render-start")
       canvas.hidden = inkCanvas.hidden = true
       canvas.width = Math.ceil(viewport.width * ratio)
       canvas.height = Math.ceil(viewport.height * ratio)
@@ -184,6 +186,7 @@ export default class extends Controller {
       state.renderedDpr = dpr
       state.ratio = ratio
       canvas.hidden = inkCanvas.hidden = false
+      this.inputDiagnostics?.record("controller", null, "pdf-render-end")
       this.updateCursor(state)
     }
     if (!this.current(session) || revision !== this.revision) return
@@ -252,44 +255,80 @@ export default class extends Controller {
     event.preventDefault()
   }
 
+  startInputDiagnostics() {
+    this.stopInputDiagnostics()
+    this.inputDiagnostics = new PdfInputDiagnostics(this)
+  }
+
+  stopInputDiagnostics() {
+    this.inputDiagnostics?.stop()
+    this.inputDiagnostics = null
+  }
+
   pointerDown(event) {
-    if (this.exporting) return
+    this.inputDiagnostics?.record("controller", event, "down-enter")
+    if (this.exporting) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
     this.showCursor(event)
     const state = this.statesByCanvas.get(event.currentTarget)
-    if (!state || state.inkCanvas.hidden) return
+    if (!state || state.inkCanvas.hidden) {
+      this.inputDiagnostics?.record("controller", event, state ? "canvas-hidden" : "unknown-canvas")
+      return
+    }
     if (event.pointerType === "touch") {
       if (!this.inputState && !this.touch) {
         this.touch = { id: event.pointerId, y: event.clientY, state }
         state.inkCanvas.setPointerCapture(event.pointerId)
+        this.inputDiagnostics?.record("controller", event, "touch-scroll-started")
+      } else {
+        this.inputDiagnostics?.record("controller", event, "touch-busy")
       }
       return
     }
-    if (event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) return
+    if (event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) {
+      this.inputDiagnostics?.record("controller", event, "unsupported-input")
+      return
+    }
     // Keep native selection out of the ink surface even while drawing is unavailable.
     if (event.cancelable) event.preventDefault()
-    if (!this.draftEditable) return
-    if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) return
+    if (!this.draftEditable) { this.inputDiagnostics?.record("controller", event, "draft-not-editable"); return }
+    if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) {
+      this.inputDiagnostics?.record("controller", event, this.inputState ? "input-busy" : "viewport-mismatch")
+      return
+    }
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
       this.showDraftStatus(this.draft?.failed ? "保存できませんでした。接続を確認して再試行してください。" : "未保存", !!this.draft?.failed)
       state.inkCanvas.setPointerCapture(event.pointerId)
+      this.inputDiagnostics?.record("controller", event, "stroke-started")
+    } else {
+      this.inputDiagnostics?.record("controller", event, "ink-start-rejected")
     }
   }
 
   pointerMove(event) {
-    if (this.exporting) return
+    this.inputDiagnostics?.record("controller", event, "move-enter")
+    if (this.exporting) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
     this.showCursor(event)
     if (event.pointerId === this.touch?.id) {
       window.scrollBy(0, this.touch.y - event.clientY)
       this.touch.y = event.clientY
+      this.inputDiagnostics?.record("controller", event, "touch-scrolled")
       return
     }
     const state = this.inputState
-    if (!state || state.inkCanvas !== event.currentTarget || event.pointerId !== state.ink.pointerId) return
+    if (!state || state.inkCanvas !== event.currentTarget || event.pointerId !== state.ink.pointerId) {
+      this.inputDiagnostics?.record("controller", event, !state ? "no-active-input" : "different-pointer-or-canvas")
+      return
+    }
     if (event.cancelable) event.preventDefault()
     state.ink.move(event)
-    if (!state.ink.stroke) { this.finishInput(); return }
+    if (!state.ink.stroke) {
+      this.inputDiagnostics?.record("controller", event, "ink-ended-during-move")
+      this.finishInput()
+      return
+    }
+    this.inputDiagnostics?.record("controller", event, "stroke-moved")
     if (!this.inkFrame) {
       this.inkFrame = window.requestAnimationFrame(() => {
         this.inkFrame = null
@@ -299,22 +338,26 @@ export default class extends Controller {
   }
 
   scrolled() {
+    this.inputDiagnostics?.record("controller", null, "window-scrolled")
     // A wheel/trackpad scroll must not extend a held pen stroke as the page moves.
     // Finger scrolling has no inputState and keeps its own pointer capture.
     if (this.inputState) this.finishInput()
   }
 
   pointerEnd(event) {
+    this.inputDiagnostics?.record("controller", event, "end-enter")
     const state = this.statesByCanvas.get(event.currentTarget)
-    if (!state) return
+    if (!state) { this.inputDiagnostics?.record("controller", event, "unknown-canvas"); return }
     const drawing = state === this.inputState && event.pointerId === state.ink.pointerId
     state.ink.end(event)
     if (drawing) this.inputState = null
     if (event.pointerId === this.touch?.id) this.touch = null
     if (state.inkCanvas.hasPointerCapture(event.pointerId)) state.inkCanvas.releasePointerCapture(event.pointerId)
+    this.inputDiagnostics?.record("controller", event, drawing ? "stroke-ended" : "end-without-matching-stroke")
   }
 
-  finishInput() {
+  finishInput(event) {
+    this.inputDiagnostics?.record("controller", null, event?.type === "blur" ? "window-blurred" : "finish-input-enter")
     window.cancelAnimationFrame(this.inkFrame)
     this.inkFrame = null
     const state = this.inputState
@@ -325,6 +368,7 @@ export default class extends Controller {
     state?.ink.end()
     if (pointerId != null && state.inkCanvas.hasPointerCapture(pointerId)) state.inkCanvas.releasePointerCapture(pointerId)
     if (touch && touch.state.inkCanvas.hasPointerCapture(touch.id)) touch.state.inkCanvas.releasePointerCapture(touch.id)
+    this.inputDiagnostics?.record("controller", null, "finish-input-exit")
   }
 
   fail() {
@@ -485,6 +529,7 @@ export default class extends Controller {
   }
 
   disconnect() {
+    this.stopInputDiagnostics()
     if (this.previousTurboSetting === null) document.documentElement.removeAttribute("data-turbo")
     else document.documentElement.setAttribute("data-turbo", this.previousTurboSetting)
     this.draft?.stop()
