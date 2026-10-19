@@ -104,7 +104,7 @@ RSpec.describe "PDF ink coordinates and strokes" do
         sizes.setEraserSize(size);
         sizes.start(event(90, -400)); sizes.end();
       }
-      assert.deepEqual(sizes.pages.get(1).map(op => op.width), [4,8,12]);
+      assert.deepEqual(sizes.pages.get(1).map(op => op.width), [4,8,18]);
       sizes.setEraserSize('small');
       sizes.setTool('pen'); sizes.start(event(90, -400)); sizes.end();
       assert.equal(sizes.pages.get(1).at(-1).width, 1.2);

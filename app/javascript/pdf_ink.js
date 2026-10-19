@@ -1,9 +1,10 @@
 // PDF coordinates are the source of truth. Canvas pixels are only a display cache.
-export const ERASER_WIDTHS = Object.freeze({ small: 4, medium: 8, large: 12 })
+export const ERASER_WIDTHS = Object.freeze({ small: 4, medium: 8, large: 18 })
 
 export default class PdfInk {
-  constructor(canvas, pageNumber = 1) {
+  constructor(canvas, pageNumber = 1, { cache = false } = {}) {
     this.canvas = canvas
+    this.cache = cache ? canvas.ownerDocument.createElement("canvas") : null
     this.pages = new Map([[pageNumber, []]])
     this.pageNumber = pageNumber
     this.width = 1.2 // PDF user-space units; scales with the page, not the screen.
@@ -26,6 +27,7 @@ export default class PdfInk {
 
   setViewport(viewport, ratio) {
     this.end()
+    this.cachedOperations = null
     this.viewport = viewport
     this.canvas.width = Math.ceil(viewport.width * ratio)
     this.canvas.height = Math.ceil(viewport.height * ratio)
@@ -72,7 +74,7 @@ export default class PdfInk {
   }
 
   end(event) {
-    if (event && event.pointerId !== this.pointerId) return
+    if (!this.stroke || (event && event.pointerId !== this.pointerId)) return
     // A pointerup may contain a last position absent from pointermove.
     if (event?.type === "pointerup" && this.stroke && this.contains(event)) {
       const point = this.point(event)
@@ -92,30 +94,62 @@ export default class PdfInk {
     context.globalCompositeOperation = "source-over"
     context.resetTransform()
     context.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    const operations = this.pages.get(this.pageNumber)
+    if (this.cache) {
+      const count = operations.length - (this.stroke ? 1 : 0)
+      if (this.cachedOperations !== operations || this.cachedCount > count ||
+          this.cache.width !== this.canvas.width || this.cache.height !== this.canvas.height) {
+        this.cache.width = this.canvas.width
+        this.cache.height = this.canvas.height
+        this.cachedOperations = operations
+        this.cachedCount = 0
+      }
+      const cached = this.cache.getContext("2d")
+      this.prepareContext(cached)
+      while (this.cachedCount < count) this.drawStroke(cached, operations[this.cachedCount++])
+      cached.globalCompositeOperation = "source-over"
+      context.drawImage(this.cache, 0, 0)
+      this.prepareContext(context)
+      if (this.stroke) this.drawStroke(context, this.stroke)
+    } else {
+      this.prepareContext(context)
+      for (const stroke of operations) this.drawStroke(context, stroke)
+    }
+    context.globalCompositeOperation = "source-over"
+  }
+
+  releaseCache() {
+    if (this.cache) this.cache.width = this.cache.height = 0
+    this.cachedOperations = null
+    this.cachedCount = 0
+  }
+
+  prepareContext(context) {
     // Use the actual backing-store dimensions, including pixel rounding.
+    context.resetTransform()
     context.scale(this.canvas.width / this.viewport.width, this.canvas.height / this.viewport.height)
     context.lineCap = "round"
     context.lineJoin = "round"
-    for (const stroke of this.pages.get(this.pageNumber)) {
-      context.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over"
-      const points = stroke.points.map(point => this.viewport.convertToViewportPoint(...point))
-      context.fillStyle = context.strokeStyle = stroke.color
-      context.lineWidth = stroke.width * Math.hypot(this.viewport.transform[0], this.viewport.transform[1])
-      context.beginPath()
-      if (points.length === 1) {
-        context.arc(...points[0], context.lineWidth / 2, 0, Math.PI * 2)
-        context.fill()
-        continue
-      }
-      context.moveTo(...points[0])
-      // Quadratic curves through midpoints smooth sampled pointer movements.
-      for (let i = 1; i < points.length - 1; i++) {
-        const next = points[i + 1]
-        context.quadraticCurveTo(...points[i], (points[i][0] + next[0]) / 2, (points[i][1] + next[1]) / 2)
-      }
-      context.lineTo(...points.at(-1))
-      context.stroke()
+  }
+
+  drawStroke(context, stroke) {
+    context.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over"
+    const points = stroke.points.map(point => this.viewport.convertToViewportPoint(...point))
+    context.fillStyle = context.strokeStyle = stroke.color
+    context.lineWidth = stroke.width * Math.hypot(this.viewport.transform[0], this.viewport.transform[1])
+    context.beginPath()
+    if (points.length === 1) {
+      context.arc(...points[0], context.lineWidth / 2, 0, Math.PI * 2)
+      context.fill()
+      return
     }
-    context.globalCompositeOperation = "source-over"
+    context.moveTo(...points[0])
+    // Quadratic curves through midpoints smooth sampled pointer movements.
+    for (let i = 1; i < points.length - 1; i++) {
+      const next = points[i + 1]
+      context.quadraticCurveTo(...points[i], (points[i][0] + next[0]) / 2, (points[i][1] + next[1]) / 2)
+    }
+    context.lineTo(...points.at(-1))
+    context.stroke()
   }
 }

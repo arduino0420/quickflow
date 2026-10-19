@@ -30,7 +30,7 @@ RSpec.describe AnswerDraft, type: :model do
     expect { stale.update!(format_version: 1, updated_at: Time.current) }.to raise_error(ActiveRecord::StaleObjectError)
   end
 
-  [ 4, 8, 12 ].each do |width|
+  [ 4, 8, 12, 18 ].each do |width|
     it "preserves eraser width #{width} and operation order on multiple pages" do
       draft.page_data << { "page_number" => 2, "operations" => [ stroke.merge("tool" => "eraser", "width" => width) ] }
       draft.save!

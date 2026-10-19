@@ -20,6 +20,8 @@ export default class extends Controller {
     this.pageStates = []
     this.pagesReady = false
     this.statesByCanvas = new WeakMap()
+    this.touchIds = new Set()
+    this.multiTouch = false
     this.tool = "pen"
     this.eraserSize = "medium"
     this.revision = 0
@@ -74,7 +76,7 @@ export default class extends Controller {
         const inkCanvas = sheet.querySelector('[data-pdf-preview-target="ink"]')
         inkCanvas.hidden = true
         inkCanvas.setAttribute("aria-label", `${number}ページ目のペン・消しゴム領域`)
-        const ink = new PdfInk(inkCanvas, number)
+        const ink = new PdfInk(inkCanvas, number, { cache: true })
         ink.onChange = () => this.draft?.changed()
         ink.setTool(this.tool)
         ink.setEraserSize(this.eraserSize)
@@ -138,6 +140,7 @@ export default class extends Controller {
     state.cursor.hidden = true
     state.canvas.width = state.canvas.height = state.inkCanvas.width = state.inkCanvas.height = 0
     state.renderedWidth = state.renderedDpr = null
+    state.ink.releaseCache()
     state.page.cleanup()
   }
 
@@ -165,7 +168,8 @@ export default class extends Controller {
     for (const state of wanted) {
       if (!this.current(session) || revision !== this.revision) return
       const viewport = state.viewport
-      const ratio = Math.min(dpr, 2, Math.sqrt(Math.min(8_000_000, 16_000_000 / wanted.length) /
+      // Budget includes the PDF, visible ink and completed-ink cache bitmaps.
+      const ratio = Math.min(dpr, 2, Math.sqrt(Math.min(8_000_000, 32_000_000 / (3 * wanted.length)) /
         (viewport.width * viewport.height)))
       if (state.renderedWidth === width && state.renderedDpr === dpr && state.ratio === ratio) continue
       if (state === this.inputState) this.finishInput()
@@ -275,7 +279,15 @@ export default class extends Controller {
       return
     }
     if (event.pointerType === "touch") {
-      if (!this.inputState && !this.touch) {
+      this.touchIds ||= new Set()
+      this.touchIds.add(event.pointerId)
+      if (this.touchIds.size > 1) {
+        this.multiTouch = true
+        this.finishInput()
+        this.inputDiagnostics?.record("controller", event, "pinch-delegated")
+        return
+      }
+      if (!this.multiTouch && !this.inputState && !this.touch) {
         this.touch = { id: event.pointerId, y: event.clientY, state }
         state.inkCanvas.setPointerCapture(event.pointerId)
         this.inputDiagnostics?.record("controller", event, "touch-scroll-started")
@@ -290,6 +302,7 @@ export default class extends Controller {
     }
     // Keep native selection out of the ink surface even while drawing is unavailable.
     if (event.cancelable) event.preventDefault()
+    if (this.multiTouch) { this.inputDiagnostics?.record("controller", event, "pinch-active"); return }
     if (!this.draftEditable) { this.inputDiagnostics?.record("controller", event, "draft-not-editable"); return }
     if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) {
       this.inputDiagnostics?.record("controller", event, this.inputState ? "input-busy" : "viewport-mismatch")
@@ -310,7 +323,7 @@ export default class extends Controller {
     this.inputDiagnostics?.record("controller", event, "move-enter")
     if (this.exporting) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
     this.showCursor(event)
-    if (event.pointerId === this.touch?.id) {
+    if (!this.multiTouch && event.pointerId === this.touch?.id) {
       window.scrollBy(0, this.touch.y - event.clientY)
       this.touch.y = event.clientY
       this.inputDiagnostics?.record("controller", event, "touch-scrolled")
@@ -349,6 +362,14 @@ export default class extends Controller {
     const state = this.statesByCanvas.get(event.currentTarget)
     if (!state) { this.inputDiagnostics?.record("controller", event, "unknown-canvas"); return }
     const drawing = state === this.inputState && event.pointerId === state.ink.pointerId
+    if (event.pointerType === "touch") {
+      this.touchIds?.delete(event.pointerId)
+      if (!this.touchIds?.size) this.multiTouch = false
+    }
+    if (drawing) {
+      window.cancelAnimationFrame(this.inkFrame)
+      this.inkFrame = null
+    }
     state.ink.end(event)
     if (drawing) this.inputState = null
     if (event.pointerId === this.touch?.id) this.touch = null
@@ -358,6 +379,10 @@ export default class extends Controller {
 
   finishInput(event) {
     this.inputDiagnostics?.record("controller", null, event?.type === "blur" ? "window-blurred" : "finish-input-enter")
+    if (event?.type === "blur" || !this.multiTouch) {
+      this.touchIds?.clear()
+      this.multiTouch = false
+    }
     window.cancelAnimationFrame(this.inkFrame)
     this.inkFrame = null
     const state = this.inputState
@@ -396,7 +421,7 @@ export default class extends Controller {
           for (const operation of data.operations) {
             if (!Number.isSafeInteger(operation.id) || !["pen", "eraser"].includes(operation.tool) ||
                 operation.color !== "#000000" || !Array.isArray(operation.points) || !operation.points.length ||
-                !(operation.tool === "pen" ? [1.2] : [4, 8, 12]).includes(operation.width)) throw new Error("invalid operation")
+                !(operation.tool === "pen" ? [1.2] : [4, 8, 12, 18]).includes(operation.width)) throw new Error("invalid operation")
             for (const point of operation.points) {
               if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite) ||
                   point[0] < view[0] - 0.01 || point[0] > view[2] + 0.01 ||
@@ -530,6 +555,8 @@ export default class extends Controller {
 
   disconnect() {
     this.stopInputDiagnostics()
+    this.touchIds?.clear()
+    this.multiTouch = false
     if (this.previousTurboSetting === null) document.documentElement.removeAttribute("data-turbo")
     else document.documentElement.setAttribute("data-turbo", this.previousTurboSetting)
     this.draft?.stop()
@@ -543,6 +570,7 @@ export default class extends Controller {
     for (const state of this.pageStates) {
       state.renderTask?.cancel()
       state.canvas.width = state.canvas.height = state.inkCanvas.width = state.inkCanvas.height = 0
+      state.ink.releaseCache()
       state.page.cleanup()
     }
     this.loadingTask?.destroy().catch(() => {})

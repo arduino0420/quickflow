@@ -29,7 +29,7 @@ RSpec.describe "PDF preview rendering lifecycle" do
             cleanup() {cleaned++;}},
           canvas: {style:{}, getContext() {return {};}}, inkCanvas: {hidden:true},
           cursor: {}, sheet: {getBoundingClientRect() {return {top: (number-1)*300, bottom:number*300};}, querySelector() {return {style:{}};}},
-          ink: {setViewport(viewport) {rendered.push([number, viewport.width]);}}
+          ink: {releaseCache() {}, setViewport(viewport) {rendered.push([number, viewport.width]);}}
         }));
         c.updateCursor = () => {};
         await c.queueRender();

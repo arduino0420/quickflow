@@ -12,10 +12,10 @@ RSpec.describe "PDF preview input isolation" do
       const PdfInk = vm.runInNewContext(inkSource + '; PdfInk');
       const source = fs.readFileSync(process.argv[2], 'utf8').replace(/^import .*$/gm, '')
         .replace('export default class', 'class Preview');
-      const scrolls = [];
+      const scrolls = []; let cancelledFrames=0;
       const c = vm.runInNewContext(source + '; new Preview()', {
         Controller: class {}, window: {devicePixelRatio:1, scrollBy:(...args)=>scrolls.push(args),
-          requestAnimationFrame:()=>1, cancelAnimationFrame() {}}
+          requestAnimationFrame:()=>1, cancelAnimationFrame(id) { if(id) cancelledFrames++; }}
       });
       const captures = new Set();
       const canvas = {hidden:false, getBoundingClientRect:()=>({left:0,top:0,width:200,height:300}),
@@ -35,15 +35,19 @@ RSpec.describe "PDF preview input isolation" do
         button:0, buttons:1, clientX:20, clientY:20, cancelable:true, defaultPrevented:false,
         preventDefault() {this.defaultPrevented=true;}, ...extra});
       for (let i=0;i<10;i++) {
-        const down=event({pointerId:i+1}); c.pointerDown(down);
+        const down=event({pointerId:1}); c.pointerDown(down);
         assert(down.defaultPrevented);
-        const move=event({pointerId:i+1,clientX:40}); c.pointerMove(move);
+        const move=event({pointerId:1,clientX:40}); c.pointerMove(move);
         assert(move.defaultPrevented);
-        c.pointerEnd(event({pointerId:i+1,type:'pointerup',buttons:0,clientX:50}));
+        assert.equal(c.inkFrame,1);
+        c.pointerEnd(event({pointerId:1,type:'pointerup',buttons:0,clientX:50}));
+        assert.equal(c.inkFrame,null);
+        c.pointerEnd(event({pointerId:1,type:'lostpointercapture',buttons:0}));
         assert.equal(c.inputState,null); assert.equal(captures.size,0);
       }
       assert.equal(ink.pages.get(1).length,10);
       assert(ink.pages.get(1).every(op=>op.points.length===3));
+      assert.equal(cancelledFrames,10);
       assert.equal(changes,10,'every completed stroke must notify autosave');
       for (const type of ['pointercancel','lostpointercapture']) {
         c.pointerDown(event()); c.pointerEnd(event({type}));
@@ -71,6 +75,25 @@ RSpec.describe "PDF preview input isolation" do
       c.pointerDown(event());
       const unrelated=event({pointerId:99}); c.pointerMove(unrelated);
       assert.equal(unrelated.defaultPrevented,false);
+      c.pointerEnd(event({type:'pointerup'}));
+      const strokes=ink.pages.get(1).length, scrollCount=scrolls.length;
+      c.pointerDown(event({pointerType:'touch',pointerId:91}));
+      c.pointerDown(event({pointerType:'touch',pointerId:92}));
+      assert.equal(c.multiTouch,true); assert.equal(c.touch,null);
+      c.pointerMove(event({pointerType:'touch',pointerId:91,clientY:1}));
+      const duringPinch=event(); c.pointerDown(duringPinch);
+      assert.equal(c.inputState,null); assert.equal(ink.pages.get(1).length,strokes);
+      assert.equal(scrolls.length,scrollCount,'two fingers must not trigger manual scrolling');
+      c.pointerEnd(event({pointerType:'touch',pointerId:91,type:'pointercancel'}));
+      assert.equal(c.multiTouch,true);
+      c.pointerEnd(event({pointerType:'touch',pointerId:92,type:'pointercancel'}));
+      assert.equal(c.multiTouch,false);
+      c.pointerDown(event()); assert(c.inputState);
+      // A palm contact must neither scroll nor end a held pen stroke.
+      c.pointerDown(event({pointerType:'touch',pointerId:93}));
+      c.pointerMove(event({pointerType:'touch',pointerId:93,clientY:1}));
+      assert(c.inputState); assert.equal(scrolls.length,scrollCount);
+      c.pointerEnd(event({pointerType:'touch',pointerId:93,type:'pointerup'}));
       c.pointerEnd(event({type:'pointerup'}));
       for (const type of ['selectstart','contextmenu']) {
         const selection=event({type}); c.preventPageSelection(selection);

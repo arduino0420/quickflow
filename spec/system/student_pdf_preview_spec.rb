@@ -461,7 +461,12 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(page).to have_css("canvas", count: 20, visible: :all)
-    pixels = page.evaluate_script("Array.from(document.querySelectorAll('canvas')).reduce((sum,c) => sum+c.width*c.height,0)")
+    pixels = page.evaluate_script(<<~JS)
+      (() => {
+        const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        return editor.pageStates.reduce((sum,s)=>sum+s.canvas.width*s.canvas.height+s.inkCanvas.width*s.inkCanvas.height+s.ink.cache.width*s.ink.cache.height,0);
+      })()
+    JS
     expect(pixels).to be <= 32_100_000
     scroll_page(10)
     ink_drag(0.2, 0.2, 0.2, 0.2, 10)
@@ -491,7 +496,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     click_button "消しゴム"
     expect(find_button("中")["aria-pressed"]).to eq("true")
     expect(page).to have_css('[data-pdf-preview-target="size"]', count: 3)
-    [ [ "小", 0.2, 4 ], [ "中", 0.4, 8 ], [ "大", 0.6, 12 ] ].each do |label, x, width|
+    [ [ "小", 0.2, 4 ], [ "中", 0.4, 8 ], [ "大", 0.6, 18 ] ].each do |label, x, width|
       find_button(label).send_keys(:space)
       expect(find_button(label)["aria-pressed"]).to eq("true")
       ink_drag(x, 0.2, x, 0.2)
@@ -507,7 +512,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.415, 0.2)).to eq(0) # Inside medium radius.
     expect(ink_alpha(0.425, 0.2)).to be > 0
     expect(ink_alpha(0.625, 0.2)).to eq(0) # Inside large radius.
-    expect(ink_alpha(0.635, 0.2)).to be > 0
+    expect(ink_alpha(0.65, 0.2)).to be > 0
     expect(find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")).to eq(original)
     click_button "ペン"
     expect(page).to have_no_css('[data-pdf-preview-target="sizes"]', visible: true)
@@ -864,7 +869,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
       draft = AnswerDraft.find_by!(assignment: @assignment)
       expect(draft.page_data.length).to eq(3)
-      expect(draft.page_data.first["operations"].select { |op| op["tool"] == "eraser" }.map { |op| op["width"] }).to eq([ 4, 8, 12 ])
+      expect(draft.page_data.first["operations"].select { |op| op["tool"] == "eraser" }.map { |op| op["width"] }).to eq([ 4, 8, 18 ])
       page.current_window.resize_to(900, 900)
       page.refresh
       expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
@@ -1170,6 +1175,101 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       filename: "preview.pdf", content_type: "application/pdf")
   end
 
+  it "matches cached ink to full replay through erasing, rewriting, resize and release" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.8, 0.1)
+    click_button "消しゴム"
+    click_button "大"
+    ink_drag(0.4, 0.1, 0.5, 0.1)
+    click_button "ペン"
+    ink_drag(0.45, 0.1, 0.45, 0.1)
+    expect(page.evaluate_async_script(<<~JS)).to eq([ true, true, true ])
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const {default:PdfInk}=await import('pdf_ink');
+        const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        const ink=editor.pageStates[0].ink;
+        const reference=new PdfInk(document.createElement('canvas'));
+        reference.pages.set(1,structuredClone(ink.pages.get(1)));
+        const equal=()=>{reference.setViewport(ink.viewport,ink.canvas.width/ink.viewport.width);return reference.canvas.toDataURL()===ink.canvas.toDataURL();};
+        const results=[equal()];
+        ink.releaseCache(); ink.redraw(); results.push(equal());
+        ink.setViewport(ink.viewport,1.5); results.push(equal());
+        reference.canvas.width=reference.canvas.height=0;
+        done(results);
+      })().catch(error=>done({error:String(error)}));
+    JS
+  end
+
+  it "restores legacy width 12 and saves new width 18 without rewriting old operations" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.9, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    draft = AnswerDraft.find_by!(assignment: @assignment)
+    data = draft.page_data.deep_dup
+    legacy = { "id" => 2, "tool" => "eraser", "width" => 12, "color" => "#000000", "points" => [ [ 40, 270 ] ] }
+    data.first["operations"] << legacy
+    draft.update!(page_data: data)
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.2, 0.1)).to eq(0)
+    expect(ink_alpha(0.24, 0.1)).to be > 0
+    click_button "消しゴム"
+    click_button "大"
+    ink_drag(0.6, 0.1, 0.6, 0.1)
+    expect(ink_alpha(0.64, 0.1)).to eq(0)
+    expect(ink_alpha(0.65, 0.1)).to be > 0
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    operations = draft.reload.page_data.first["operations"]
+    expect(operations[1]).to eq(legacy)
+    expect(operations.last["width"]).to eq(18)
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.2, 0.1)).to eq(0)
+    expect(ink_alpha(0.64, 0.1)).to eq(0)
+    generate_preview_pdf
+    expect(page.evaluate_async_script(<<~JS)).to eq([ [ 255, 255, 255 ], [ 255, 255, 255 ], [ 0, 0, 0 ] ])
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        const {getDocument}=await import('pdfjs');
+        const pdf=await getDocument({data:new Uint8Array(await window.exportBlobs[0].arrayBuffer()),worker:editor.pdfWorker}).promise;
+        const page=await pdf.getPage(1), viewport=page.getViewport({scale:3});
+        const canvas=document.createElement('canvas'); canvas.width=viewport.width;canvas.height=viewport.height;
+        const context=canvas.getContext('2d');await page.render({canvasContext:context,viewport}).promise;
+        const pixels=[.2,.64,.65].map(x=>Array.from(context.getImageData(Math.round(viewport.width*x),Math.round(viewport.height*.1),1,1).data).slice(0,3));
+        canvas.width=canvas.height=0; done(pixels);
+      })().catch(error=>done({error:String(error)}));
+    JS
+  end
+
+  it "keeps PDF coordinates after simulated viewport zoom and permits native pinch zoom" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("getComputedStyle(this).touchAction")).to eq("pinch-zoom")
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    original = AnswerDraft.find_by!(assignment: @assignment).page_data
+    begin
+      page.driver.browser.execute_cdp("Emulation.setPageScaleFactor", pageScaleFactor: 2)
+      expect(page.evaluate_script("visualViewport.scale")).to be_within(0.01).of(2)
+      expect(page.evaluate_script(<<~JS)).to be(true)
+        (()=>{
+          const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+          const ink=editor.pageStates[0].ink, rect=ink.canvas.getBoundingClientRect();
+          const point=ink.point({clientX:rect.left+rect.width*.15,clientY:rect.top+rect.height*.1});
+          return Math.abs(point[0]-30)<.001 && Math.abs(point[1]-270)<.001;
+        })()
+      JS
+      expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(original)
+    ensure
+      page.driver.browser.execute_cdp("Emulation.setPageScaleFactor", pageScaleFactor: 1)
+    end
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+  end
+
   it "enables memory-only input diagnostics explicitly and correlates real document/controller events" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
@@ -1219,16 +1319,17 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       .pointer_up(:left, device: "test-pen").perform
     expect(ink_alpha(0.15, 0.1)).to be > 0
 
-    # Separate pen contacts must remain separate strokes, including after the first contact.
+    # Send contacts in one batch with no requested pause or move duration between strokes.
+    actions = page.driver.browser.action
+    actions.add_pointer_input(:pen, "test-pen")
     9.times do |index|
       y = (bounds["y"] + bounds["height"] * (0.105 + index * 0.005)).round
-      actions = page.driver.browser.action
-      actions.add_pointer_input(:pen, "test-pen")
-      actions.move_to_location((bounds["x"] + bounds["width"] * 0.1).round, y, device: "test-pen")
+      actions.move_to_location((bounds["x"] + bounds["width"] * 0.1).round, y, device: "test-pen", duration: 0)
         .pointer_down(:left, device: "test-pen")
-        .move_to_location((bounds["x"] + bounds["width"] * 0.2).round, y, device: "test-pen")
-        .pointer_up(:left, device: "test-pen").perform
+        .move_to_location((bounds["x"] + bounds["width"] * 0.2).round, y, device: "test-pen", duration: 0)
+        .pointer_up(:left, device: "test-pen")
     end
+    actions.perform
     10.times { |index| expect(ink_alpha(0.15, 0.1 + index * 0.005)).to be > 0 }
     expect(page.evaluate_script("window.getSelection().isCollapsed")).to be(true)
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)

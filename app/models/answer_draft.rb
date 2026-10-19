@@ -38,7 +38,7 @@ class AnswerDraft < ApplicationRecord
 
         ids[stroke["id"]] = true
         next false unless stroke["color"] == "#000000" && %w[pen eraser].include?(stroke["tool"])
-        widths = stroke["tool"] == "pen" ? [ 1.2 ] : [ 4, 8, 12 ]
+        widths = stroke["tool"] == "pen" ? [ 1.2 ] : [ 4, 8, 12, 18 ]
         next false unless widths.include?(stroke["width"]) && stroke["points"].is_a?(Array) && stroke["points"].any?
 
         points += stroke["points"].length

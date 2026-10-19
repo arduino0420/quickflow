@@ -13,7 +13,7 @@
 .pdf-preview-page canvas[hidden] { display: none; }
 .pdf-preview-page .pdf-preview-ink {
   position: absolute; inset: 0; width: 100%; height: 100%; background: transparent;
-  touch-action: none; cursor: crosshair;
+  touch-action: pinch-zoom; cursor: crosshair;
 }
 
 .pdf-preview [hidden] { display: none; }
