@@ -1184,7 +1184,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.4, 0.1, 0.5, 0.1)
     click_button "ペン"
     ink_drag(0.45, 0.1, 0.45, 0.1)
-    expect(page.evaluate_async_script(<<~JS)).to eq([ true, true, true ])
+    comparisons = page.evaluate_async_script(<<~JS)
       const done=arguments[arguments.length-1];
       (async()=>{
         const {default:PdfInk}=await import('pdf_ink');
@@ -1192,14 +1192,26 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         const ink=editor.pageStates[0].ink;
         const reference=new PdfInk(document.createElement('canvas'));
         reference.pages.set(1,structuredClone(ink.pages.get(1)));
-        const equal=()=>{reference.setViewport(ink.viewport,ink.canvas.width/ink.viewport.width);return reference.canvas.toDataURL()===ink.canvas.toDataURL();};
-        const results=[equal()];
-        ink.releaseCache(); ink.redraw(); results.push(equal());
-        ink.setViewport(ink.viewport,1.5); results.push(equal());
+        const compare=()=>{
+          reference.setViewport(ink.viewport,1);
+          reference.canvas.width=ink.canvas.width;
+          reference.canvas.height=ink.canvas.height;
+          reference.redraw();
+          return {actual:[ink.canvas.width,ink.canvas.height],reference:[reference.canvas.width,reference.canvas.height],
+            imageMatches:reference.canvas.toDataURL()===ink.canvas.toDataURL()};
+        };
+        const results=[compare()];
+        ink.releaseCache(); ink.redraw(); results.push(compare());
+        ink.setViewport(ink.viewport,1.5); results.push(compare());
         reference.canvas.width=reference.canvas.height=0;
         done(results);
       })().catch(error=>done({error:String(error)}));
     JS
+    expect(comparisons.size).to eq(3)
+    comparisons.each do |comparison|
+      expect(comparison.fetch("reference")).to eq(comparison.fetch("actual"))
+      expect(comparison.fetch("imageMatches")).to be(true)
+    end
   end
 
   it "restores legacy width 12 and saves new width 18 without rewriting old operations" do
