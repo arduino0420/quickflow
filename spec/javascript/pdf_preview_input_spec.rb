@@ -13,9 +13,13 @@ RSpec.describe "PDF preview input isolation" do
       const source = fs.readFileSync(process.argv[2], 'utf8').replace(/^import .*$/gm, '')
         .replace('export default class', 'class Preview');
       const scrolls = []; let cancelledFrames=0;
+      const document={addEventListener(){},removeEventListener(){}};
+      const window={devicePixelRatio:1,scrollBy:(...args)=>scrolls.push(args),addEventListener(){},removeEventListener(){},
+        requestAnimationFrame:()=>1,cancelAnimationFrame(id) {if(id) cancelledFrames++;}};
+      const PdfInputDiagnostics=vm.runInNewContext(fs.readFileSync(process.argv[3],'utf8')
+        .replace('export default class','class')+'; PdfInputDiagnostics',{document,window,performance});
       const c = vm.runInNewContext(source + '; new Preview()', {
-        Controller: class {}, window: {devicePixelRatio:1, scrollBy:(...args)=>scrolls.push(args),
-          requestAnimationFrame:()=>1, cancelAnimationFrame(id) { if(id) cancelledFrames++; }}
+        Controller: class {}, window, PdfInputDiagnostics
       });
       const captures = new Set();
       const canvas = {hidden:false, getBoundingClientRect:()=>({left:0,top:0,width:200,height:300}),
@@ -29,15 +33,17 @@ RSpec.describe "PDF preview input isolation" do
       ink.onChange = () => changes++;
       const state = {inkCanvas:canvas, ink, renderedWidth:200, renderedDpr:1};
       c.statesByCanvas = new WeakMap([[canvas,state]]);
+      c.element={contains:target=>target===canvas};
       c.containerTarget = {clientWidth:200}; c.draftEditable = true;
       c.showCursor = c.showDraftStatus = () => {};
-      const event = (extra={}) => ({currentTarget:canvas, pointerId:1, pointerType:'pen',
+      c.startInputDiagnostics();
+      const event = (extra={}) => ({type:'pointerdown',target:canvas,currentTarget:canvas, pointerId:1, pointerType:'pen',
         button:0, buttons:1, clientX:20, clientY:20, cancelable:true, defaultPrevented:false,
         preventDefault() {this.defaultPrevented=true;}, ...extra});
       for (let i=0;i<10;i++) {
         const down=event({pointerId:1}); c.pointerDown(down);
         assert(down.defaultPrevented);
-        const move=event({pointerId:1,clientX:40}); c.pointerMove(move);
+        const move=event({type:'pointermove',pointerId:1,clientX:40}); c.pointerMove(move);
         assert(move.defaultPrevented);
         assert.equal(c.inkFrame,1);
         c.pointerEnd(event({pointerId:1,type:'pointerup',buttons:0,clientX:50}));
@@ -49,6 +55,9 @@ RSpec.describe "PDF preview input isolation" do
       assert(ink.pages.get(1).every(op=>op.points.length===3));
       assert.equal(cancelledFrames,10);
       assert.equal(changes,10,'every completed stroke must notify autosave');
+      assert.equal(c.inputDiagnostics.summary().accepted,10);
+      assert.equal(c.inputDiagnostics.summary().ended,10);
+      assert.equal(c.inputDiagnostics.summary().pen.controller.lostpointercapture,10);
       for (const type of ['pointercancel','lostpointercapture']) {
         c.pointerDown(event()); c.pointerEnd(event({type}));
         c.pointerDown(event()); assert(c.inputState);
@@ -95,6 +104,12 @@ RSpec.describe "PDF preview input isolation" do
       assert(c.inputState); assert.equal(scrolls.length,scrollCount);
       c.pointerEnd(event({pointerType:'touch',pointerId:93,type:'pointerup'}));
       c.pointerEnd(event({type:'pointerup'}));
+      const summary=c.inputDiagnostics.summary();
+      assert.equal(summary.reasons['pinch-active'],1);
+      assert.equal(summary.reasons['draft-not-editable'],1);
+      assert.equal(summary.reasons['viewport-mismatch'],1);
+      assert.equal(summary.accepted,ink.pages.get(1).length,'diagnostics must not change stroke creation');
+      c.stopInputDiagnostics();
       for (const type of ['selectstart','contextmenu']) {
         const selection=event({type}); c.preventPageSelection(selection);
         assert(selection.defaultPrevented);
@@ -102,7 +117,8 @@ RSpec.describe "PDF preview input isolation" do
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "-e", script,
       File.expand_path("../../app/javascript/pdf_ink.js", __dir__),
-      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
+      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__),
+      File.expand_path("../../app/javascript/controllers/pdf_input_diagnostics.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
 end

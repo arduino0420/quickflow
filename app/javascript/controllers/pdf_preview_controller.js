@@ -6,7 +6,8 @@ import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus"]
+  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus",
+    "diagnostics", "diagnosticSummary", "diagnosticEvents"]
   static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String, submissionUrl: String }
 
   connect() {
@@ -28,6 +29,7 @@ export default class extends Controller {
     this.renderQueue = Promise.resolve()
     this.updateTool()
     this.watchPixelRatio()
+    if (window.location.hash === "#pdf-input-diagnostics") this.startInputDiagnostics()
     this.load(this.session)
   }
 
@@ -262,11 +264,49 @@ export default class extends Controller {
   startInputDiagnostics() {
     this.stopInputDiagnostics()
     this.inputDiagnostics = new PdfInputDiagnostics(this)
+    if (this.hasDiagnosticsTarget) {
+      this.diagnosticsTarget.hidden = false
+      this.refreshInputDiagnostics()
+      this.diagnosticTimer = window.setInterval(() => this.refreshInputDiagnostics(), 250)
+    }
   }
 
   stopInputDiagnostics() {
+    if (this.diagnosticTimer != null) window.clearInterval(this.diagnosticTimer)
+    this.diagnosticTimer = null
     this.inputDiagnostics?.stop()
     this.inputDiagnostics = null
+    if (this.hasDiagnosticsTarget) this.diagnosticsTarget.hidden = true
+  }
+
+  resetInputDiagnostics() {
+    this.inputDiagnostics?.reset()
+    this.refreshInputDiagnostics()
+  }
+
+  refreshInputDiagnostics() {
+    const diagnostics = this.inputDiagnostics
+    if (!diagnostics?.dirty || !this.hasDiagnosticsTarget) return
+    diagnostics.dirty = false
+    const s = diagnostics.summary()
+    const sources = ["window", "document", "controller"]
+    const counts = key => sources.map(source => s.pen[source][key]).join("/")
+    const latest = s.recent.at(-1)
+    const active = this.inputState
+    this.diagnosticSummaryTarget.textContent = [
+      `ペンdown W/D/C: ${counts("pointerdown")}（W=window D=document C=controller）`,
+      `筆記領域内: ${counts("inkDown")} / 領域外: ${sources.map(source => s.pen[source].pointerdown - s.pen[source].inkDown).join("/")}`,
+      `開始: ${s.accepted} / イベントによる終了: ${s.ended} / 拒否: ${s.rejected}`,
+      `拒否理由: ${Object.entries(s.reasons).map(([reason, count]) => `${reason}=${count}`).join(", ") || "なし"}`,
+      `up W/D/C: ${counts("pointerup")} / cancel: ${counts("pointercancel")} / capture失効: ${counts("lostpointercapture")}`,
+      `touch start/end/cancel: ${s.touch.touchstart}/${s.touch.touchend}/${s.touch.touchcancel}`,
+      `直近up→down: ${s.lastGap == null ? "未計測" : `${Math.round(s.lastGap)}ms`}`,
+      `状態: 入力=${!!active} 筆跡=${!!active?.ink.stroke} 保存中=${!!this.draft?.saving} ピンチ=${!!this.multiTouch}`,
+      `直近: ${latest?.reason || "待機中"}（${latest?.type || "－"} / ${latest?.pointerType || "－"} / id=${latest?.pointerId ?? "－"}）`
+    ].join("\n")
+    this.diagnosticEventsTarget.textContent = s.recent.map(row =>
+      `${Math.round(row.elapsedMs)}ms t=${row.eventTimeMs ?? "－"} #${row.eventId ?? "－"} ${row.source} ${row.type || "－"} ${row.pointerType || "－"}:${row.pointerId ?? "－"} ${row.target || "－"} ${row.reason} input=${row.inputActive} activeId=${row.activePointerId ?? "－"} stroke=${row.activeStroke} targetStroke=${row.targetStroke} captured=${row.captured} touch=${row.touches ?? "－"}`
+    ).join("\n") || "イベント待機中"
   }
 
   pointerDown(event) {
@@ -311,6 +351,7 @@ export default class extends Controller {
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
+      this.inputDiagnostics?.record("controller", event, "stroke-accepted")
       this.showDraftStatus(this.draft?.failed ? "保存できませんでした。接続を確認して再試行してください。" : "未保存", !!this.draft?.failed)
       state.inkCanvas.setPointerCapture(event.pointerId)
       this.inputDiagnostics?.record("controller", event, "stroke-started")

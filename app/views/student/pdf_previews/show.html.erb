@@ -18,6 +18,17 @@
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
   <p class="pdf-preview-draft-status" data-pdf-preview-target="draftStatus" role="status" aria-live="polite">下書きの復元中…</p>
   <button type="button" data-pdf-preview-target="retry" data-action="pdf-preview#retryDraft" hidden>保存を再試行</button>
+  <aside class="pdf-input-diagnostics" data-pdf-preview-target="diagnostics" aria-label="開発者用入力診断" hidden>
+    <strong>開発者用入力診断（この画面内のみ）</strong>
+    <p>リセット後に10画書き、ペンdownと開始数を比較してください。イベントが届かない筆記は自動計測できません。</p>
+    <pre class="pdf-input-diagnostics-summary" data-pdf-preview-target="diagnosticSummary" aria-live="off"></pre>
+    <details>
+      <summary>直近16件のイベント</summary>
+      <pre data-pdf-preview-target="diagnosticEvents" aria-live="off"></pre>
+    </details>
+    <button type="button" data-action="pdf-preview#resetInputDiagnostics">計測リセット</button>
+    <button type="button" data-action="pdf-preview#stopInputDiagnostics">診断終了</button>
+  </aside>
   <div class="pdf-preview-tools" role="group" aria-label="手書きツール">
     <button type="button" aria-pressed="true" data-pdf-preview-target="tool"
       data-pdf-preview-tool-param="pen" data-action="pdf-preview#selectTool">ペン</button>

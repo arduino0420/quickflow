@@ -1277,10 +1277,12 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       (() => {
         window.diagnosticPreview = window.Stimulus.getControllerForElementAndIdentifier(
           document.querySelector('[data-controller="pdf-preview"]'), 'pdf-preview');
-        return !window.diagnosticPreview.inputDiagnostics;
+        return !window.diagnosticPreview.inputDiagnostics && !window.diagnosticPreview.diagnosticTimer;
       })()
     JS
+    expect(page).to have_no_css('[data-pdf-preview-target="diagnostics"]')
     page.execute_script("window.diagnosticPreview.startInputDiagnostics()")
+    page.execute_script("window.scrollTo(0, 250)")
     ink_drag(0.1, 0.1, 0.2, 0.1)
     ink_drag(0.3, 0.1, 0.4, 0.1)
     rows = page.evaluate_script("window.diagnosticPreview.inputDiagnostics.snapshot().rows")
@@ -1301,6 +1303,80 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.5, 0.1, 0.6, 0.1)
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(3)
+  end
+
+  it "shows opt-in pen counters outside the writing surface and resets only diagnostic data" do
+    visit student_assignment_pdf_preview_path(@assignment, anchor: "pdf-input-diagnostics")
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_css('[data-pdf-preview-target="diagnostics"]')
+    expect(page.evaluate_script(<<~JS)).to be(true)
+      (()=>{
+        const panel=document.querySelector('[data-pdf-preview-target="diagnostics"]');
+        const ink=document.querySelector('[data-pdf-preview-target="ink"]');
+        return getComputedStyle(panel).position==='static' && panel.getBoundingClientRect().bottom<=ink.getBoundingClientRect().top;
+      })()
+    JS
+    page.execute_script("window.scrollTo(0, 250)")
+    bounds = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    y = (bounds["y"] + bounds["height"] * 0.1).round
+    actions = page.driver.browser.action
+    actions.add_pointer_input(:pen, "diagnostic-pen")
+    2.times do |index|
+      actions.move_to_location((bounds["x"] + bounds["width"] * (0.1 + index * 0.2)).round, y,
+        device: "diagnostic-pen", duration: 0)
+        .pointer_down(:left, device: "diagnostic-pen")
+        .move_to_location((bounds["x"] + bounds["width"] * (0.2 + index * 0.2)).round, y,
+          device: "diagnostic-pen", duration: 0)
+        .pointer_up(:left, device: "diagnostic-pen")
+    end
+    actions.perform
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "ペンdown W/D/C: 2/2/2")
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "開始: 2 / イベントによる終了: 2 / 拒否: 0")
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.35, 0.1)).to be > 0
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    draft = AnswerDraft.find_by!(assignment: @assignment)
+    saved = draft.page_data.deep_dup
+
+    page.execute_script(<<~JS)
+      const preview=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      preview.draftEditable=false;
+      const ink=preview.pageStates[0].inkCanvas, rect=ink.getBoundingClientRect();
+      ink.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,pointerType:'pen',pointerId:99,
+        button:0,buttons:1,clientX:rect.left+20,clientY:rect.top+20}));
+      preview.draftEditable=true;
+    JS
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "ペンdown W/D/C: 3/3/3")
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "draft-not-editable=1")
+    before = find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")
+    click_button "計測リセット"
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "ペンdown W/D/C: 0/0/0")
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "開始: 0 / イベントによる終了: 0 / 拒否: 0")
+    expect(draft.reload.page_data).to eq(saved)
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")).to eq(before)
+    expect(page.evaluate_script("getComputedStyle(document.querySelector('[data-pdf-preview-target=ink]')).touchAction")).to eq("pinch-zoom")
+    click_button "診断終了"
+    expect(page).to have_no_css('[data-pdf-preview-target="diagnostics"]')
+    expect(page.evaluate_script(<<~JS)).to eq([ nil, nil ])
+      (()=>{const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        return [c.inputDiagnostics,c.diagnosticTimer];})()
+    JS
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.35, 0.1)).to be > 0
+    expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "ペンdown W/D/C: 0/0/0")
+    [ 820, 620 ].each do |width|
+      page.current_window.resize_to(width, 1180)
+      expect(page.evaluate_script(<<~JS)).to be(true)
+        (()=>{
+          const panel=document.querySelector('[data-pdf-preview-target="diagnostics"]');
+          const ink=document.querySelector('[data-pdf-preview-target="ink"]');
+          return panel.getBoundingClientRect().bottom<=ink.getBoundingClientRect().top &&
+            document.documentElement.scrollWidth===document.documentElement.clientWidth;
+        })()
+      JS
+    end
   end
 
   it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do
