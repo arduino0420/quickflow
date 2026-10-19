@@ -33,6 +33,34 @@ export default class extends Controller {
     this.load(this.session)
   }
 
+  inkTargetConnected(canvas) {
+    this.inkTouchListeners ||= new Map()
+    if (this.inkTouchListeners.has(canvas)) return
+    const listener = event => this.preventStylusGesture(event)
+    this.inkTouchListeners.set(canvas, listener)
+    for (const type of ["touchstart", "touchend"]) {
+      canvas.addEventListener(type, listener, { passive: false })
+    }
+  }
+
+  inkTargetDisconnected(canvas) {
+    const listener = this.inkTouchListeners?.get(canvas)
+    if (!listener) return
+    for (const type of ["touchstart", "touchend"]) canvas.removeEventListener(type, listener)
+    this.inkTouchListeners.delete(canvas)
+  }
+
+  preventStylusGesture(event) {
+    // Unknown touch types and finger gestures retain their native behavior.
+    if (!event.cancelable || event.changedTouches.length !== 1 ||
+        event.changedTouches[0].touchType !== "stylus") return
+    if (event.type === "touchstart") {
+      if (event.touches.length !== 1 || event.touches[0].touchType !== "stylus" ||
+          event.touches[0].identifier !== event.changedTouches[0].identifier) return
+    } else if (event.type !== "touchend" || event.touches.length !== 0) return
+    event.preventDefault()
+  }
+
   current(session) {
     return this.active && session === this.session
   }
@@ -595,6 +623,7 @@ export default class extends Controller {
   }
 
   disconnect() {
+    for (const canvas of this.inkTouchListeners?.keys() || []) this.inkTargetDisconnected(canvas)
     this.stopInputDiagnostics()
     this.touchIds?.clear()
     this.multiTouch = false
