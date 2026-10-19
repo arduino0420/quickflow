@@ -1240,7 +1240,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     10.times { |index| expect(ink_alpha(0.15, 0.1 + index * 0.005)).to be > 0 }
 
     # Native actions are suppressed on PDF pages, without cancelling events on the tools.
-    expect(page.evaluate_script(<<~JS)).to eq([true, true, false, false])
+    expect(page.evaluate_script(<<~JS)).to eq([ true, true, false, false ])
       (() => {
         const ink = document.querySelector('[data-pdf-preview-target="ink"]');
         const tool = document.querySelector('[data-pdf-preview-target="tool"]');
@@ -1250,7 +1250,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         }));
       })()
     JS
-    expect(page.evaluate_script(<<~JS)).to eq(["none", "none", "none"])
+    expect(page.evaluate_script(<<~JS)).to eq([ "none", "none", "none" ])
       Array.from(document.querySelectorAll('.pdf-preview-page, .pdf-preview-page canvas'))
         .map(element => getComputedStyle(element).userSelect)
     JS
