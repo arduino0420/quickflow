@@ -33,7 +33,7 @@
   </div>
   <div data-pdf-preview-target="container" class="pdf-preview-pages" aria-busy="true">
     <section class="pdf-preview-sheet" data-page-number="1" aria-label="教材PDFの1ページ目">
-      <div class="pdf-preview-page">
+      <div class="pdf-preview-page" data-action="selectstart->pdf-preview#preventPageSelection contextmenu->pdf-preview#preventPageSelection">
         <canvas data-pdf-preview-target="canvas" aria-label="教材PDFの1ページ目" role="img" hidden></canvas>
         <canvas data-pdf-preview-target="ink" class="pdf-preview-ink" aria-label="ペン・消しゴムの手書き領域" hidden
           data-action="pointerdown->pdf-preview#pointerDown pointermove->pdf-preview#pointerMove pointerup->pdf-preview#pointerEnd pointercancel->pdf-preview#pointerEnd lostpointercapture->pdf-preview#pointerEnd pointerenter->pdf-preview#showCursor pointerleave->pdf-preview#hideCursor"></canvas>

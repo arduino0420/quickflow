@@ -248,6 +248,10 @@ export default class extends Controller {
     if (state) state.cursor.hidden = true
   }
 
+  preventPageSelection(event) {
+    event.preventDefault()
+  }
+
   pointerDown(event) {
     if (this.exporting) return
     this.showCursor(event)
@@ -260,13 +264,15 @@ export default class extends Controller {
       }
       return
     }
-    if (!this.draftEditable || event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) return
+    if (event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) return
+    // Keep native selection out of the ink surface even while drawing is unavailable.
+    if (event.cancelable) event.preventDefault()
+    if (!this.draftEditable) return
     if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) return
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
       this.showDraftStatus(this.draft?.failed ? "保存できませんでした。接続を確認して再試行してください。" : "未保存", !!this.draft?.failed)
-      event.preventDefault()
       state.inkCanvas.setPointerCapture(event.pointerId)
     }
   }
@@ -280,7 +286,8 @@ export default class extends Controller {
       return
     }
     const state = this.inputState
-    if (!state || state.inkCanvas !== event.currentTarget) return
+    if (!state || state.inkCanvas !== event.currentTarget || event.pointerId !== state.ink.pointerId) return
+    if (event.cancelable) event.preventDefault()
     state.ink.move(event)
     if (!state.ink.stroke) { this.finishInput(); return }
     if (!this.inkFrame) {

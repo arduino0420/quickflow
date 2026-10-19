@@ -1186,6 +1186,42 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       .pointer_up(:left, device: "test-pen").perform
     expect(ink_alpha(0.15, 0.1)).to be > 0
 
+    # Separate pen contacts must remain separate strokes, including after the first contact.
+    9.times do |index|
+      y = (bounds["y"] + bounds["height"] * (0.105 + index * 0.005)).round
+      actions = page.driver.browser.action
+      actions.add_pointer_input(:pen, "test-pen")
+      actions.move_to_location((bounds["x"] + bounds["width"] * 0.1).round, y, device: "test-pen")
+        .pointer_down(:left, device: "test-pen")
+        .move_to_location((bounds["x"] + bounds["width"] * 0.2).round, y, device: "test-pen")
+        .pointer_up(:left, device: "test-pen").perform
+    end
+    10.times { |index| expect(ink_alpha(0.15, 0.1 + index * 0.005)).to be > 0 }
+    expect(page.evaluate_script("window.getSelection().isCollapsed")).to be(true)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    operations = AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"]
+    expect(operations.length).to eq(10)
+    expect(operations.map { |operation| operation["points"].length }).to all(be >= 2)
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    10.times { |index| expect(ink_alpha(0.15, 0.1 + index * 0.005)).to be > 0 }
+
+    # Native actions are suppressed on PDF pages, without cancelling events on the tools.
+    expect(page.evaluate_script(<<~JS)).to eq([true, true, false, false])
+      (() => {
+        const ink = document.querySelector('[data-pdf-preview-target="ink"]');
+        const tool = document.querySelector('[data-pdf-preview-target="tool"]');
+        return [ink, tool].flatMap(element => ['selectstart', 'contextmenu'].map(type => {
+          const event = new Event(type, {bubbles:true, cancelable:true});
+          element.dispatchEvent(event); return event.defaultPrevented;
+        }));
+      })()
+    JS
+    expect(page.evaluate_script(<<~JS)).to eq(["none", "none", "none"])
+      Array.from(document.querySelectorAll('.pdf-preview-page, .pdf-preview-page canvas'))
+        .map(element => getComputedStyle(element).userSelect)
+    JS
+
     click_button "消しゴム"
     click_button "小"
     bounds = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")

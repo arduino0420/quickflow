@@ -35,6 +35,9 @@ RSpec.describe "Student PDF previews", type: :request do
     expect(preview.text).to include("問題を読み込んでいます")
     expect(document.css("canvas").size).to eq(2)
     expect(document.at_css('canvas[data-pdf-preview-target="ink"]')).to be_present
+    expect(document.at_css('.pdf-preview-page')["data-action"].split).to contain_exactly(
+      "selectstart->pdf-preview#preventPageSelection", "contextmenu->pdf-preview#preventPageSelection")
+    expect(preview["data-action"]).not_to include("preventPageSelection")
     expect(document.at_css('button[data-pdf-preview-tool-param="pen"]')["aria-pressed"]).to eq("true")
     expect(document.at_css('button[data-pdf-preview-tool-param="eraser"]')["aria-pressed"]).to eq("false")
     expect(document.at_css('[data-pdf-preview-target="sizes"]')["hidden"]).not_to be_nil
