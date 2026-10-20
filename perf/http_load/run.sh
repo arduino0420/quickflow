@@ -58,7 +58,7 @@ docker run -d --name "$application" --network "$network" --user 1000:1000 --labe
   -e RAILS_ENV=test -e RAILS_MAX_THREADS=3 -e "QUICKFLOW_HTTP_LOAD_RUN_ID=$run_id" \
   -e "SECRET_KEY_BASE=$(openssl rand -hex 64)" \
   -e "DATABASE_URL=postgresql://load:${password}@db:5432/quickflow_test" \
-  quickflow-http-load:local sleep infinity >/dev/null
+  "${QUICKFLOW_HTTP_LOAD_IMAGE:-quickflow-http-load:local}" sleep infinity >/dev/null
 stage="application"
 unset password
 
@@ -91,6 +91,14 @@ ruby -rjson -e 'r=JSON.parse(File.read(ARGV.fetch(0))); a=r.fetch("canary"); abo
 docker exec "$application" ruby perf/http_load/client.rb ordinary > "$results/ordinary.json"
 stage="handwritten"
 docker exec "$application" ruby perf/http_load/client.rb handwritten > "$results/handwritten.json"
+sustained_modes="${QUICKFLOW_SUSTAINED_MODES:-sustained_legacy sustained_append}"
+for mode in $sustained_modes; do
+  case "$mode" in sustained_legacy|sustained_ack|sustained_append) ;; *) echo "unknown sustained mode" >&2; exit 1 ;; esac
+  stage="$mode"
+  docker exec "$application" ruby perf/http_load/sustained.rb "$mode" > "$results/$mode.json"
+done
+stage="sustained_verification"
+docker exec -e "QUICKFLOW_SUSTAINED_MODES=$sustained_modes" "$application" bin/rails runner perf/http_load/verify_sustained.rb > "$results/sustained_verification.json"
 stage="verification"
 docker exec "$application" bin/rails runner perf/http_load/verify.rb > "$results/verification.json"
 ruby -rjson -e 'r=JSON.parse(File.read(ARGV.fetch(0))); %w[ordinary handwritten].each { |mode| a=r.fetch(mode); abort "#{mode} verification failed" unless a.values_at("submissions","unique_students","readable_pdfs","generation_zero","reading_jobs","distinct_job_submissions","distinct_job_ids") == [30,30,30,30,30,30,30] && a.fetch("grading_results")==0 && a.fetch("other_jobs")==0 }' "$results/verification.json"

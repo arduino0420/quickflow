@@ -11,7 +11,7 @@ school = School.create!(school_code: school_code)
 teacher = Teacher.create!(school: school, user_id: "load_#{run_id}", password: password)
 classroom = Classroom.create!(school: school, grade: 1, class_number: 1)
 students = (1..31).map { |number| Student.create!(classroom: classroom, attendance_number: number, password: password) }
-assignments = %w[canary ordinary handwritten].to_h do |mode|
+assignments = %w[canary ordinary handwritten sustained_legacy sustained_ack sustained_append].to_h do |mode|
   assignment = Assignment.create!(teacher: teacher, title: "HTTP load #{run_id} #{mode}", point_per_question: 5)
   assignment.assignment_classrooms.create!(classroom: classroom)
   assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files/material.pdf")),

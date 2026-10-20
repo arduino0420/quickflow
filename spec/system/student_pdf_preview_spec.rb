@@ -32,6 +32,49 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  it "saves with a small acknowledgment and restores every original coordinate" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      const request=editor.draft.request;
+      editor.draft.request=async (url,options)=>{
+        const response=await request(url,options);
+        if(options.method==='PUT') window.draftAcknowledgment={
+          requested:options.headers['X-Draft-Response'],request:JSON.parse(options.body),bytes:(await response.clone().text()).length,
+          body:await response.clone().json()};
+        return response;
+      };
+    JS
+    ink_drag(0.1, 0.1, 0.4, 0.1)
+    click_button "消しゴム"
+    ink_drag(0.25, 0.08, 0.25, 0.12)
+    click_button "ペン"
+    ink_drag(0.3, 0.15, 0.35, 0.15)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 15)
+    acknowledgment = page.evaluate_script("window.draftAcknowledgment")
+    expect(acknowledgment.fetch("requested")).to eq("acknowledgment")
+    expect(acknowledgment.fetch("bytes")).to be < 200
+    expect(acknowledgment.fetch("body").fetch("draft").keys.sort).to eq(%w[updated_at version])
+    ink_drag(0.45, 0.15, 0.5, 0.15)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 15)
+    appended = page.evaluate_script("window.draftAcknowledgment.request")
+    expect(appended).not_to have_key("draft_data")
+    expect(appended.fetch("append_data").fetch("pages").first.fetch("operations").length).to eq(1)
+    before = page.evaluate_script(<<~JS)
+      window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview').draft.read().pages
+    JS
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(before)
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    after = page.evaluate_script(<<~JS)
+      window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview').draft.read().pages
+    JS
+    expect(after).to eq(before)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.25, 0.1)).to eq(0)
+  end
+
   it "requests a native leave confirmation before browser Back can discard an unsaved stroke" do
     click_link "表示試験"
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)

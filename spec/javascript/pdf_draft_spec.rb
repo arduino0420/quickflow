@@ -32,8 +32,10 @@ RSpec.describe "PDF draft autosave lifecycle" do
       // JSONB object key order differs; canonical comparison must still reconcile.
       const remote={version:2,pages:structuredClone(value.pages),format_version:1};
       remote.pages[0].operations[0]={color:'#000000',width:1.2,tool:'pen',points:[[1,2]],id:1};
-      queue.push(response(remote),response({version:3}));await d.retry();
-      assert.equal(d.version,3);assert.equal(d.dirty,false);
+      const beforeRetry=calls.length;
+      queue.push(response(remote));await d.retry();
+      assert.equal(calls.length,beforeRetry+1,'confirmed identical snapshot needs GET only');
+      assert.equal(d.version,2);assert.equal(d.dirty,false);
       d.changed();queue.push({ok:false,status:409});await d.save();
       assert.equal(d.blocked,true);assert.equal(editable,false);assert.equal(d.dirty,true);
       const before=calls.length;await d.retry();assert.equal(calls.length,before);
@@ -178,18 +180,133 @@ RSpec.describe "PDF draft autosave lifecycle" do
       import fs from 'node:fs';import assert from 'node:assert/strict';
       const {default:PdfDraft}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
       globalThis.document={querySelector:()=>({content:'csrf'})};
-      for(const status of [401,403,409,503]) {
+      for(const status of [401,403,409,429,503]) {
         let editable=true,calls=0;
         const d=new PdfDraft({url:'/draft',context:'signed',read:()=>({format_version:1,pages:[]}),
           restore:()=>{},status:()=>{},editable:value=>editable=value,delay:60000,
           fetch:async()=>++calls===1?{ok:true,json:async()=>({draft:null,editable:true})}:
             {ok:false,status,json:async()=>({error:'version_conflict'})}});
         await d.start();d.changed();await d.save();
-        assert.equal(d.blocked,status!==503);
-        assert.equal(editable,status===503);
-        if(status!==503) await assert.rejects(()=>d.prepareSubmission());
+        assert.equal(d.blocked,![429,503].includes(status));
+        assert.equal(editable,[429,503].includes(status));
+        if(![429,503].includes(status)) await assert.rejects(()=>d.prepareSubmission());
         d.stop();
       }
+    JS
+    stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
+      File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+  it "checkpoints continuous completed strokes without overlapping saves or debouncing forever" do
+    script = <<~JS
+      import fs from 'node:fs';import assert from 'node:assert/strict';
+      const {default:PdfDraft}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
+      globalThis.document={querySelector:()=>({content:'csrf'})};
+      let now=0,serial=0,release,puts=0;
+      const timers=new Map();Date.now=()=>now;
+      globalThis.setTimeout=(callback,delay)=>{const id=++serial;timers.set(id,{callback,at:now+delay});return id};
+      globalThis.clearTimeout=id=>timers.delete(id);
+      const d=new PdfDraft({url:'/draft',context:'signed',delay:25,maxWait:100,
+        read:()=>({format_version:1,pages:[]}),restore:()=>{},status:()=>{},editable:()=>{},fetch:async(_url,o)=>{
+          if(o.method==='GET')return {ok:true,json:async()=>({draft:null,editable:true})};
+          puts++;assert.equal(o.headers['X-Draft-Response'],'acknowledgment');
+          await new Promise(resolve=>release=resolve);
+          return {ok:true,json:async()=>({draft:{version:puts-1}})};
+        }});
+      await d.start();d.changed();assert.equal(timers.get(d.timer).at,25);
+      for(now=20;now<=80;now+=20){d.changed();assert(timers.get(d.timer).at<=100)}
+      now=99;d.changed();assert.equal(timers.get(d.timer).at,100);
+      now=100;const entry=timers.get(d.timer);const saving=entry.callback();
+      assert.equal(puts,1);d.changed();await d.save();assert.equal(puts,1);
+      release();await saving;
+      assert.equal(d.dirty,true);assert.equal(d.version,0);
+      assert(timers.get(d.timer).at<=200,'edits during saving retain a next checkpoint');
+      d.stop();
+    JS
+    stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
+      File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+  it "retries newer ink after a lost save without resending an already confirmed snapshot" do
+    script = <<~JS
+      import fs from 'node:fs';import assert from 'node:assert/strict';
+      const {default:PdfDraft}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
+      globalThis.document={querySelector:()=>({content:'csrf'})};
+      let remote=null,puts=0;
+      const data={format_version:1,pages:[{page_number:1,operations:[]}]};
+      const d=new PdfDraft({url:'/draft',context:'signed',read:()=>data,restore:()=>{},status:()=>{},editable:()=>{},delay:60000,
+        fetch:async(_url,o)=>{
+          if(o.method==='GET')return {ok:true,json:async()=>({draft:remote,editable:true})};
+          puts++;const body=JSON.parse(o.body);
+          if(puts===1){remote={...structuredClone(body.draft_data),version:0};throw TypeError('lost response')}
+          assert.equal(body.expected_version,0);assert.equal(body.draft_data.pages[0].operations.length,1);
+          remote={...body.draft_data,version:1};return {ok:true,json:async()=>({draft:{version:1}})};
+        }});
+      await d.start();d.changed();await d.save();
+      data.pages[0].operations.push({id:1,tool:'pen',color:'#000000',width:1.2,points:[[1.123456789012345,2]]});d.changed();
+      await d.retry();assert.equal(puts,2);assert.equal(d.version,1);assert.equal(d.dirty,false);
+      assert.deepEqual(remote.pages,data.pages);d.stop();
+    JS
+    stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
+      File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+  it "serializes initial restoration retries and ignores restoration after disposal" do
+    script = <<~JS
+      import fs from 'node:fs';import assert from 'node:assert/strict';
+      const {default:PdfDraft}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
+      globalThis.document={querySelector:()=>({content:'csrf'})};
+      let calls=0,restores=0,release;
+      const options={url:'/draft',context:'signed',read:()=>({}),restore:()=>restores++,status:()=>{},editable:()=>{},
+        fetch:async()=>{calls++;return new Promise(resolve=>release=resolve)}};
+      const d=new PdfDraft(options);const initial=d.start();
+      await d.start();await d.retry();assert.equal(calls,1,'initial retries cannot overlap GETs');
+      release({ok:true,json:async()=>({draft:{version:0},editable:true})});await initial;
+      assert.equal(restores,1);assert.equal(d.ready,true);assert.equal(d.starting,false);
+      await d.start();assert.equal(calls,1);d.stop();
+      const gone=new PdfDraft(options);const pending=gone.start();gone.stop();
+      release({ok:true,json:async()=>({draft:{version:0},editable:true})});await pending;
+      assert.equal(restores,1,'a response after leaving must not restore ink');assert.equal(gone.ready,undefined);
+    JS
+    stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
+      File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+  it "appends only exact prefixes, reconciles lost append responses and falls back for changed history" do
+    script = <<~JS
+      import fs from 'node:fs';import assert from 'node:assert/strict';
+      const {default:PdfDraft}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
+      globalThis.document={querySelector:()=>({content:'csrf'})};
+      const stroke=id=>({id,tool:id===2?'eraser':'pen',color:'#000000',width:id===2?8:1.2,points:[[1.123456789012345,2],[3,4]]});
+      let remote={format_version:1,pages:[{page_number:1,operations:[stroke(1)]}],version:0},puts=0;
+      let data={format_version:1,pages:structuredClone(remote.pages)},lose=true;
+      const d=new PdfDraft({url:'/draft',context:'signed',read:()=>data,restore:()=>{},status:()=>{},editable:()=>{},delay:60000,
+        fetch:async(_url,o)=>{
+          if(o.method==='GET')return {ok:true,json:async()=>({draft:structuredClone(remote),editable:true,append_supported:true})};
+          puts++;const body=JSON.parse(o.body);assert.equal(body.expected_version,remote.version);
+          if(body.append_data){assert(!body.draft_data);assert.equal(body.append_data.pages[0].operations.length,1);
+            remote.pages[0].operations.push(...body.append_data.pages[0].operations);
+          }else remote.pages=body.draft_data.pages;
+          remote.version++;
+          if(lose){lose=false;throw TypeError('response lost')}
+          return {ok:true,json:async()=>({draft:{version:remote.version}})};
+        }});
+      await d.start();data.pages[0].operations.push(stroke(2));d.changed();await d.save();
+      assert.equal(d.failed,true);assert.equal(d.version,0);await d.retry();
+      assert.equal(puts,1,'confirmed append must not be sent twice');assert.equal(d.version,1);assert.equal(d.dirty,false);
+      data.pages[0].operations.push(stroke(3));d.changed();await d.save();assert.equal(puts,2);
+      assert.deepEqual(remote.pages,data.pages,'pen, eraser and precise coordinates survive exactly');
+      for(const alter of [
+        v=>v.pages[0].operations[0].points[0][0]+=1e-12,
+        v=>v.pages[0].operations.reverse(),v=>v.pages[0].operations.pop(),
+        v=>v.pages[0].operations[0].extra='invalid',v=>v.pages[0].operations[0].points[0].push(7),
+        v=>v.pages[0].extra='invalid',v=>v.extra='invalid'
+      ]){const changed=structuredClone(data);alter(changed);assert.equal(d.appendData(changed),null,'changed or invalid history must use full validation')}
+      data.pages[0].operations[0].points[0][0]+=1e-12;d.changed();await d.save();
+      assert.deepEqual(remote.pages,data.pages);assert.equal(puts,3);d.stop();
+      const old=new PdfDraft({url:'/draft',context:'x',read:()=>data,restore:()=>{},status:()=>{},editable:()=>{},
+        fetch:async()=>({ok:true,json:async()=>({draft:remote,editable:true})})});
+      await old.start();assert.equal(old.appendData(data),null,'old servers do not negotiate append');old.stop();
     JS
     stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
       File.expand_path("../../app/javascript/pdf_draft.js", __dir__))
