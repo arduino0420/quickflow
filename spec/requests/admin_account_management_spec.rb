@@ -53,6 +53,32 @@ RSpec.describe "Admin account management", type: :request do
     expect(response.body).not_to include(student.password_digest, "original-secret")
   end
 
+  it "prevents Turbo snapshots on admin forms while retaining required confirmation and authentication" do
+    login
+    paths = [ admin_root_path, admin_students_path, edit_admin_student_path(student),
+      confirm_destroy_admin_student_path(student), edit_admin_student_password_reset_path(student) ]
+    paths.each do |path|
+      get path
+      expect(response).to have_http_status(:ok)
+      expect(document.css('meta[name="turbo-cache-control"]').map { |meta| meta["content"] }).to eq([ "no-cache" ])
+      expect(response.headers["Cache-Control"]).to include("no-store")
+    end
+    [ confirm_destroy_admin_student_path(student), edit_admin_student_password_reset_path(student) ].each do |path|
+      get path
+      form = document.at_css('input[name="edit_token"]').ancestors("form").first
+      expect(form.at_css('input[name="confirmed"][type="checkbox"][required]')).to be_present
+      expect(form.at_css('input[name="admin_password"][type="password"][required]')).to be_present
+      expect(form.at_css('input[name="edit_token"]')["value"]).to be_present
+    end
+    preview_change
+    expect(response).to have_http_status(:ok)
+    expect(document.at_css('meta[name="turbo-cache-control"]')["content"]).to eq("no-cache")
+    expect(document.at_css('input[name="confirmed"][required]')).to be_present
+    expect(document.at_css('input[name="admin_password"][required]')).to be_present
+    get student_login_path
+    expect(document.css('meta[name="turbo-cache-control"]')).to be_empty
+  end
+
   it "changes one of 30 students only, preserves sessions, and accepts the new login password only" do
     digest = student.password_digest
     Student.insert_all!((2..30).map { |number| { classroom_id: room.id, attendance_number: number, password_digest: digest } })
