@@ -1,0 +1,13 @@
+<h1>生徒のパスワード再設定</h1>
+<%= render "admin/shared/student_identity" %>
+<p>数字だけのパスワードも使用できます。英字や記号も使用できます。対象以外のアカウントは変更しません。</p>
+<%= form_with scope: :student, url: admin_student_password_reset_path(@student, **@return_filters), method: :patch do |form| %>
+  <%= hidden_field_tag :edit_token, @edit_token %>
+  <%= form.label :password, "新しいパスワード" %>
+  <%= form.password_field :password, value: nil, autocomplete: "new-password", required: true %>
+  <%= form.label :password_confirmation, "新しいパスワード（確認）" %>
+  <%= form.password_field :password_confirmation, value: nil, autocomplete: "new-password", required: true %>
+  <%= render "admin/shared/account_confirmation" %>
+  <%= form.submit "この生徒のパスワードを保存する" %>
+<% end %>
+<%= link_to "生徒一覧へ戻る", admin_students_path(**@return_filters) %>

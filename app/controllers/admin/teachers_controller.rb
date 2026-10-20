@@ -46,6 +46,11 @@ class Admin::TeachersController < Admin::BaseController
       @teacher.errors.add(:base, "学校・教師ID・クラスIDを変更または直接指定することはできません。")
       return render :edit, status: :unprocessable_entity
     end
+    if attributes[:password].present? && (params[:confirmed] != "1" || !authenticate_admin_operation)
+      assign_edit_form(update.prepare)
+      @teacher.errors.add(:base, "対象を確認し、管理者自身のパスワードで再認証してください。")
+      return render :edit, status: :unprocessable_content
+    end
     saved = update.call(attributes: attributes, classroom_codes: params[:teacher][:classroom_codes], edit_token: params[:teacher][:edit_token])
     assign_edit_form(update)
     if saved

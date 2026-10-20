@@ -1,0 +1,11 @@
+<h1>生徒の変更内容を確認</h1>
+<%= render "admin/shared/student_identity" %>
+<p>変更後: <strong><%= @changes.fetch("grade") %>年 <%= @changes.fetch("class_number") %>組 <%= @changes.fetch("attendance_number") %>番</strong></p>
+<p>出席番号や所属を変更すると、次回ログインで入力する情報と成績表の表示位置が変わります。所属変更は授業利用前に行い、利用中の端末に未保存筆跡がないことを確認してください。</p>
+<%= form_with url: admin_student_path(@student, **@return_filters), method: :patch do |form| %>
+  <%= hidden_field_tag :edit_token, @edit_token %>
+  <%= render "admin/shared/account_confirmation", always: true %>
+  <%= form.submit "この生徒の変更を確定する" %>
+<% end %>
+<%= link_to "編集へ戻る", edit_admin_student_path(@student, **@return_filters) %>
+<%= link_to "変更せず生徒一覧へ戻る", admin_students_path(**@return_filters) %>
