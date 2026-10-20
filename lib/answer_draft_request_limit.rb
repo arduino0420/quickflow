@@ -31,6 +31,6 @@ class AnswerDraftRequestLimit
   private
 
   def reject(status)
-    [ status, { "content-type" => "application/json", "cache-control" => "private, no-store" }, [ '{"error":"invalid_request"}' ] ]
+    [ status, { "content-type" => "application/json", "cache-control" => "private, no-store" }, [ JSON.generate(error: { 400 => "invalid_json", 413 => "request_too_large", 415 => "unsupported_content_type" }.fetch(status)) ] ]
   end
 end

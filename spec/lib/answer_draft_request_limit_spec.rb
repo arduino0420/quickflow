@@ -72,4 +72,19 @@ RSpec.describe AnswerDraftRequestLimit do
       expect(described_class.new(app).call(env).first).to eq(200), "#{method} #{path}"
     end
   end
+  it "returns only safe machine-readable reasons without echoing rejected content" do
+    cases = [
+      [ "application/json", "bad private ink", 0, 400, "invalid_json" ],
+      [ "application/json", "", described_class::MAX_BYTES + 1, 413, "request_too_large" ],
+      [ "text/plain", "private ink", 0, 415, "unsupported_content_type" ]
+    ]
+    cases.each do |type, body, length, expected_status, reason|
+      env = { "REQUEST_METHOD" => "PUT", "PATH_INFO" => "/student/assignments/12/answer_draft",
+        "CONTENT_TYPE" => type, "CONTENT_LENGTH" => length.to_s, "rack.input" => StringIO.new(body) }
+      status, headers, response = described_class.new(->(_) { raise "rejected data reached Rails" }).call(env)
+      expect(status).to eq(expected_status)
+      expect(JSON.parse(response.join)).to eq("error" => reason)
+      expect(headers.fetch("cache-control")).to include("no-store")
+    end
+  end
 end

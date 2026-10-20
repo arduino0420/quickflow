@@ -9,7 +9,9 @@ class Student::SubmissionsController < ApplicationController
     return head :conflict unless AnswerDraftContext.valid?(request.headers["X-Draft-Context"], current_student, @assignment)
 
     response.headers["Cache-Control"] = "private, no-store"
-    render json: { submitted: existing_submission.present?, location: student_assignment_path(@assignment) }
+    submission = existing_submission
+    render json: { submitted: submission.present?, submission_token: submission_token_for(submission),
+      location: student_assignment_path(@assignment) }
   end
 
   def create
@@ -17,6 +19,7 @@ class Student::SubmissionsController < ApplicationController
     if handwritten?
       return head :not_found unless @assignment.teacher.school_id == current_student.classroom.school_id
       return head :conflict unless AnswerDraftContext.valid?(request.headers["X-Draft-Context"], current_student, @assignment)
+      return head :unprocessable_content if params.key?(:submission_token) && !valid_submission_token?
     end
     AssignmentLifecycleLock.synchronize(@assignment.id) do
       return redirect_already_submitted if existing_submission
@@ -64,6 +67,9 @@ class Student::SubmissionsController < ApplicationController
   def upload_answer_pdf(upload)
     @uploaded_blob = ActiveStorage::Blob.build_after_unfurling(io: upload.tempfile,
       filename: upload.original_filename, content_type: "application/pdf")
+    if handwritten? && params.key?(:submission_token)
+      @uploaded_blob.metadata = @uploaded_blob.metadata.merge("handwritten_submission_token" => params[:submission_token])
+    end
     @uploaded_blob.save!
     begin
       @uploaded_blob.upload_without_unfurling(upload.tempfile)
@@ -101,14 +107,33 @@ class Student::SubmissionsController < ApplicationController
 
     draft = AnswerDraft.find_by(student: current_student, assignment: @assignment)
     version = params[:draft_version]
+    if params.key?(:submission_token)
+      return false unless params.key?(:draft_version) && (version == "" ||
+        (version.is_a?(String) && version.match?(/\A[0-9]+\z/)))
+
+      expected = version == "" ? nil : version.to_i
+      return (draft&.lock_version) == expected &&
+        (!draft || draft.material_fingerprint == AnswerDraftContext.fingerprint(@assignment))
+    end
     draft && version.is_a?(String) && version.match?(/\A[0-9]+\z/) &&
       draft.lock_version == version.to_i && draft.material_fingerprint == AnswerDraftContext.fingerprint(@assignment)
+  end
+
+  def valid_submission_token?
+    params[:submission_token].is_a?(String) &&
+      params[:submission_token].match?(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+  end
+
+  def submission_token_for(submission)
+    submission&.answer_file&.attached? ? submission.answer_file.blob.metadata["handwritten_submission_token"] : nil
   end
 
   def submitted_response(alert = nil)
     if handwritten?
       alert ? flash[:alert] = alert : flash[:notice] = "提出しました"
-      render json: { submitted: true, location: student_assignment_path(@assignment), alert: alert }
+      submission = @submission&.persisted? ? @submission : existing_submission
+      render json: { submitted: true, submission_token: submission_token_for(submission),
+        location: student_assignment_path(@assignment), alert: alert }
     else
       redirect_to student_assignment_path(@assignment),
         **(alert ? { alert: alert } : { notice: "提出しました" }), status: :see_other
@@ -136,7 +161,12 @@ class Student::SubmissionsController < ApplicationController
   end
 
   def redirect_already_submitted
-    return submitted_response if handwritten?
+    if handwritten?
+      return head :conflict if params.key?(:submission_token) &&
+        submission_token_for(existing_submission) != params[:submission_token]
+
+      return submitted_response
+    end
 
     redirect_to student_assignment_path(@assignment), notice: "すでに提出済みです", status: :see_other
   end

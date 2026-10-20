@@ -111,6 +111,7 @@ RSpec.describe "Thirty concurrent student submissions", type: :request do
           if handwritten
             student = @students.fetch(index)
             params[:draft_version] = drafts.fetch(index).lock_version.to_s
+            params[:submission_token] = SecureRandom.uuid
             headers = { "X-Handwritten-Submission" => "1", "X-Draft-Context" => AnswerDraftContext.issue(student, @assignment),
               "Accept" => "application/json" }
           end

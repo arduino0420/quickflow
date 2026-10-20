@@ -365,6 +365,7 @@ RSpec.describe "Student submissions", type: :request do
     expect(Submission.last.grading_results).to be_empty
   end
   describe "handwritten PDF submission" do
+    let(:submission_token) { SecureRandom.uuid }
     let(:draft) do
       assignment.material_file.attach(pdf)
       AnswerDraft.create!(student: student, assignment: assignment,
@@ -381,6 +382,98 @@ RSpec.describe "Student submissions", type: :request do
       post student_assignment_submission_path(assignment), params: {
         draft_version: version, submission: { answer_file: file }
       }, headers: context
+    end
+
+    def submit_current_ink(version:, token: submission_token, context: headers, file: pdf)
+      post student_assignment_submission_path(assignment), params: {
+        draft_version: version, submission_token: token, submission: { answer_file: file }
+      }, headers: context
+    end
+
+    it "submits when no draft has ever been saved and reconciles only the same PDF attempt" do
+      login
+      assignment.material_file.attach(pdf)
+      context = { "X-Handwritten-Submission" => "1", "X-Draft-Context" => AnswerDraftContext.issue(student, assignment),
+        "Accept" => "application/json" }
+      expect { submit_current_ink(version: "", context: context) }.to have_enqueued_job(AnswerReadingJob).exactly(:once)
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include("submitted" => true, "submission_token" => submission_token)
+      expect(AnswerDraft.where(student: student, assignment: assignment)).to be_empty
+      expect(student.submissions.sole.answer_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+      get student_assignment_submission_path(assignment), headers: context
+      expect(response.parsed_body).to include("submitted" => true, "submission_token" => submission_token)
+      original = counts
+      expect { submit_current_ink(version: "", context: context) }.not_to have_enqueued_job(AnswerReadingJob)
+      expect(response).to have_http_status(:ok)
+      expect(counts).to eq(original)
+      submit_current_ink(version: "", context: context, token: SecureRandom.uuid)
+      expect(response).to have_http_status(:conflict)
+      expect(counts).to eq(original)
+    end
+
+    it "accepts the last confirmed draft version with unsaved ink and rejects a changed version" do
+      login
+      saved = draft.reload.attributes
+      submit_current_ink(version: draft.lock_version.to_s)
+      expect(response).to have_http_status(:ok)
+      expect(draft.reload.attributes).to eq(saved)
+    end
+
+    it "rejects stale, missing and malformed confirmed versions without attaching a PDF" do
+      login
+      draft
+      original = counts
+      [ "", "1", "bogus", nil ].each do |version|
+        submit_current_ink(version: version)
+        expect(response).to have_http_status(:conflict)
+        expect(counts).to eq(original)
+      end
+      draft.touch
+      submit_current_ink(version: "0")
+      expect(response).to have_http_status(:conflict)
+      expect(counts).to eq(original)
+    end
+
+    it "rejects a draft created in another tab while an unsaved PDF is uploading" do
+      login
+      assignment.material_file.attach(pdf)
+      context = { "X-Handwritten-Submission" => "1", "X-Draft-Context" => AnswerDraftContext.issue(student, assignment),
+        "Accept" => "application/json" }
+      allow_any_instance_of(ActiveStorage::Blob).to receive(:upload_without_unfurling).and_wrap_original do |original, *args|
+        original.call(*args)
+        AnswerDraft.create!(student: student, assignment: assignment,
+          material_fingerprint: AnswerDraftContext.fingerprint(assignment), page_data: [ { page_number: 1, operations: [] } ])
+      end
+      before_counts = counts
+      expect { submit_current_ink(version: "", context: context) }.not_to have_enqueued_job(AnswerReadingJob)
+      expect(response).to have_http_status(:conflict)
+      expect(counts).to eq(before_counts)
+      expect(AnswerDraft.where(student: student, assignment: assignment).count).to eq(1)
+    end
+
+    it "rejects a changed material with the current-ink submission protocol" do
+      login
+      draft
+      context = headers
+      assignment.material_file.attach(pdf)
+      before_counts = counts
+      expect { submit_current_ink(version: "0", context: context) }.not_to have_enqueued_job(AnswerReadingJob)
+      expect(response).to have_http_status(:conflict)
+      expect(counts).to eq(before_counts)
+    end
+
+    it "requires a valid attempt token and preserves the draft on PDF storage failure" do
+      login
+      draft
+      original = counts
+      submit_current_ink(version: "0", token: "invalid")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(counts).to eq(original)
+      allow_any_instance_of(ActiveStorage::Blob).to receive(:upload_without_unfurling).and_raise(IOError)
+      submit_current_ink(version: "0")
+      expect(response).to have_http_status(:service_unavailable)
+      expect(counts).to eq(original)
+      expect(draft.reload).to be_persisted
     end
 
     it "stores the generated PDF, retains the draft and enqueues reading only once across retries and sessions" do

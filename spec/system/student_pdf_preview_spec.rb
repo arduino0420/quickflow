@@ -695,6 +695,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     ink_drag(0.1, 0.1, 0.3, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     page.execute_script(<<~JS)
       window.nativeToBlob = HTMLCanvasElement.prototype.toBlob;
       HTMLCanvasElement.prototype.toBlob = function(callback) { callback(null); };
@@ -1103,6 +1104,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     click_button "ペン"
     ink_drag(0.4, 0.15, 0.4, 0.15, 1)
     ink_drag(0.8, 0.15, 0.8, 0.15, 3)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
     record_leave_guard
     click_button "提出する"
@@ -1173,6 +1175,166 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   def attach_preview(filename)
     @assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files", filename)),
       filename: "preview.pdf", content_type: "application/pdf")
+  end
+
+  [
+    [ 413, "request_too_large", "送信する手書きデータの容量" ],
+    [ 422, "draft_points_limit", "細かな動きの記録" ],
+    [ 422, "csrf_failed", "ログイン状態を確認できず" ],
+    [ 422, "unknown", "保存の要求を受け付けられませんでした" ]
+  ].each do |status, reason, message|
+    it "retains saved and unsaved ink without retrying a #{status} #{reason} rejection" do
+      capacity = status == 413 || reason == "draft_points_limit"
+      visit student_assignment_pdf_preview_path(@assignment)
+      expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+      ink_drag(0.1, 0.1, 0.2, 0.1)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+      saved = AnswerDraft.find_by!(assignment: @assignment).attributes
+      page.execute_script(<<~JS)
+        const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        editor.draft.delay=0;window.rejectedDraftPuts=0;
+        const original=editor.draft.request;
+        editor.draft.request=(url,options)=>{
+          if(options.method==='PUT'){
+            window.rejectedDraftPuts++;
+            return Promise.resolve(new Response(JSON.stringify({error:#{reason.to_json},details:'private content must not be shown'}),
+              {status:#{status},headers:{'Content-Type':'application/json'}}));
+          }
+          return original(url,options);
+        };
+      JS
+      ink_drag(0.3, 0.1, 0.31, 0.1)
+      expect(page).to have_text(message, wait: 10)
+      expect(page).to have_text("再読み込み")
+      expect(page).to have_no_text("private content")
+      expect(ink_alpha(0.15, 0.1)).to be > 0
+      expect(ink_alpha(0.305, 0.1)).to be > 0
+      expect(page).to have_no_button("保存を再試行", visible: true)
+      expect(page).to have_button("提出する", disabled: !capacity)
+      page.evaluate_async_script(<<~JS)
+        const done=arguments[arguments.length-1];
+        const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        Promise.resolve().then(()=>editor.draft.retry()).then(()=>editor.draft.save()).then(()=>done(true));
+      JS
+      expect(page.evaluate_script("window.rejectedDraftPuts")).to eq(1)
+      expect(AnswerDraft.find_by!(assignment: @assignment).attributes).to eq(saved)
+      if capacity
+        expect(ink_region_alpha(0.5, 0.2)).to eq(0)
+        ink_drag(0.45, 0.2, 0.55, 0.2)
+        expect(ink_region_alpha(0.5, 0.2)).to be > 0
+        expect(page).to have_text(message)
+        expect(page).to have_text("答案が失われる可能性")
+        click_button "消しゴム"
+        ink_drag(0.15, 0.08, 0.15, 0.12)
+        expect(ink_region_alpha(0.15, 0.1)).to eq(0)
+        expect(page).to have_text(message)
+        expect(page.evaluate_script("window.rejectedDraftPuts")).to eq(1)
+        record_leave_guard
+        click_button "提出する"
+        expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+        expect(leave_guard_value).to eq("false")
+        expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
+        expect(AnswerDraft.find_by!(assignment: @assignment).attributes).to eq(saved)
+      else
+        ink_drag(0.45, 0.2, 0.55, 0.2)
+        expect(ink_region_alpha(0.5, 0.2)).to eq(0)
+      end
+    end
+  end
+
+  it "submits an unsaved answer when no draft record exists" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=60_000;
+    JS
+    ink_drag(0.45, 0.2, 0.55, 0.2)
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+    record_leave_guard
+    click_button "提出する"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(leave_guard_value).to eq("false")
+    expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+  end
+
+  it "waits for an in-flight save and submits later visible ink from the same screen" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=0;
+      const original=editor.draft.request;
+      editor.draft.request=(url,options)=>options.method==='PUT'
+        ? new Promise(resolve=>window.releaseDraftSave=()=>resolve(original(url,options))) : original(url,options);
+    JS
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_text("保存中…", wait: 10)
+    ink_drag(0.45, 0.2, 0.55, 0.2)
+    click_button "提出する"
+    expect(page).to have_text("答案を準備しています…", wait: 10)
+    page.execute_script("window.releaseDraftSave()")
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(1)
+    expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
+  end
+
+  it "confirms its own committed PDF after the submission response is lost" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=60_000;
+      const original=editor.submissionState.bind(editor);
+      editor.submissionState=async options=>{
+        if(options?.method==='POST') {
+          await original(options);
+          sessionStorage.setItem('lostSubmissionPosts',String(Number(sessionStorage.getItem('lostSubmissionPosts')||0)+1));
+          throw new TypeError('response lost');
+        }
+        return original(options);
+      };
+    JS
+    ink_drag(0.45, 0.2, 0.55, 0.2)
+    click_button "提出する"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(page.evaluate_script("sessionStorage.getItem('lostSubmissionPosts')")).to eq("1")
+    expect(Submission.where(assignment: @assignment).count).to eq(1)
+    expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
+  end
+
+  def submitted_pdf_pixel(x, y)
+    result = page.evaluate_async_script(<<~JS)
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const {getDocument,PDFWorker}=await import('pdfjs');
+        const nativeWorker=new Worker('/vendor/pdfjs/6.4.299/pdf.worker.min.mjs',{type:'module'});
+        const worker=new PDFWorker({port:nativeWorker});
+        const bytes=await (await fetch(#{answer_student_assignment_path(@assignment).to_json})).arrayBuffer();
+        const pdf=await getDocument({data:new Uint8Array(bytes),worker}).promise;
+        const page=await pdf.getPage(1),viewport=page.getViewport({scale:3});
+        const canvas=document.createElement('canvas');canvas.width=viewport.width;canvas.height=viewport.height;
+        const ctx=canvas.getContext('2d');await page.render({canvasContext:ctx,viewport}).promise;
+        let pixel=[255,255,255];
+        for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++) {
+          const sample=Array.from(ctx.getImageData(Math.round(viewport.width*#{x})+dx,Math.round(viewport.height*#{y})+dy,1,1).data).slice(0,3);
+          if(Math.max(...sample)<Math.max(...pixel)) pixel=sample;
+        }
+        canvas.width=canvas.height=0;done({pixel});
+      })().catch(error=>done({error:String(error)}));
+    JS
+    expect(result["error"]).to be_nil
+    result.fetch("pixel")
+  end
+
+  def ink_region_alpha(x, y)
+    page.evaluate_script(<<~JS)
+      (()=>{const c=document.querySelector('[data-pdf-preview-target="ink"]'),ctx=c.getContext('2d');
+        let alpha=0;for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++)
+          alpha=Math.max(alpha,ctx.getImageData(Math.round(c.width*#{x})+dx,Math.round(c.height*#{y})+dy,1,1).data[3]);
+        return alpha;})()
+    JS
   end
 
   it "matches cached ink to full replay through erasing, rewriting, resize and release" do

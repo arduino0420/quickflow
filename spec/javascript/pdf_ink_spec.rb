@@ -117,4 +117,27 @@ RSpec.describe "PDF ink coordinates and strokes" do
       File.expand_path("../../app/javascript/pdf_ink.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
+  it "retains high-density coalesced samples without appending the parent sample twice" do
+    script = <<~JS
+      import fs from 'node:fs';import assert from 'node:assert/strict';
+      const {default:PdfInk}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(process.argv[1],'utf8')).toString('base64'));
+      const canvas={getBoundingClientRect:()=>({left:0,top:0,width:200,height:300}),getContext:()=>new Proxy({},{get:()=>()=>{}})};
+      const ink=new PdfInk(canvas);
+      ink.setViewport({width:200,height:300,transform:[1,0,0,1,0,0],convertToPdfPoint:(x,y)=>[x,y],convertToViewportPoint:(x,y)=>[x,y]},1);
+      const sample=index=>({pointerId:1,pointerType:'pen',button:0,buttons:1,clientX:index/1000,clientY:150+Math.sin(index/200)});
+      ink.start(sample(0));
+      for(let batch=0;batch<100;batch++){
+        const samples=Array.from({length:1000},(_,index)=>sample(batch*1000+index+1));
+        ink.move({...samples.at(-1),getCoalescedEvents:()=>samples});
+      }
+      ink.end({...sample(100000),type:'pointerup',buttons:0});
+      assert.equal(ink.pages.get(1).length,1);
+      assert.equal(ink.pages.get(1)[0].points.length,100001);
+      assert.equal(ink.pages.get(1)[0].points[0][0],0);
+      assert.equal(ink.pages.get(1)[0].points.at(-1)[0],100);
+    JS
+    stdout, stderr, status = Open3.capture3("node", "--input-type=module", "-e", script,
+      File.expand_path("../../app/javascript/pdf_ink.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
 end

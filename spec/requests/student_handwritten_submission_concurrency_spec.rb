@@ -60,10 +60,12 @@ RSpec.describe "Concurrent handwritten submission", type: :request do
     [ thread, Timeout.timeout(5) { pid.pop } ]
   end
 
-  def post_ink(client)
-    client.post student_assignment_submission_path(@assignment), params: {
+  def post_ink(client, token: nil)
+    params = {
       draft_version: "0", submission: { answer_file: fixture_file_upload(Rails.root.join("spec/fixtures/files/material.pdf"), "application/pdf") }
-    }, headers: @headers
+    }
+    params[:submission_token] = token if token
+    client.post student_assignment_submission_path(@assignment), params: params, headers: @headers
     client.response.status
   end
 
@@ -91,6 +93,27 @@ RSpec.describe "Concurrent handwritten submission", type: :request do
     expect(Submission.where(assignment: @assignment).count).to eq(1)
     expect(enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(1)
     expect(@draft.reload).to be_persisted
+  end
+
+  it "rejects a different tab's attempt token after the first submission commits" do
+    allow_any_instance_of(ActiveStorage::Blob).to receive(:upload_without_unfurling).and_wrap_original do |original, *args|
+      original.call(*args)
+      if Thread.current[:hold_ink_submission]
+        @entered << true
+        Timeout.timeout(10) { @release.pop }
+      end
+    end
+    first_token = SecureRandom.uuid
+    first, = worker(hold: true) { post_ink(@clients[0], token: first_token) }
+    Timeout.timeout(5) { @entered.pop }
+    second, pid = worker { post_ink(@clients[1], token: SecureRandom.uuid) }
+    wait_blocked(pid)
+    @release << true
+    expect(first.value).to eq(200)
+    expect(second.value).to eq(409)
+    expect(Submission.where(assignment: @assignment).count).to eq(1)
+    expect(enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(1)
+    expect(Submission.find_by!(assignment: @assignment).answer_file.blob.metadata["handwritten_submission_token"]).to eq(first_token)
   end
 
   it "makes autosave wait for a committed submission, then refuses to edit the retained draft" do
