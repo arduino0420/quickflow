@@ -183,3 +183,135 @@ RSpec.describe "Admin student registration", type: :request do
     ActionController::Base.allow_forgery_protection = protection
   end
 end
+
+RSpec.describe "Admin student listing", type: :request do
+  let!(:school) { School.create!(school_code: "LISTING") }
+  let!(:admin) { Admin.create!(school: school, user_id: "listing-admin", password: "admin-password") }
+  let!(:classroom) { Classroom.create!(school: school, grade: 1, class_number: 1) }
+
+  def add_students(room, numbers)
+    digest = BCrypt::Password.create("student-password")
+    Student.insert_all!(numbers.map { |number| { classroom_id: room.id, attendance_number: number, password_digest: digest } })
+    Student.where(classroom: room).order(:attendance_number).pluck(:id)
+  end
+
+  def login
+    post admin_login_path, params: { admin_session: { user_id: admin.user_id, password: "admin-password" } }
+  end
+
+  def listed_ids
+    Nokogiri::HTML(response.body).css("[data-student-id]").map { |row| row["data-student-id"].to_i }
+  end
+
+  it "scopes rows, counts and filter options to the administrator's school" do
+    own_ids = add_students(classroom, [ 1 ])
+    foreign_school = School.create!(school_code: "FOREIGNLIST")
+    foreign_room = Classroom.create!(school: foreign_school, grade: 6, class_number: 15)
+    foreign_ids = add_students(foreign_room, [ 1 ])
+    login
+    get admin_students_path, params: { school_id: foreign_school.id, classroom_id: foreign_room.id }
+    expect(response).to have_http_status(:ok)
+    expect(listed_ids).to eq(own_ids)
+    expect(listed_ids & foreign_ids).to be_empty
+    document = Nokogiri::HTML(response.body)
+    expect(document.at_css('[role="status"]').text).to include("全1件")
+    expect(document.css('#grade option').map { |option| option["value"] }).to eq([ "", "1" ])
+    expect(document.css('#class_number option').map { |option| option["value"] }).to eq([ "", "1" ])
+    get admin_students_path, params: { grade: 6, class_number: 15 }
+    expect(listed_ids).to be_empty
+    expect(response.body).to include("全0件")
+    other_admin = Admin.create!(school: foreign_school, user_id: "foreign-list-admin", password: "admin-password")
+    post admin_login_path, params: { admin_session: { user_id: other_admin.user_id, password: "admin-password" } }
+    get admin_students_path, params: { school_id: school.id }
+    expect(listed_ids).to eq(foreign_ids)
+  end
+
+  it "sorts by grade, class, attendance number and id, with 40 rows per page" do
+    later_room = Classroom.create!(school: school, grade: 2, class_number: 1)
+    middle_room = Classroom.create!(school: school, grade: 1, class_number: 2)
+    later = add_students(later_room, [ 2, 1 ])
+    middle = add_students(middle_room, [ 1 ])
+    first = add_students(classroom, (1..40).to_a.reverse)
+    login
+    get admin_students_path
+    expect(listed_ids).to eq(first)
+    get admin_students_path, params: { page: 2 }
+    expect(listed_ids).to eq(middle + later)
+    get admin_students_path, params: { page: 999999999 }
+    expect(listed_ids).to eq(middle + later)
+  end
+
+  it "filters independently and together, preserves filters in page links, and resets the page in the form" do
+    other = Classroom.create!(school: school, grade: 1, class_number: 2)
+    second_grade = Classroom.create!(school: school, grade: 2, class_number: 1)
+    first = add_students(classroom, (1..40).to_a)
+    extra = add_students(other, [ 1 ])
+    second = add_students(second_grade, [ 1 ])
+    login
+    get admin_students_path, params: { grade: 1 }
+    expect(listed_ids).to eq(first)
+    document = Nokogiri::HTML(response.body)
+    expect(document.at_css('a[rel="next"]')["href"]).to include("grade=1", "page=2")
+    expect(document.css('form input[name="page"]')).to be_empty
+    get admin_students_path, params: { grade: 1, page: 2 }
+    expect(listed_ids).to eq(extra)
+    get admin_students_path, params: { class_number: 1 }
+    expect(listed_ids).to eq(first)
+    get admin_students_path, params: { grade: 2, class_number: 1 }
+    expect(listed_ids).to eq(second)
+  end
+
+  it "supports historical classroom ranges and empty lists" do
+    login
+    get admin_students_path
+    expect(response.body).to include("該当する生徒はいません。", "1 / 1ページ")
+    historical = Classroom.create!(school: school, grade: 6, class_number: 15)
+    ids = add_students(historical, [ 40 ])
+    get admin_students_path, params: { grade: 6, class_number: 15 }
+    expect(listed_ids).to eq(ids)
+    expect(response.body).to include("利用可能")
+  end
+
+  it "rejects malformed filters and page numbers without server errors" do
+    login
+    [ { grade: "0" }, { grade: "7" }, { grade: [ "1" ] }, { grade: { value: "1" } },
+      { class_number: "16" }, { class_number: "1 OR 1=1" }, { class_number: [ "1" ] },
+      { page: "0" }, { page: "-1" }, { page: "1.5" }, { page: "9" * 100 },
+      { page: [ "1" ] }, { page: { value: "1" } } ].each do |parameters|
+      get admin_students_path, params: parameters
+      expect(response).to have_http_status(:bad_request), parameters.inspect
+      expect(listed_ids).to be_empty
+    end
+    get admin_students_path, params: { grade: "", class_number: "", page: "" }
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "redirects anonymous, teacher and student sessions to admin login" do
+    get admin_students_path
+    expect(response).to redirect_to(admin_login_path)
+    teacher = Teacher.create!(school: school, user_id: "listing-teacher", password: "teacher-password")
+    post login_path, params: { session: { user_id: teacher.user_id, password: "teacher-password" } }
+    expect(response).to redirect_to(assignments_path)
+    get admin_students_path
+    expect(response).to redirect_to(admin_login_path)
+    add_students(classroom, [ 1 ])
+    post student_login_path, params: { student_session: { school_code: school.school_code, grade: 1, class_number: 1, attendance_number: 1, password: "student-password" } }
+    expect(response).to redirect_to(student_assignments_path)
+    get admin_students_path
+    expect(response).to redirect_to(admin_login_path)
+  end
+
+  it "preloads classrooms with a bounded number of queries" do
+    5.times do |index|
+      room = Classroom.create!(school: school, grade: 2, class_number: index + 1)
+      add_students(room, [ 1, 2 ])
+    end
+    login
+    queries = []
+    subscriber = ->(event) { queries << event.payload[:sql] if event.payload[:sql].match?(/SELECT.*FROM "classrooms"/i) }
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") { get admin_students_path }
+    expect(listed_ids.size).to eq(10)
+    expect(queries.size).to be <= 2
+    expect(response.body).not_to include("password_digest", "student-password")
+  end
+end

@@ -1,0 +1,44 @@
+<h1>生徒一覧</h1>
+<p>所属学校コード: <%= @school.school_code %></p>
+<nav class="admin-student-actions" aria-label="生徒一覧メニュー">
+  <%= link_to "生徒を新規登録", new_admin_student_path, class: "button button-primary" %>
+  <%= link_to "管理者トップへ戻る", admin_root_path %>
+</nav>
+
+<%= form_with url: admin_students_path, method: :get, class: "admin-student-filters" do |form| %>
+  <div>
+    <%= form.label :grade, "学年" %>
+    <%= form.select :grade, @classrooms.map(&:grade).uniq.map { |grade| [ "#{grade}年", grade ] }, { include_blank: "すべて", selected: @grade } %>
+  </div>
+  <div>
+    <%= form.label :class_number, "クラス" %>
+    <%= form.select :class_number, @classrooms.map(&:class_number).uniq.sort.map { |number| [ "#{number}組", number ] }, { include_blank: "すべて", selected: @class_number } %>
+  </div>
+  <%= form.submit "絞り込む" %>
+  <%= link_to "条件を解除", admin_students_path %>
+<% end %>
+
+<p role="status">全<%= @total_count %>件（<%= @page %> / <%= @page_count %>ページ）</p>
+<% if @students.empty? %>
+  <p>該当する生徒はいません。</p>
+<% else %>
+  <table class="admin-student-list">
+    <thead><tr><th scope="col">生徒ID</th><th scope="col">学年</th><th scope="col">クラス</th><th scope="col">出席番号</th><th scope="col">利用状態</th></tr></thead>
+    <tbody>
+      <% @students.each do |student| %>
+        <tr data-student-id="<%= student.id %>">
+          <td data-label="生徒ID"><%= student.id %></td>
+          <td data-label="学年"><%= student.classroom.grade %>年</td>
+          <td data-label="クラス"><%= student.classroom.class_number %>組</td>
+          <td data-label="出席番号"><%= student.attendance_number %></td>
+          <td data-label="利用状態"><%= "利用可能" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
+<nav class="admin-student-actions" aria-label="ページ移動">
+  <% filters = { grade: @grade, class_number: @class_number }.compact %>
+  <%= link_to "前のページ", admin_students_path(**filters, page: @page - 1), rel: "prev" if @page > 1 %>
+  <%= link_to "次のページ", admin_students_path(**filters, page: @page + 1), rel: "next" if @page < @page_count %>
+</nav>

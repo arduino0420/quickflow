@@ -2,5 +2,6 @@
 <p>所属学校コード: <%= @school.school_code %></p>
 <nav class="admin-dashboard-actions" aria-label="管理者メニュー">
   <%= link_to "教師一覧", admin_teachers_path, class: "button button-primary admin-dashboard-action" %>
+  <%= link_to "生徒一覧", admin_students_path, class: "button button-primary admin-dashboard-action" %>
   <%= link_to "生徒を新規登録", new_admin_student_path, class: "button button-primary admin-dashboard-action" %>
 </nav>
