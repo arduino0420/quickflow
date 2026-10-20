@@ -140,4 +140,32 @@ RSpec.describe "Concurrent handwritten submission", type: :request do
     expect(@draft.reload.lock_version).to eq(0)
     expect(Submission.where(assignment: @assignment).count).to eq(1)
   end
+  it "serializes appended ink from two tabs and retains exactly one operation" do
+    allow_any_instance_of(AnswerDraft).to receive(:save!).and_wrap_original do |original, *args|
+      result = original.call(*args)
+      if Thread.current[:hold_ink_submission]
+        @entered << true
+        Timeout.timeout(10) { @release.pop }
+      end
+      result
+    end
+    append = lambda do |client|
+      client.put student_assignment_answer_draft_path(@assignment), params: {
+        expected_version: 0, append_data: { format_version: 1, pages: [ { page_number: 1,
+          operations: [ { id: 1, tool: "pen", color: "#000000", width: 1.2, points: [ [ 20.123456789, 30 ] ] } ] } ] }
+      }, headers: @headers, as: :json
+      client.response.status
+    end
+    first, = worker(hold: true) { append.call(@clients[0]) }
+    Timeout.timeout(5) { @entered.pop }
+    second, pid = worker { append.call(@clients[1]) }
+    wait_blocked(pid)
+    @release << true
+    expect(first.value).to eq(200)
+    expect(second.value).to eq(409)
+    expect(@draft.reload.lock_version).to eq(1)
+    expect(@draft.page_data.first.fetch("operations").length).to eq(1)
+    expect(Submission.where(assignment: @assignment)).to be_empty
+    expect(enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(0)
+  end
 end

@@ -6,8 +6,8 @@ function canonical(value) {
 
 // Server only. No localStorage / IndexedDB copies on shared school devices.
 export default class PdfDraft {
-  constructor({ url, context, read, restore, status, editable, fetch: request = window.fetch.bind(window), delay = 2500 }) {
-    Object.assign(this, { url, context, read, restore, status, editable, request, delay })
+  constructor({ url, context, read, restore, status, editable, fetch: request = window.fetch.bind(window), delay = 2500, maxWait = Math.max(10_000, delay) }) {
+    Object.assign(this, { url, context, read, restore, status, editable, request, delay, maxWait })
     this.revision = this.savedRevision = 0
     this.version = null
     this.saveBlocked = this.blocked = this.failed = false
@@ -18,6 +18,7 @@ export default class PdfDraft {
     const response = await this.request(this.url, {
       method, credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(30_000)]),
       headers: { "Accept": "application/json", "Content-Type": "application/json", "X-Draft-Context": this.context,
+        "X-Draft-Response": "acknowledgment",
         "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" },
       ...(body ? { body: JSON.stringify(body) } : {})
     })
@@ -34,11 +35,15 @@ export default class PdfDraft {
   }
 
   async start() {
+    if (this.starting || this.ready || this.disposed) return
+    this.starting = true
     this.status("下書きの復元中…")
     try {
-      const { draft, editable } = await this.call("GET")
+      const { draft, editable, append_supported } = await this.call("GET")
       if (this.disposed) return
       if (draft) this.restore(draft)
+      this.appendSupported = append_supported === true
+      this.confirmedSnapshot = draft && { format_version: draft.format_version, pages: draft.pages }
       this.version = draft?.version ?? null
       this.ready = true
       this.allowed = editable
@@ -49,7 +54,7 @@ export default class PdfDraft {
       this.failed = true
       this.blocked = [400, 401, 403, 409, 413, 415, 422].includes(error.code)
       this.status(this.blocked ? "下書きを復元できません。ログイン状態・教材の変更を確認してください。" : "下書きを復元できませんでした。接続を確認して再試行してください。", !this.blocked)
-    }
+    } finally { this.starting = false }
   }
 
   changed() {
@@ -63,7 +68,10 @@ export default class PdfDraft {
   schedule() {
     if (this.submitting) return
     clearTimeout(this.timer)
-    this.timer = setTimeout(() => this.save(), this.delay)
+    // Debounce short pauses, but checkpoint completed strokes during continuous writing.
+    this.pendingSince ??= Date.now()
+    const wait = Math.min(this.delay, Math.max(0, this.maxWait - (Date.now() - this.pendingSince)))
+    this.timer = setTimeout(() => this.save(), wait)
   }
 
   get dirty() { return this.revision !== this.savedRevision }
@@ -72,15 +80,19 @@ export default class PdfDraft {
     if (this.disposed || this.saving || this.submitting || this.blocked || this.saveBlocked || !this.ready || !this.allowed || !this.dirty) return
     clearTimeout(this.timer)
     this.saving = true
+    this.pendingSince = null
     const revision = this.revision
     try {
       const data = structuredClone(this.read())
       this.lastAttempt = data
       this.lastAttemptRevision = revision
       this.status("保存中…")
-      const { draft } = await this.call("PUT", { expected_version: this.version, draft_data: data })
+      const append = this.appendData(data)
+      const { draft } = await this.call("PUT", { expected_version: this.version,
+        ...(append ? { append_data: append } : { draft_data: data }) })
       if (this.disposed) return
       this.version = draft.version
+      this.confirmedSnapshot = data
       this.savedRevision = revision
       this.failed = false
       this.failureMessage = null
@@ -91,6 +103,29 @@ export default class PdfDraft {
       this.saving = false
       if (!this.disposed && this.dirty && !this.failed && !this.blocked && !this.saveBlocked) this.schedule()
     }
+  }
+
+  appendData(data) {
+    const previous = this.confirmedSnapshot
+    if (!this.appendSupported || this.version === null || !previous ||
+        Object.keys(data).sort().join() !== "format_version,pages" || data.format_version !== 1 ||
+        data.format_version !== previous.format_version || data.pages.length !== previous.pages.length) return null
+    const pages = []
+    for (let index = 0; index < data.pages.length; index++) {
+      const page = data.pages[index], saved = previous.pages[index]
+      if (Object.keys(page).sort().join() !== "operations,page_number" ||
+          page.page_number !== saved.page_number || page.operations.length < saved.operations.length) return null
+      for (let operation = 0; operation < saved.operations.length; operation++) {
+        const a = page.operations[operation], b = saved.operations[operation]
+        if (Object.keys(a).sort().join() !== "color,id,points,tool,width" ||
+            !["id", "tool", "color", "width"].every(key => a[key] === b[key]) ||
+            a.points.length !== b.points.length || !a.points.every((point, i) =>
+              point.length === 2 && b.points[i].length === 2 &&
+              point[0] === b.points[i][0] && point[1] === b.points[i][1])) return null
+      }
+      pages.push({ page_number: page.page_number, operations: page.operations.slice(saved.operations.length) })
+    }
+    return { format_version: data.format_version, pages }
   }
 
   rejectionMessage(error) {
@@ -146,7 +181,7 @@ export default class PdfDraft {
     try {
       // A lost response may follow a successful commit. Only adopt the remote
       // version if its exact contents match our last attempted snapshot.
-      const { draft, editable } = await this.call("GET")
+      const { draft, editable, append_supported } = await this.call("GET")
       if (this.disposed) return
       const version = draft?.version ?? null
       const remote = draft && { format_version: draft.format_version, pages: draft.pages }
@@ -154,9 +189,18 @@ export default class PdfDraft {
         const error = new Error("conflict"); error.code = 409; throw error
       }
       this.version = version
+      this.appendSupported = append_supported === true
+      this.confirmedSnapshot = remote
+      if (this.lastAttempt && JSON.stringify(canonical(remote)) === JSON.stringify(canonical(this.lastAttempt))) {
+        this.savedRevision = this.lastAttemptRevision
+      }
       this.failed = false
       this.failureMessage = null
-      await this.save()
+      if (this.dirty) await this.save()
+      else {
+        this.pendingSince = null
+        this.status("保存済み")
+      }
     } catch (error) {
       if (!this.disposed) this.failure(error)
     } finally { this.retrying = false }

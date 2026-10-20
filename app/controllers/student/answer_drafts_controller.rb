@@ -9,14 +9,19 @@ class Student::AnswerDraftsController < ApplicationController
     draft = AnswerDraft.find_by(student: current_student, assignment: @assignment)
     return conflict("material_changed") if draft && draft.material_fingerprint != AnswerDraftContext.fingerprint(@assignment)
 
-    render json: { draft: serialize(draft), editable: !submitted? }
+    payload = { draft: serialize(draft), editable: !submitted? }
+    payload[:append_supported] = true if acknowledgment?
+    render json: payload
   end
 
   def update
     # Bound the raw request before Rails parses potentially large operation arrays.
     return draft_error("request_too_large", :content_too_large) if request.content_length.to_i > AnswerDraft::MAX_BYTES + 16.kilobytes
 
-    data = params[:draft_data]
+    return draft_error("invalid_data") if params.key?(:draft_data) == params.key?(:append_data)
+
+    appending = params.key?(:append_data)
+    data = params[appending ? :append_data : :draft_data]
     return draft_error("invalid_data") unless data.is_a?(ActionController::Parameters) && data.keys.sort == %w[format_version pages] && data[:format_version] == 1 && data[:pages].is_a?(Array)
     version = params[:expected_version]
     return draft_error("invalid_data") unless version.nil? || (version.is_a?(Integer) && version >= 0)
@@ -29,10 +34,21 @@ class Student::AnswerDraftsController < ApplicationController
       return conflict("material_changed") if draft.persisted? && draft.material_fingerprint != AnswerDraftContext.fingerprint(@assignment)
       return conflict("version_conflict") unless (draft.persisted? ? draft.lock_version : nil) == version
 
+      pages = data[:pages].map { |page| page.respond_to?(:to_unsafe_h) ? page.to_unsafe_h : page }
+      if appending
+        return draft_error("invalid_data") unless draft.persisted? && valid_append?(pages, draft.page_data)
+
+        pages = draft.page_data.zip(pages).map do |saved, addition|
+          saved.merge("operations" => saved.fetch("operations") + addition.fetch("operations"))
+        end
+      end
       draft.assign_attributes(material_fingerprint: AnswerDraftContext.fingerprint(@assignment),
-        format_version: data[:format_version], page_data: data[:pages]&.map { |page| page.respond_to?(:to_unsafe_h) ? page.to_unsafe_h : page })
+        format_version: data[:format_version], page_data: pages)
       draft.save!
-      render json: { draft: serialize(draft), editable: true }
+      # Old clients keep the full response; new clients only need the confirmed version.
+      snapshot = acknowledgment? ?
+        { version: draft.lock_version, updated_at: draft.updated_at.iso8601(6) } : serialize(draft)
+      render json: { draft: snapshot, editable: true }
     end
   rescue ActiveRecord::RecordNotUnique, ActiveRecord::StaleObjectError
     conflict("version_conflict")
@@ -44,6 +60,18 @@ class Student::AnswerDraftsController < ApplicationController
   end
 
   private
+
+  def acknowledgment?
+    request.headers["X-Draft-Response"] == "acknowledgment"
+  end
+
+  def valid_append?(pages, saved)
+    pages.length == saved.length && pages.each_with_index.all? do |page, index|
+      page.is_a?(Hash) && page.keys.sort == %w[operations page_number] &&
+        page["page_number"].is_a?(Integer) && page["page_number"] == saved[index]["page_number"] &&
+        page["operations"].is_a?(Array)
+    end
+  end
 
   def draft_error(code, status = :unprocessable_content)
     response.headers["Cache-Control"] = "private, no-store"
