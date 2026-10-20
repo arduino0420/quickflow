@@ -208,3 +208,74 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 }
 
 .assignment-list--student .assignment-card--submitted .student-card-score { font-weight: 400; font-size: 1.1rem; }
+
+.admin-student-actions,
+.admin-student-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.admin-student-list {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 .75rem;
+}
+
+.admin-student-list th,
+.admin-student-list td {
+  padding: 1rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.admin-student-list td {
+  background: var(--color-surface);
+  border-block: 1px solid var(--color-soft-border);
+}
+
+.admin-student-list td:first-child {
+  border-left: 1px solid var(--color-soft-border);
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.admin-student-list td:last-child {
+  border-right: 1px solid var(--color-soft-border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+@media (max-width: 36rem) {
+  .admin-student-list,
+  .admin-student-list tbody { display: block; }
+  .admin-student-list thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .admin-student-list tr {
+    display: block;
+    margin-bottom: .75rem;
+    padding: .75rem;
+    border: 1px solid var(--color-soft-border);
+    border-radius: var(--radius);
+  }
+  .admin-student-list td,
+  .admin-student-list td:first-child,
+  .admin-student-list td:last-child {
+    display: grid;
+    grid-template-columns: 5rem minmax(0, 1fr);
+    gap: .5rem;
+    padding: .5rem;
+    border: 0;
+    border-radius: 0;
+  }
+  .admin-student-list td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--color-muted);
+  }
+}

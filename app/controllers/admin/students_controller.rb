@@ -1,6 +1,24 @@
 class Admin::StudentsController < Admin::BaseController
   before_action :set_school
 
+  def index
+    @grade = listing_number(:grade, 1..6)
+    @class_number = listing_number(:class_number, 1..15)
+    requested_page = listing_number(:page, 1..999_999_999) || 1
+    @classrooms = @school.classrooms.order(:grade, :class_number).to_a
+    students = Student.joins(:classroom).where(classrooms: { school_id: @school.id })
+    students = students.where(classrooms: { grade: @grade }) if @grade
+    students = students.where(classrooms: { class_number: @class_number }) if @class_number
+    @total_count = students.count
+    @page_count = [ (@total_count + 39) / 40, 1 ].max
+    @page = [ requested_page, @page_count ].min
+    @students = students.select(:id, :classroom_id, :attendance_number)
+      .order("classrooms.grade", "classrooms.class_number", "students.attendance_number", "students.id")
+      .preload(:classroom).limit(40).offset((@page - 1) * 40)
+  rescue ArgumentError
+    render plain: "絞り込み条件またはページ番号が不正です。", status: :bad_request
+  end
+
   def new
     @student = Student.new
   end
@@ -26,6 +44,15 @@ class Admin::StudentsController < Admin::BaseController
   end
 
   private
+
+  def listing_number(key, range)
+    value = params[key]
+    return if value.nil? || value == ""
+
+    raise ArgumentError unless value.is_a?(String) && value.match?(/\A[0-9]{1,9}\z/) && range.cover?(value.to_i)
+
+    value.to_i
+  end
 
   def set_school
     @school = current_admin.school

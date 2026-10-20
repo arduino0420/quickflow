@@ -88,7 +88,7 @@ RSpec.describe "Second-round UI improvements", type: :request do
     end
   end
 
-  it "renders two native dashboard buttons and a teacher row scoped to each native edit link" do
+  it "renders three native dashboard buttons and a teacher row scoped to each native edit link" do
     admin = Admin.create!(school: school, user_id: "ui-admin", password: "synthetic-admin-password")
     other = Teacher.create!(school: school, user_id: "ui-other-teacher", password: "synthetic-password")
     classroom
@@ -97,8 +97,8 @@ RSpec.describe "Second-round UI improvements", type: :request do
     post admin_login_path, params: { admin_session: { user_id: admin.user_id, password: "synthetic-admin-password" } }
     get admin_root_path
     buttons = document.css(".admin-dashboard-actions a.admin-dashboard-action")
-    expect(buttons.map(&:text)).to eq([ "教師一覧", "生徒を新規登録" ])
-    expect(buttons.map { |link| link[:href] }).to eq([ admin_teachers_path, new_admin_student_path ])
+    expect(buttons.map(&:text)).to eq([ "教師一覧", "生徒一覧", "生徒を新規登録" ])
+    expect(buttons.map { |link| link[:href] }).to eq([ admin_teachers_path, admin_students_path, new_admin_student_path ])
     get admin_teachers_path
     rows = document.css(".admin-teacher-list tbody tr")
     expect(rows.size).to eq(2)
