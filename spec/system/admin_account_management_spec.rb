@@ -91,6 +91,45 @@ RSpec.describe "Admin account management", type: :system do
     expect(@first.reload).to be_persisted
   end
 
+  [ 0, 150 ].each do |latency|
+    it "revisits deletion confirmation safely with #{latency}ms network latency and sends exactly one DELETE" do
+      browser = page.driver.browser
+      browser.execute_cdp("Network.enable")
+      browser.execute_cdp("Network.emulateNetworkConditions", offline: false, latency: latency,
+        downloadThroughput: -1, uploadThroughput: -1)
+      requests = []
+      observer = lambda do |event|
+        data = event.payload
+        if data[:controller] == "Admin::StudentsController" && data[:action] == "destroy"
+          requests << [ data[:method], data[:path].split("?").first, data[:status] ]
+        end
+      end
+      original = @first.reload.attributes
+      ActiveSupport::Notifications.subscribed(observer, "process_action.action_controller") do
+        click_link "生徒一覧"
+        3.times do
+          choose_operation(@second, "削除")
+          expect(page).to have_content("1年 1組 2番")
+          click_link "削除せず生徒一覧へ戻る"
+          expect(@second.reload).to be_persisted
+        end
+        expect(requests).to be_empty
+        choose_operation(@second, "削除")
+        fill_in "管理者自身のパスワード", with: "admin-secret"
+        check "表示された対象と操作内容を確認しました"
+        click_button "この生徒1人を削除する"
+        expect(page).to have_content("確認した生徒1人を削除しました。")
+        expect(page).not_to have_css("[data-student-id='#{@second.id}']")
+      end
+      expect(requests).to eq([ [ "DELETE", admin_student_path(@second), 303 ] ])
+      expect(Student.exists?(@second.id)).to be(false)
+      expect(@first.reload.attributes).to eq(original)
+    ensure
+      browser&.execute_cdp("Network.emulateNetworkConditions", offline: false, latency: 0,
+        downloadThroughput: -1, uploadThroughput: -1)
+    end
+  end
+
   it "preserves narrow-screen student listing and the existing teacher password editing flow" do
     teacher = Teacher.create!(school: @school, user_id: "browser-teacher", password: "old-teacher-secret")
     click_link "生徒一覧"
