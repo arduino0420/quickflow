@@ -35,8 +35,9 @@ RSpec.describe "Admin teacher editing", type: :request do
     expect(document.at_css("input[name='teacher[user_id]']")[:readonly]).to be_present
     expect(document.at_css("input[name='teacher[user_id]']")[:value]).to eq(teacher.user_id)
     expect(document.css("input[type='password']").map { |field| field[:value] }).to all(be_blank)
-    expect(document.css("input[type='checkbox']").size).to eq(30)
+    expect(document.css("input[name='teacher[classroom_codes][]'][type='checkbox']").size).to eq(30)
     expect(document.css("input[type='checkbox'][checked]").map { |field| field[:value] }).to eq([ "1-1" ])
+    expect(document.css("input[name='confirmed'][type='checkbox']").size).to eq(1)
     expect(document.at_css("input[type='submit']")[:value]).to eq("変更を保存する")
     expect(response.body).not_to include(teacher.password_digest, "teacher-password")
     get admin_teachers_path
@@ -66,7 +67,7 @@ RSpec.describe "Admin teacher editing", type: :request do
 
   it "resets a password and allows teacher login with the new password only" do
     edit_form
-    patch admin_teacher_path(teacher), params: { teacher: attributes.merge(password: "new-password", password_confirmation: "new-password") }
+    patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "new-password", password_confirmation: "new-password") }
     expect(response).to redirect_to(admin_teachers_path)
     post login_path, params: { session: { user_id: teacher.user_id, password: "teacher-password" } }
     expect(response).to have_http_status(422)
@@ -80,7 +81,7 @@ RSpec.describe "Admin teacher editing", type: :request do
     expect(teacher_client.response.status).to eq(303)
     expect(teacher_client.response.location).to end_with(assignments_path)
     edit_form
-    patch admin_teacher_path(teacher), params: { teacher: attributes.merge(password: "new-password", password_confirmation: "new-password") }
+    patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "new-password", password_confirmation: "new-password") }
     expect(response).to redirect_to(admin_teachers_path)
     teacher_client.get assignments_path
     expect(teacher_client.response.status).to eq(200)
@@ -94,7 +95,7 @@ RSpec.describe "Admin teacher editing", type: :request do
       classroom
       edit_form
       original = [ teacher.reload.attributes, counts, teacher.teacher_classrooms.sole.attributes ]
-      patch admin_teacher_path(teacher), params: { teacher: attributes.merge(change) }
+      patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(change) }
       expect(response).to have_http_status(422)
       expect([ teacher.reload.attributes, counts, teacher.teacher_classrooms.sole.attributes ]).to eq(original)
       expect(document.css("input[type='password']").map { |field| field[:value] }).to all(be_blank)
@@ -196,7 +197,7 @@ RSpec.describe "Admin teacher editing", type: :request do
     originals = owners.to_h { |owner| [ owner, owner.logger ] }
     begin
       owners.each { |owner| owner.logger = ActiveSupport::Logger.new(output) }
-      patch admin_teacher_path(teacher), params: { teacher: attributes.merge(password: "private-new-password", password_confirmation: "private-confirmation") }
+      patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "private-new-password", password_confirmation: "private-confirmation") }
     ensure
       originals.each { |owner, logger| owner.logger = logger }
     end

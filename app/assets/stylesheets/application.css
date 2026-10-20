@@ -190,7 +190,7 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 .assignment-list--student .assignment-card:not(.assignment-card--submitted) .student-card-link { background: var(--color-info-soft); }
 .assignment-list--student .assignment-card--submitted .assignment-list-title { font-weight: 400; }
 /* Administrator navigation and teacher rows only. */
-.admin-dashboard-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; max-width: 38rem; margin: 1.5rem 0; }
+.admin-dashboard-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; max-width: 72rem; margin: 1.5rem 0; }
 .admin-dashboard-action { min-height: 4rem; padding: 1rem 1.5rem; box-shadow: 0 3px 8px rgb(37 99 235 / 12%); transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease; }
 .admin-dashboard-action:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgb(37 99 235 / 18%); }
 .admin-teacher-list tbody tr[data-controller~="row-navigation"] { cursor: pointer; }
@@ -278,4 +278,12 @@ legend { padding: 0 0.4rem; font-weight: 600; }
     font-weight: 700;
     color: var(--color-muted);
   }
+}
+
+/* Account management only; preserve student/editor styling. */
+.admin-student-row-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.admin-student-row-actions .button { padding: .5rem .75rem; }
+.admin-account-identity { border: 2px solid var(--color-soft-border); padding: 1rem; margin: 1rem 0; }
+@media (min-width: 36.01rem) and (max-width: 47.99rem) {
+  .admin-dashboard-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

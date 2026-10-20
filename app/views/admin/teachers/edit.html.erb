@@ -17,7 +17,7 @@
     <%= form.label :user_id, "教師ID" %>
     <%= form.text_field :user_id, readonly: true, autocomplete: "off" %>
   </div>
-  <div>
+  <div id="password-reset">
     <p>パスワードを変更しない場合は、両方のパスワード欄を空欄にしてください。</p>
     <%= form.label :password, "新しいパスワード" %>
     <%= form.password_field :password, autocomplete: "new-password", value: nil %>
@@ -26,6 +26,16 @@
     <%= form.label :password_confirmation, "新しいパスワード（確認）" %>
     <%= form.password_field :password_confirmation, autocomplete: "new-password", value: nil %>
   </div>
+  <p>パスワードを変更する場合は、対象教師を確認し、以下の確認と管理者再認証を行ってください。</p>
+  <div>
+    <%= label_tag :confirmed do %>
+      <%= check_box_tag :confirmed, "1", false %> 表示された教師のパスワード変更を確認しました
+    <% end %>
+  </div>
+  <% unless admin_reauthenticated? %>
+    <%= label_tag :admin_password, "管理者自身のパスワード（パスワード変更時）" %>
+    <%= password_field_tag :admin_password, nil, autocomplete: "current-password" %>
+  <% end %>
   <fieldset>
     <legend>担当クラス</legend>
     <p>担当クラスがない場合は、すべてのチェックを外して保存できます。</p>

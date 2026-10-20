@@ -1,0 +1,14 @@
+<h1>生徒アカウントの編集</h1>
+<%= render "admin/shared/student_identity" %>
+<p>所属変更は授業利用前の訂正に限ります。利用中の端末に未保存の答案がないことを確認してください。提出・下書き、変更前後のクラスへの課題配信がある場合は所属を変更できません。</p>
+<%= form_with scope: :student, url: confirm_update_admin_student_path(@student, **@return_filters), method: :post, data: { turbo: false } do |form| %>
+  <%= hidden_field_tag :edit_token, @edit_token %>
+  <%= form.label :grade, "学年" %>
+  <%= form.select :grade, (1..6).map { |n| [ "#{n}年", n ] }, selected: @student.classroom.grade %>
+  <%= form.label :class_number, "クラス" %>
+  <%= form.select :class_number, (1..15).map { |n| [ "#{n}組", n ] }, selected: @student.classroom.class_number %>
+  <%= form.label :attendance_number, "出席番号" %>
+  <%= form.select :attendance_number, (1..40).map { |n| [ "#{n}番", n ] }, selected: @student.attendance_number %>
+  <%= form.submit "変更内容を確認する" %>
+<% end %>
+<%= link_to "生徒一覧へ戻る", admin_students_path(**@return_filters) %>

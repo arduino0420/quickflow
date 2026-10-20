@@ -11,7 +11,7 @@ class Admin::TeacherUpdate
     @school.with_lock do
       @teacher.lock!
       @classroom_codes = current_classrooms.map { |classroom| code_for(classroom) }
-      @edit_token = verifier.generate(token_payload, purpose: :teacher_edit)
+      @edit_token = verifier.generate(token_payload, expires_in: 15.minutes, purpose: :teacher_edit)
     end
     self
   end
@@ -34,6 +34,11 @@ class Admin::TeacherUpdate
       return false if @teacher.errors.any?
 
       if attributes[:password].present?
+        password = attributes[:password]
+        unless password.is_a?(String) && password.valid_encoding? && !password.include?("\0")
+          @teacher.errors.add(:password, :invalid)
+          return false
+        end
         @teacher.assign_attributes(attributes.slice(:password, :password_confirmation))
         @teacher.valid?
         @teacher.errors.add(:password_confirmation, :blank) if attributes[:password_confirmation].blank?

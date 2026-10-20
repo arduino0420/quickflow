@@ -48,7 +48,11 @@ RSpec.describe "Admin teacher management", type: :request do
     get admin_teachers_path
     expect(document.css(".admin-teacher-list th").map(&:text)).to eq([ "教師ID", "担当クラス", "操作" ])
     row = document.at_css(".admin-teacher-list tbody tr")
-    expect(row.css("td").map { |cell| cell.text.strip }).to eq([ teacher.user_id, "1年1組", "編集" ])
+    expect(row.css("td").size).to eq(3)
+    expect(row.css("td").first(2).map { |cell| cell.text.strip }).to eq([ teacher.user_id, "1年1組" ])
+    expect(row.css("td")[2].css("a").map(&:text)).to eq([ "編集", "パスワード再設定" ])
+    expect(row.css("td")[2].css("a").map { |link| link[:href] }).to eq([
+      edit_admin_teacher_path(teacher), edit_admin_teacher_path(teacher, anchor: "password-reset") ])
     expect(row.css("td")[0].at_css("a")).to be_nil
     expect(row.css("td")[2].at_css("a")[:href]).to eq(edit_admin_teacher_path(teacher))
     expect(document.css(".admin-teacher-list-actions a").map(&:text)).to eq([ "教師を新規登録", "管理者トップに戻る" ])

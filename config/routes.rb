@@ -4,7 +4,13 @@ Rails.application.routes.draw do
     post "login", to: "sessions#create"
     delete "logout", to: "sessions#destroy", as: :logout
     resources :teachers, only: [ :index, :new, :create, :edit, :update ]
-    resources :students, only: [ :index, :new, :create ]
+    resources :students, only: [ :index, :new, :create, :edit, :update, :destroy ] do
+      member do
+        post :confirm_update
+        get :confirm_destroy
+      end
+      resource :password_reset, only: [ :edit, :update ], controller: "student_password_resets"
+    end
     root "dashboard#show"
   end
 
