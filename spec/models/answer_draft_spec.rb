@@ -69,4 +69,49 @@ RSpec.describe AnswerDraft, type: :model do
     draft.page_data = [ { "page_number" => 1, "operations" => [ stroke.merge("color" => "x" * described_class::MAX_BYTES) ] } ]
     expect(draft).not_to be_valid
   end
+  it "accepts the point and operation limits exactly and reports the first exceeded limit" do
+    points = draft.page_data.first["operations"].first["points"] = Array.new(described_class::MAX_POINTS) { [ 0, 0 ] }
+    expect(draft).to be_valid
+    points << [ 0, 0 ]
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:points_limit)
+
+    operations = draft.page_data.first["operations"] = Array.new(described_class::MAX_OPERATIONS) { |index| stroke.merge("id" => index + 1) }
+    expect(draft).to be_valid
+    operations << stroke.merge("id" => described_class::MAX_OPERATIONS + 1)
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:operations_limit)
+  end
+
+  it "accepts exactly 4 MiB of valid JSON and distinguishes one extra byte from invalid geometry" do
+    points = draft.page_data.first["operations"].first["points"] = []
+    base_bytes = JSON.generate(draft.page_data).bytesize
+    dense_point = [ 0.12345678901234567, -0.12345678901234567 ]
+    points.concat(Array.new((described_class::MAX_BYTES - base_bytes - 100) / (JSON.generate(dense_point).bytesize + 1), dense_point))
+    remaining = described_class::MAX_BYTES - JSON.generate(draft.page_data).bytesize
+    sevens = (0..5).find { |count| remaining >= count * 7 && (remaining - count * 7) % 6 == 0 }
+    points.concat(Array.new((remaining - sevens * 7) / 6) { [ 0, 0 ] })
+    points.concat(Array.new(sevens) { [ 10, 0 ] })
+    expect(JSON.generate(draft.page_data).bytesize).to eq(described_class::MAX_BYTES)
+    expect(draft).to be_valid
+    points.find { |point| point == [ 0, 0 ] }[0] = 10
+    expect(JSON.generate(draft.page_data).bytesize).to eq(described_class::MAX_BYTES + 1)
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:bytes_limit)
+
+    draft.page_data = [ { "page_number" => 1, "operations" => [ stroke.merge("points" => [ [ "bad", 0 ] ]) ] } ]
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:invalid_data)
+  end
+
+  it "keeps the page limit and distinguishes it from an empty or incorrectly numbered draft" do
+    draft.page_data = Array.new(described_class::MAX_PAGES) { |index| { "page_number" => index + 1, "operations" => [] } }
+    expect(draft).to be_valid
+    draft.page_data << { "page_number" => described_class::MAX_PAGES + 1, "operations" => [] }
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:pages_limit)
+    draft.page_data = []
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:invalid_data)
+  end
 end

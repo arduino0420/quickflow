@@ -16,6 +16,8 @@ export default class extends Controller {
     this.exporting = false
     this.draftEditable = false
     this.sourceBytes = null
+    this.submissionAttempt = null
+    this.submissionConfirmed = false
     this.active = true
     this.session = Symbol()
     this.pageStates = []
@@ -380,7 +382,8 @@ export default class extends Controller {
     if (state.ink.start(event)) {
       this.inputState = state
       this.inputDiagnostics?.record("controller", event, "stroke-accepted")
-      this.showDraftStatus(this.draft?.failed ? "保存できませんでした。接続を確認して再試行してください。" : "未保存", !!this.draft?.failed)
+      this.showDraftStatus(this.draft?.failed ? this.draft.failureMessage : "未保存",
+        !!this.draft?.failed && !this.draft.blocked && !this.draft.saveBlocked)
       state.inkCanvas.setPointerCapture(event.pointerId)
       this.inputDiagnostics?.record("controller", event, "stroke-started")
     } else {
@@ -532,12 +535,12 @@ export default class extends Controller {
 
   warnUnsaved(event) {
     this.finishInput()
-    if (this.draft?.dirty) { event.preventDefault(); event.returnValue = "" }
+    if (this.draft?.dirty && !this.submissionConfirmed) { event.preventDefault(); event.returnValue = "" }
   }
 
   confirmLeave(event) {
     this.finishInput()
-    if (this.draft?.dirty && !window.confirm("保存が完了していない手書きがあります。このまま移動すると失われる可能性があります。移動しますか？")) event.preventDefault()
+    if (this.draft?.dirty && !this.submissionConfirmed && !window.confirm("保存が完了していない手書きがあります。このまま移動すると失われる可能性があります。移動しますか？")) event.preventDefault()
   }
 
   async submissionState(options = {}) {
@@ -556,7 +559,8 @@ export default class extends Controller {
   }
 
   async submitAnswer() {
-    if (this.exporting || !this.active || !this.pagesReady || !this.pdf || !this.draft?.ready) return
+    if (this.exporting || !this.active || !this.pagesReady || !this.pdf ||
+        !this.draft?.ready || !this.draft.allowed || this.draft.blocked) return
     this.finishInput()
     this.exporting = true
     const session = this.session
@@ -569,22 +573,31 @@ export default class extends Controller {
       // Reconcile a successful POST whose response was lost before attempting another upload.
       let result = await this.submissionState()
       if (!this.current(session)) return
-      if (result.submitted && this.draft.dirty) {
+      if (result.submitted && (!this.submissionAttempt ||
+          result.submission_token !== this.submissionAttempt.token ||
+          this.draft.revision !== this.submissionAttempt.revision)) {
         const error = new Error("another submission exists")
         error.code = 409
         throw error
       }
       if (!result.submitted) {
         status.textContent = "答案を準備しています…"
-        const version = await this.draft.flush()
+        const version = await this.draft.prepareSubmission()
         if (!this.current(session)) return
-        const pages = snapshotPages(this.pageStates)
-        this.sourceBytes ||= await this.pdf.getData()
-        const bytes = await generateAnswerPdf({ source: this.sourceBytes, pages, current: () => this.current(session) })
+        if (!this.submissionAttempt || this.submissionAttempt.revision !== this.draft.revision) {
+          const pages = snapshotPages(this.pageStates)
+          this.sourceBytes ||= await this.pdf.getData()
+          const bytes = await generateAnswerPdf({ source: this.sourceBytes, pages, current: () => this.current(session) })
+          this.submissionAttempt = { token: crypto.randomUUID(), revision: this.draft.revision, bytes }
+        }
         if (!this.current(session)) return
+        if (this.submissionAttempt.bytes.length > 25 * 1024 * 1024) {
+          const error = new Error("PDF too large"); error.code = 413; throw error
+        }
         const body = new FormData()
-        body.append("submission[answer_file]", new Blob([bytes], { type: "application/pdf" }), "answer.pdf")
-        body.append("draft_version", String(version))
+        body.append("submission[answer_file]", new Blob([this.submissionAttempt.bytes], { type: "application/pdf" }), "answer.pdf")
+        body.append("draft_version", version === null ? "" : String(version))
+        body.append("submission_token", this.submissionAttempt.token)
         status.textContent = "提出しています…"
         try {
           result = await this.submissionState({ method: "POST", body })
@@ -596,6 +609,11 @@ export default class extends Controller {
         }
       }
       if (!this.current(session) || !result.submitted) throw new Error("not submitted")
+      if (!this.submissionAttempt || result.submission_token !== this.submissionAttempt.token ||
+          this.draft.revision !== this.submissionAttempt.revision) {
+        const error = new Error("another submission exists"); error.code = 409; throw error
+      }
+      this.submissionConfirmed = true
       this.draft.allowed = this.draftEditable = false
       this.draft.stop()
       status.textContent = result.alert || "提出が完了しました。"
@@ -605,6 +623,8 @@ export default class extends Controller {
         status.setAttribute("role", "alert")
         status.textContent = error.code === 409 ?
           "教材または下書きが変更されています。提出を停止しました。手書きが残るこの画面を閉じず、先生に確認してください。" :
+          [401, 403, 404].includes(error.code) ?
+            "ログイン状態または小テストの利用権限を確認できません。手書きが残るこの画面を閉じず、先生に確認してください。" :
           error.code === 413 ?
             "PDFのサイズが上限を超えています。手書きと下書きは残っています。ページ数を減らすか先生に確認してください。" :
             "提出できませんでした。手書きはこの画面に残っています。保存状況と接続を確認して、もう一度お試しください。"
@@ -614,6 +634,7 @@ export default class extends Controller {
         }
       }
     } finally {
+      this.draft?.finishSubmission()
       this.exporting = false
       if (this.current(session)) {
         this.submitTarget.disabled = !this.draft.allowed || this.draft.blocked

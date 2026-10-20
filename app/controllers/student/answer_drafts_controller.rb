@@ -1,4 +1,6 @@
 class Student::AnswerDraftsController < ApplicationController
+  rescue_from ActionController::InvalidAuthenticityToken, with: :reject_csrf
+
   before_action :authenticate_student
   before_action :set_assignment
   before_action :check_context
@@ -12,12 +14,12 @@ class Student::AnswerDraftsController < ApplicationController
 
   def update
     # Bound the raw request before Rails parses potentially large operation arrays.
-    return head :content_too_large if request.content_length.to_i > AnswerDraft::MAX_BYTES + 16.kilobytes
+    return draft_error("request_too_large", :content_too_large) if request.content_length.to_i > AnswerDraft::MAX_BYTES + 16.kilobytes
 
     data = params[:draft_data]
-    return head :unprocessable_content unless data.is_a?(ActionController::Parameters) && data.keys.sort == %w[format_version pages] && data[:format_version] == 1 && data[:pages].is_a?(Array)
+    return draft_error("invalid_data") unless data.is_a?(ActionController::Parameters) && data.keys.sort == %w[format_version pages] && data[:format_version] == 1 && data[:pages].is_a?(Array)
     version = params[:expected_version]
-    return head :unprocessable_content unless version.nil? || (version.is_a?(Integer) && version >= 0)
+    return draft_error("invalid_data") unless version.nil? || (version.is_a?(Integer) && version >= 0)
 
     @assignment.with_lock do
       return conflict("context_changed") unless valid_context?
@@ -34,11 +36,23 @@ class Student::AnswerDraftsController < ApplicationController
     end
   rescue ActiveRecord::RecordNotUnique, ActiveRecord::StaleObjectError
     conflict("version_conflict")
-  rescue ActiveRecord::RecordInvalid
-    render json: { error: "invalid_data" }, status: :unprocessable_content
+  rescue ActiveRecord::RecordInvalid => error
+    reason = error.record.errors.details.fetch(:page_data, []).first&.fetch(:error)
+    code = { bytes_limit: "draft_bytes_limit", pages_limit: "draft_pages_limit",
+      operations_limit: "draft_operations_limit", points_limit: "draft_points_limit" }.fetch(reason, "invalid_data")
+    draft_error(code)
   end
 
   private
+
+  def draft_error(code, status = :unprocessable_content)
+    response.headers["Cache-Control"] = "private, no-store"
+    render json: { error: code }, status: status
+  end
+
+  def reject_csrf
+    draft_error("csrf_failed")
+  end
 
   def authenticate_student
     response.headers["Cache-Control"] = "private, no-store"

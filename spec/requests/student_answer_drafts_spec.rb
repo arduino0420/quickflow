@@ -137,8 +137,10 @@ RSpec.describe "Student answer drafts", type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     put url, params: "{invalid secret ink", headers: headers.merge("CONTENT_TYPE" => "application/json")
     expect(response).to have_http_status(:bad_request)
+    expect(response.parsed_body).to eq("error" => "invalid_json")
     put url, params: "x" * (AnswerDraft::MAX_BYTES + 16.kilobytes + 1), headers: headers.merge("CONTENT_TYPE" => "application/json")
     expect(response).to have_http_status(:content_too_large)
+    expect(response.parsed_body).to eq("error" => "request_too_large")
     expect(AnswerDraft.count).to eq(0)
   end
 
@@ -180,7 +182,34 @@ RSpec.describe "Student answer drafts", type: :request do
     save_draft
     expect(response).to have_http_status(:unprocessable_content)
     expect(AnswerDraft.count).to eq(0)
+    expect(response.parsed_body).to eq("error" => "csrf_failed")
+    expect(response.headers["Cache-Control"]).to include("no-store")
   ensure
     ActionController::Base.allow_forgery_protection = previous
+  end
+  it "returns safe distinct validation reasons and never replaces the saved answer on rejection" do
+    login
+    save_draft
+    saved = AnswerDraft.first.attributes
+    point = data[:pages][0][:operations][0]
+    cases = {
+      "draft_points_limit" => data.deep_dup.tap { |body| body[:pages][0][:operations][0][:points] = Array.new(AnswerDraft::MAX_POINTS + 1) { [ 0, 0 ] } },
+      "draft_operations_limit" => data.deep_dup.tap { |body| body[:pages][0][:operations] = Array.new(AnswerDraft::MAX_OPERATIONS + 1) { |index| point.merge(id: index + 1) } },
+      "draft_bytes_limit" => data.deep_dup.tap { |body| body[:pages][0][:operations][0][:points] = Array.new(99_000) { [ 0.12345678901234567, -0.12345678901234567 ] } },
+      "draft_pages_limit" => data.merge(pages: Array.new(AnswerDraft::MAX_PAGES + 1) { |index| { page_number: index + 1, operations: [] } }),
+      "invalid_data" => data.deep_dup.tap { |body| body[:pages][0][:operations][0][:width] = 99 }
+    }
+    # Model JSON exceeds 4 MiB, but the request envelope fits the extra 16 KiB.
+    byte_body = cases.fetch("draft_bytes_limit")
+    dense_point = [ 0.12345678901234567, -0.12345678901234567 ]
+    byte_body[:pages][0][:operations][0][:points] = Array.new(AnswerDraft::MAX_BYTES / (JSON.generate(dense_point).bytesize + 1) + 1, dense_point)
+    expect(AnswerReadingJob).not_to receive(:perform_later)
+    cases.each do |reason, body|
+      save_draft(0, body)
+      expect(response).to have_http_status(:unprocessable_content), reason
+      expect(response.parsed_body).to eq("error" => reason)
+      expect(response.headers["Cache-Control"]).to include("no-store")
+      expect(AnswerDraft.first.attributes).to eq(saved)
+    end
   end
 end

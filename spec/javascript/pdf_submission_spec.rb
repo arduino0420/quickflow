@@ -2,7 +2,7 @@ require "spec_helper"
 require "open3"
 
 RSpec.describe "Handwritten PDF submission lifecycle" do
-  it "locks input, flushes latest ink, reconciles lost responses and preserves ink on failures" do
+  it "locks input, snapshots latest ink, reconciles lost responses and preserves ink on failures" do
     script = <<~JS
       const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
       const source=fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/gm,'').replace('export default class','class Preview');
@@ -10,7 +10,7 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
       const locations=[];
       const Preview=vm.runInNewContext(source+';Preview',{
         Controller:class{},window:{location:{assign:url=>locations.push(url)}},
-        Blob,FormData,AbortSignal,document:{querySelector:()=>({content:'csrf'})},
+        Blob,FormData,AbortSignal,crypto:require("node:crypto").webcrypto,document:{querySelector:()=>({content:'csrf'})},
         snapshotPages:states=>structuredClone(states),generateAnswerPdf:async({pages})=>{
           generated++;assert.deepEqual(pages,[{ink:'latest'}]);if(generationError)throw Error('PNG failed');return new Uint8Array([37,80,68,70]);
         }
@@ -19,7 +19,7 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
         const c=new Preview();Object.assign(c,{active:true,session:Symbol(),pagesReady:true,exporting:false,
           pdf:{getData:async()=>new Uint8Array([1])},pageStates:[{ink:'latest'}],toolTargets:[{}],sizeTargets:[{}],
           submitTarget:{},submitStatusTarget:{setAttribute(){}},draftEditable:true,
-          draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,flush:async()=>{assert(c.exporting);c.draft.dirty=false;return 7},stop(){this.stopped=true}}});
+          draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,revision:1,prepareSubmission:async()=>{assert(c.exporting);return 7},finishSubmission(){},stop(){this.stopped=true}}});
         c.finishInput=()=>{};return c;
       }
       (async()=>{
@@ -34,14 +34,14 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
         };
         const first=c.submitAnswer();await new Promise(r=>setImmediate(r));
         await c.submitAnswer();assert.equal(calls.length,2,'double click cannot upload twice');
-        release({submitted:true,location:'/result'});await first;
-        assert.deepEqual(locations,['/result']);assert(c.draft.stopped);assert.equal(c.draftEditable,false);
+        release({submitted:true,submission_token:c.submissionAttempt.token,location:'/result'});await first;
+        assert.deepEqual(locations,['/result']);assert.equal(c.submissionConfirmed,true);assert(c.draft.stopped);assert.equal(c.draftEditable,false);
         const fail=editor();generationError=true;let posts=0;
         fail.submissionState=async options=>{if(options)posts++;return {submitted:false}};
         await fail.submitAnswer();assert.equal(posts,0);assert.equal(fail.pageStates[0].ink,'latest');
         assert.equal(fail.submitTarget.disabled,false);assert.equal(fail.draft.allowed,true);
         generationError=false;
-        const unsaved=editor();unsaved.draft.flush=async()=>{throw Error('save failed')};
+        const unsaved=editor();unsaved.draft.prepareSubmission=async()=>{throw Error('save pending')};
         unsaved.submissionState=fail.submissionState;await unsaved.submitAnswer();assert.equal(posts,0);assert(unsaved.draft.dirty);
         const conflict=editor();conflict.submissionState=async options=>{
           if(options){const e=Error('conflict');e.code=409;throw e}return {submitted:false};
@@ -52,9 +52,17 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
         await other.submitAnswer();assert(other.draft.dirty);assert(other.draft.blocked);
         assert.deepEqual(locations,['/result'],'another tab must not discard local unsaved ink');
         const lost=editor();let gets=0;
-        lost.submissionState=async options=>{if(options)throw TypeError('lost response');return ++gets===1?{submitted:false}:{submitted:true,location:'/recovered'}};
+        lost.submissionState=async options=>{if(options)throw TypeError('lost response');return ++gets===1?{submitted:false}:{submitted:true,submission_token:lost.submissionAttempt.token,location:'/recovered'}};
         await lost.submitAnswer();assert.equal(gets,2);assert.deepEqual(locations,['/result','/recovered']);
         assert.equal(lost.pageStates[0].ink,'latest');
+        const mismatch=editor();let wrongGets=0;
+        mismatch.submissionState=async options=>{
+          if(options)throw TypeError('lost response');
+          return ++wrongGets===1?{submitted:false}:{submitted:true,submission_token:require('node:crypto').randomUUID(),location:'/wrong'};
+        };
+        await mismatch.submitAnswer();assert(mismatch.draft.blocked);assert.notEqual(mismatch.submissionConfirmed,true);
+        assert.equal(mismatch.pageStates[0].ink,'latest');
+        assert.deepEqual(locations,['/result','/recovered'],'a different attempt must never be accepted');
       })().catch(e=>{console.error(e);process.exitCode=1});
     JS
     stdout, stderr, status = Open3.capture3("node", "-e", script,
@@ -69,15 +77,15 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
       const locations=[];
       const Preview=vm.runInNewContext(source+';Preview',{
         Controller:class{},window:{location:{assign:url=>locations.push(url)}},
-        Blob,FormData,AbortSignal,document:{querySelector:()=>({content:'csrf'})},
+        Blob,FormData,AbortSignal,crypto:require("node:crypto").webcrypto,document:{querySelector:()=>({content:'csrf'})},
         snapshotPages:states=>structuredClone(states),generateAnswerPdf:async()=>new Uint8Array([37,80,68,70])
       });
       const c=new Preview();let posts=0,checks=0,flushes=0;
       Object.assign(c,{active:true,session:Symbol(),pagesReady:true,exporting:false,
         pdf:{getData:async()=>new Uint8Array([1])},pageStates:[{ink:'latest'}],toolTargets:[{}],sizeTargets:[{}],
         submitTarget:{},submitStatusTarget:{setAttribute(){}},draftEditable:true,
-        draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,
-          flush:async()=>{flushes++;return 7},stop(){this.stopped=true}}});
+        draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,revision:1,
+          prepareSubmission:async()=>{flushes++;return 7},finishSubmission(){},stop(){this.stopped=true}}});
       c.finishInput=()=>{};
       c.submissionState=async options=>{
         if(options){posts++;throw TypeError('connection lost')}
@@ -92,7 +100,7 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
         assert.equal(c.draft.allowed,true);assert.equal(c.submitTarget.disabled,false);
         assert.equal(c.submitStatusTarget.textContent.includes('提出できませんでした'),true);
         c.submissionState=async options=>{
-          if(options){posts++;return {submitted:true,location:'/result'}}
+          if(options){posts++;assert.equal(options.body.get('submission_token'),c.submissionAttempt.token);return {submitted:true,submission_token:c.submissionAttempt.token,location:'/result'}}
           checks++;return {submitted:false};
         };
         await c.submitAnswer();
