@@ -174,7 +174,9 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 .admin-teacher-list { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 0.75rem; }
 .admin-teacher-list th, .admin-teacher-list td { padding: 1rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .admin-teacher-list th:first-child { width: 30%; }
-.admin-teacher-list th:last-child { width: 7.5rem; }
+.admin-teacher-list th:last-child { width: 18rem; }
+.admin-teacher-row-actions { display: flex; align-items: stretch; gap: 0.5rem; }
+.admin-teacher-row-actions .button { flex: 0 0 auto; white-space: nowrap; overflow-wrap: normal; }
 .admin-teacher-list td { background: var(--color-surface); border-top: 1px solid var(--color-soft-border); border-bottom: 1px solid var(--color-soft-border); }
 .admin-teacher-list td:first-child { border-left: 1px solid var(--color-soft-border); border-radius: var(--radius) 0 0 var(--radius); }
 .admin-teacher-list td:last-child { border-right: 1px solid var(--color-soft-border); border-radius: 0 var(--radius) var(--radius) 0; }
@@ -184,6 +186,8 @@ legend { padding: 0 0.4rem; font-weight: 600; }
   .admin-teacher-list tr { display: block; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid var(--color-soft-border); border-radius: var(--radius); }
   .admin-teacher-list td, .admin-teacher-list td:first-child, .admin-teacher-list td:last-child { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 0.5rem; padding: 0.5rem; border: 0; border-radius: 0; }
   .admin-teacher-list td::before { content: attr(data-label); font-weight: 700; color: var(--color-muted); }
+  .admin-teacher-list td[data-label="操作"] { grid-template-columns: minmax(0, 1fr); }
+  .admin-teacher-row-actions .button { font-size: 0.875rem; padding-inline: 0.5rem; }
 }
 
 /* Student list presentation: submission status still comes from the server. */

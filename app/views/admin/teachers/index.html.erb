@@ -18,8 +18,10 @@
           <% classrooms = @classrooms_by_teacher.fetch(teacher.id, []).map(&:classroom) %>
           <%= classrooms.empty? ? "担当なし" : classrooms.map { |classroom| classroom_label(classroom) }.join("、") %>
         </td>
-        <td data-label="操作"><%= link_to "編集", edit_admin_teacher_path(teacher), class: "button button-secondary admin-teacher-edit-link", data: { row_navigation_target: "link" }, aria: { label: "#{teacher.user_id}を編集" } %>
-          <%= link_to "パスワード再設定", edit_admin_teacher_path(teacher, anchor: "password-reset"), class: "button button-secondary" %></td>
+        <td data-label="操作"><div class="admin-teacher-row-actions">
+          <%= link_to "編集", edit_admin_teacher_path(teacher), class: "button button-secondary admin-teacher-edit-link", data: { row_navigation_target: "link" }, aria: { label: "#{teacher.user_id}を編集" } %>
+          <%= link_to "パスワード再設定", edit_admin_teacher_path(teacher, anchor: "password-reset"), class: "button button-secondary" %>
+        </div></td>
       </tr>
     <% end %>
   </tbody>
