@@ -13,6 +13,9 @@ class Admin::TeacherRegistration
     if attributes[:password_confirmation].blank?
       @teacher.errors.add(:password_confirmation, :blank)
     end
+    if (message = PasswordPolicy.message_for(attributes[:password], role: :teacher))
+      @teacher.errors.add(:password, message)
+    end
     validate_classroom_codes(classroom_codes)
     return false if @teacher.errors.any?
 

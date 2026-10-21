@@ -35,7 +35,7 @@ class QuestionGenerationJob < ApplicationJob
     submission.with_lock do
       submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
     end
-    Rails.logger.error("QuestionGenerationJob grading enqueue failed: #{error.class}: #{error.message}")
+    Rails.logger.error("QuestionGenerationJob grading enqueue failed: #{error.class}")
   end
 
   def readable_submissions(assignment)

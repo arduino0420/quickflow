@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_17_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_21_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -84,6 +84,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_17_000000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["teacher_id"], name: "index_assignments_on_teacher_id"
+  end
+
+  create_table "authentication_attempt_buckets", primary_key: "key_digest", id: { type: :string, limit: 64 }, force: :cascade do |t|
+    t.integer "attempts", null: false
+    t.datetime "expires_at", null: false
+    t.index ["expires_at"], name: "index_authentication_attempt_buckets_on_expires_at"
   end
 
   create_table "classrooms", force: :cascade do |t|

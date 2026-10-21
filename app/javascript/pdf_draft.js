@@ -6,8 +6,8 @@ function canonical(value) {
 
 // Server only. No localStorage / IndexedDB copies on shared school devices.
 export default class PdfDraft {
-  constructor({ url, context, read, restore, status, editable, fetch: request = window.fetch.bind(window), delay = 2500, maxWait = Math.max(10_000, delay) }) {
-    Object.assign(this, { url, context, read, restore, status, editable, request, delay, maxWait })
+  constructor({ url, context, read, restore, status, editable, expired, fetch: request = window.fetch.bind(window), delay = 2500, maxWait = Math.max(10_000, delay) }) {
+    Object.assign(this, { url, context, read, restore, status, editable, expired, request, delay, maxWait })
     this.revision = this.savedRevision = 0
     this.version = null
     this.saveBlocked = this.blocked = this.failed = false
@@ -47,13 +47,17 @@ export default class PdfDraft {
       this.version = draft?.version ?? null
       this.ready = true
       this.allowed = editable
+      this.failed = this.blocked = false
       this.editable(editable)
       this.status(editable ? (draft ? "保存済み" : "未保存") : "提出済みです。下書きは変更できません。")
     } catch (error) {
       if (this.disposed) return
       this.failed = true
       this.blocked = [400, 401, 403, 409, 413, 415, 422].includes(error.code)
-      this.status(this.blocked ? "下書きを復元できません。ログイン状態・教材の変更を確認してください。" : "下書きを復元できませんでした。接続を確認して再試行してください。", !this.blocked)
+      if (error.code === 401) this.expired?.()
+      this.status(error.code === 401 ? "ログインの有効期限が切れました。答案画面を閉じず、別タブで再ログインしてください。" :
+        this.blocked ? "下書きを復元できません。ログイン状態・教材の変更を確認してください。" :
+          "下書きを復元できませんでした。接続を確認して再試行してください。", !this.blocked)
     } finally { this.starting = false }
   }
 
@@ -156,6 +160,13 @@ export default class PdfDraft {
     this.failed = true
     this.saveBlocked = this.capacityReason(error)
     this.blocked = !this.saveBlocked && [400, 401, 403, 409, 415, 422].includes(error.code)
+    if (error.code === 401 || (error.code === 422 && error.reason === "csrf_failed")) {
+      this.failureMessage = "ログインの有効期限が切れました。答案画面を閉じず、別タブで再ログインしてください。未保存の手書きはこの画面だけに残っています。"
+      this.editable(false)
+      this.expired?.()
+      this.status(this.failureMessage)
+      return
+    }
     const message = this.rejectionMessage(error)
     if (this.saveBlocked) {
       this.failureMessage = message
@@ -204,6 +215,25 @@ export default class PdfDraft {
     } catch (error) {
       if (!this.disposed) this.failure(error)
     } finally { this.retrying = false }
+  }
+
+  resume(remoteDraft) {
+    if (this.disposed || this.saving || this.retrying || this.submitting || !this.ready) return false
+    const version = remoteDraft?.version ?? null
+    const remote = remoteDraft && { format_version: remoteDraft.format_version, pages: remoteDraft.pages }
+    const same = (left, right) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
+    if (version !== this.version) {
+      if (!this.lastAttempt || !same(remote, this.lastAttempt)) return false
+      this.savedRevision = this.lastAttemptRevision
+    }
+    this.version = version
+    this.confirmedSnapshot = remote
+    this.failed = this.blocked = this.saveBlocked = false
+    this.failureMessage = null
+    this.editable(true)
+    this.status(this.dirty ? "未保存" : "保存済み")
+    if (this.dirty) this.schedule()
+    return true
   }
 
   async flush() {

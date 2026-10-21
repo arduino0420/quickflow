@@ -1,5 +1,6 @@
 class SubmissionsController < ApplicationController
   before_action :require_teacher_login
+  before_action :prevent_caching
   before_action :set_submission
 
   def show
@@ -59,6 +60,10 @@ class SubmissionsController < ApplicationController
   end
 
   private
+
+  def prevent_caching
+    response.headers["Cache-Control"] = "private, no-store"
+  end
 
   def update_final_judgments
     input = params[:final_judgments]

@@ -50,6 +50,9 @@ class Admin::StudentAccountChange
         unless [ password, confirmation ].all? { |value| value.is_a?(String) && value.valid_encoding? && value.present? && !value.include?("\0") }
           raise Conflict, "新しいパスワードと確認入力を入力してください。"
         end
+        if (message = PasswordPolicy.message_for(password, role: :student))
+          raise Conflict, message
+        end
         @student.update!(password: password, password_confirmation: confirmation)
         advance_revision!
       else

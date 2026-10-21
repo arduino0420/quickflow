@@ -19,6 +19,7 @@
   <div>
     <%= form.label :password, "パスワード" %>
     <%= form.password_field :password, required: true, autocomplete: "new-password", value: nil %>
+    <p>15文字以上、72バイト以下で設定してください。貼り付けも利用できます。</p>
   </div>
   <div>
     <%= form.label :password_confirmation, "パスワード（確認）" %>

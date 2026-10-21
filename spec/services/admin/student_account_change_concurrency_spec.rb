@@ -128,7 +128,7 @@ RSpec.describe "Admin student account concurrency" do
     token = account.prepare("password").token
     ready = Queue.new
     release = Queue.new
-    [ "1234", "abcd!" ].each do |password|
+    [ "739162840517294", "584217963045781" ].each do |password|
       @threads << Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
           editor = account

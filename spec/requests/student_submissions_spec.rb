@@ -620,7 +620,8 @@ RSpec.describe "Student submissions", type: :request do
     it "keeps authentication and CSRF protection on handwritten submission" do
       token = headers
       submit_ink(context: token)
-      expect(response).to redirect_to(student_login_path)
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.headers["Location"]).to be_nil
       login
       previous = ActionController::Base.allow_forgery_protection
       ActionController::Base.allow_forgery_protection = true
@@ -669,13 +670,13 @@ RSpec.describe "Student submissions", type: :request do
         }, headers: token, as: :json
         expect(client.response).to have_http_status(:unauthorized)
         client.get student_assignment_submission_path(assignment), headers: token
-        expect(client.response).to have_http_status(:see_other)
-        expect(client.response.location).to end_with(student_login_path)
+        expect(client.response).to have_http_status(:unauthorized)
+        expect(client.response.headers["Location"]).to be_nil
         client.post student_assignment_submission_path(assignment), params: {
           draft_version: draft.lock_version.to_s, submission: { answer_file: pdf }
         }, headers: token
-        expect(client.response).to have_http_status(:see_other)
-        expect(client.response.location).to end_with(student_login_path)
+        expect(client.response).to have_http_status(:unauthorized)
+        expect(client.response.headers["Location"]).to be_nil
       end
       expect(counts).to eq(before_counts)
       expect(draft.reload).to be_persisted

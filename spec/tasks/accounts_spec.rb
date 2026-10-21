@@ -14,7 +14,7 @@ RSpec.describe "Operator teacher provisioning" do
     allow($stdout).to receive(:puts)
   end
 
-  def inputs(user_id: "provisioned", password: "safe-password", confirmation: password)
+  def inputs(user_id: "provisioned", password: "Long River 8 Beacon 42", confirmation: password)
     school
     allow(STDIN).to receive(:gets).and_return("y\n", "PROVISION\n", "#{user_id}\n", "#{password}\n", "#{confirmation}\n")
   end
@@ -26,22 +26,23 @@ RSpec.describe "Operator teacher provisioning" do
     expect { task.invoke }.to change(Teacher, :count).by(1)
     teacher = Teacher.find_by!(user_id: "provisioned")
     expect(teacher.school).to eq(school)
-    expect(teacher.authenticate("safe-password")).to eq(teacher)
-    expect(teacher.password_digest).not_to eq("safe-password")
+    expect(teacher.authenticate("Long River 8 Beacon 42")).to eq(teacher)
+    expect(teacher.password_digest).not_to eq("Long River 8 Beacon 42")
     expect(STDIN).to have_received(:noecho).twice
-    expect($stdout).not_to have_received(:puts).with(/safe-password/)
-    expect($stdout).not_to have_received(:print).with(/safe-password/)
+    expect($stdout).not_to have_received(:puts).with(/Long River 8 Beacon 42/)
+    expect($stdout).not_to have_received(:print).with(/Long River 8 Beacon 42/)
     expect(School.count).to eq(original_schools)
     expect(Student.count).to eq(original_students)
     session = ActionDispatch::Integration::Session.new(Rails.application)
-    session.post("/login", params: { session: { user_id: teacher.user_id, password: "safe-password" } })
+    session.post("/login", params: { session: { user_id: teacher.user_id, password: "Long River 8 Beacon 42" } })
     expect(session.response.status).to eq(303)
     expect(URI(session.response.location).path).to eq("/assignments")
     session.get("/assignments")
     expect(session.response.status).to eq(200)
   end
 
-  [ { password: "", confirmation: "" }, { confirmation: "different" }, { password: "a" * 73 }, { user_id: "" } ].each do |change|
+  [ { password: "", confirmation: "" }, { confirmation: "different" }, { password: "a" * 73 },
+    { password: "short" }, { password: "password123456789" }, { user_id: "" } ].each do |change|
     it "rejects invalid teacher input #{change.keys.inspect}" do
       inputs(**change)
       expect { expect { task.invoke }.to raise_error(SystemExit) }.not_to change(Teacher, :count)

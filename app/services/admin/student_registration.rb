@@ -12,6 +12,9 @@ class Admin::StudentRegistration
     @student.attendance_number = bounded_integer(attributes[:attendance_number], 1..40)
     @student.errors.add(:base, "学年は1〜3年、クラスは1〜10組、出席番号は1〜40番から選択してください。") unless @grade && @class_number && @student.attendance_number
     @student.errors.add(:password_confirmation, :blank) if attributes[:password_confirmation].blank?
+    if (message = PasswordPolicy.message_for(attributes[:password], role: :student))
+      @student.errors.add(:password, message)
+    end
     return false if @student.errors.any?
 
     # Share the registration lock with teacher registration/editing. A savepoint

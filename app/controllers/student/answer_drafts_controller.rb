@@ -14,6 +14,22 @@ class Student::AnswerDraftsController < ApplicationController
     render json: payload
   end
 
+  def recovery
+    return conflict("context_changed") unless AnswerDraftContext.valid_recovery?(
+      request.headers["X-Recovery-Context"], current_student, @assignment)
+
+    draft = AnswerDraft.find_by(student: current_student, assignment: @assignment)
+    return conflict("material_changed") if draft && draft.material_fingerprint != AnswerDraftContext.fingerprint(@assignment)
+    if submitted?
+      submission = current_student.submissions.find_by!(assignment: @assignment)
+      token = submission.answer_file.blob.metadata["handwritten_submission_token"] if submission.answer_file.attached?
+      return render json: { submitted: true, submission_token: token,
+        location: student_assignment_path(@assignment) }
+    end
+
+    render json: { submitted: false, draft: serialize(draft), csrf_token: form_authenticity_token }
+  end
+
   def update
     # Bound the raw request before Rails parses potentially large operation arrays.
     return draft_error("request_too_large", :content_too_large) if request.content_length.to_i > AnswerDraft::MAX_BYTES + 16.kilobytes

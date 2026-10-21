@@ -5,7 +5,7 @@ RSpec.describe Admin::StudentRegistration do
   include_context "AI grading records"
   let(:admin) { Admin.create!(school: school, user_id: "student-admin", password: "synthetic-admin-password") }
   let(:registration) { described_class.new(admin: admin) }
-  let(:attributes) { { grade: "1", class_number: "1", attendance_number: "1", password: "synthetic-student-password", password_confirmation: "synthetic-student-password" } }
+  let(:attributes) { { grade: "1", class_number: "1", attendance_number: "1", password: "739162840517294", password_confirmation: "739162840517294" } }
 
   def counts
     [ School, Teacher, Classroom, TeacherClassroom, Student ].map(&:count)
@@ -19,6 +19,13 @@ RSpec.describe Admin::StudentRegistration do
     expect(pupil.password_digest).not_to eq(attributes[:password])
     expect(Classroom.count).to eq(1)
     expect(TeacherClassroom.count).to eq(0)
+  end
+
+  it "rejects a predictable 15-digit password before creating a student" do
+    expect(registration.call(attributes: attributes.merge(password: "123456789012345",
+      password_confirmation: "123456789012345"))).to be(false)
+    expect(registration.student.errors[:password]).to be_present
+    expect(Student.count).to eq(0)
   end
 
   it "reuses the existing classroom without changing its data or teachers" do

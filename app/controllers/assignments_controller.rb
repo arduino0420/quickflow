@@ -1,5 +1,8 @@
 class AssignmentsController < ApplicationController
+  MAX_MATERIAL_BYTES = 25 * 1024 * 1024
+
   before_action :require_teacher_login
+  before_action :prevent_caching
   before_action :set_classrooms, only: [ :new, :create ]
   before_action :set_assignment, only: [ :edit, :update ]
   before_action :set_assignment_and_classroom, only: [ :show, :export ]
@@ -69,6 +72,7 @@ class AssignmentsController < ApplicationController
     @selected_classroom_ids = []
     @assignment.valid?
     @assignment.errors.add(:material_file, "を選択してください") unless @assignment.material_file.attached?
+    validate_new_material
     selected_classrooms = selected_classrooms_for_creation
 
     return render_creation_errors if @assignment.errors.any?
@@ -136,7 +140,7 @@ class AssignmentsController < ApplicationController
     raise "Could not enqueue question generation" unless job
   rescue StandardError => error
     QuestionGenerator.new.record_failure(@assignment)
-    Rails.logger.error("Question generation enqueue failed: #{error.class}: #{error.message}")
+    Rails.logger.error("Question generation enqueue failed: assignment_id=#{@assignment.id} #{error.class}")
   end
 
   def distributed_assignments
@@ -178,10 +182,34 @@ class AssignmentsController < ApplicationController
       point_per_question: failed_assignment.point_per_question_before_type_cast
     )
     @assignment.errors.copy!(failed_assignment.errors)
-    render :new, status: :unprocessable_entity
+    render :new, status: @material_too_large ? :content_too_large : :unprocessable_entity
   end
 
   def assignment_params
     params.require(:assignment).permit(:title, :point_per_question, :material_file)
+  end
+
+  def prevent_caching
+    response.headers["Cache-Control"] = "private, no-store"
+  end
+
+  def validate_new_material
+    upload = params.dig(:assignment, :material_file)
+    return unless upload.is_a?(ActionDispatch::Http::UploadedFile)
+
+    if upload.size > MAX_MATERIAL_BYTES
+      @assignment.errors.add(:material_file, "は25MiB以下のPDFを選択してください")
+      @material_too_large = true
+      return
+    end
+
+    filename = upload.original_filename
+    safe_name = filename.is_a?(String) && filename.valid_encoding? && filename.bytesize <= 255 &&
+      !filename.match?(/[\\\/\x00-\x1f\x7f]/) && File.extname(filename).casecmp?(".pdf")
+    upload.tempfile.rewind
+    pdf = safe_name && Marcel::MimeType.for(upload.tempfile) == "application/pdf"
+    @assignment.errors.add(:material_file, "は有効なPDFファイルを選択してください") unless pdf
+  ensure
+    upload.tempfile.rewind if upload.is_a?(ActionDispatch::Http::UploadedFile)
   end
 end

@@ -14,7 +14,7 @@ RSpec.describe "Operator admin provisioning" do
     allow($stdout).to receive(:puts)
   end
 
-  def inputs(code: "ADMINA", user_id: "provisioned-admin", password: "synthetic-admin-password", confirmation: password)
+  def inputs(code: "ADMINA", user_id: "provisioned-admin", password: "Long River 8 Beacon 42", confirmation: password)
     school
     allow(STDIN).to receive(:gets).and_return("y\n", "#{code}\n", "#{user_id}\n", "#{password}\n", "#{confirmation}\n")
   end
@@ -32,15 +32,15 @@ RSpec.describe "Operator admin provisioning" do
     end
     admin = Admin.find_by!(user_id: "provisioned-admin")
     expect(admin.school).to eq(school)
-    expect(admin.authenticate("synthetic-admin-password")).to eq(admin)
+    expect(admin.authenticate("Long River 8 Beacon 42")).to eq(admin)
     expect(STDIN).to have_received(:noecho).twice
-    expect($stdout).not_to have_received(:puts).with(/synthetic-admin-password/)
-    expect($stdout).not_to have_received(:print).with(/synthetic-admin-password/)
-    expect(logs.string).not_to include("synthetic-admin-password", admin.password_digest)
+    expect($stdout).not_to have_received(:puts).with(/Long River 8 Beacon 42/)
+    expect($stdout).not_to have_received(:print).with(/Long River 8 Beacon 42/)
+    expect(logs.string).not_to include("Long River 8 Beacon 42", admin.password_digest)
     original.each { |model, records| expect(model.order(:id).map(&:attributes)).to eq(records) }
 
     session = ActionDispatch::Integration::Session.new(Rails.application)
-    session.post("/login", params: { session: { user_id: admin.user_id, password: "synthetic-admin-password" } })
+    session.post("/login", params: { session: { user_id: admin.user_id, password: "Long River 8 Beacon 42" } })
     expect(session.response.status).to eq(422)
     session.get("/assignments")
     expect(session.response.status).to eq(303)
@@ -56,7 +56,8 @@ RSpec.describe "Operator admin provisioning" do
   end
 
   [ { password: "", confirmation: "" }, { confirmation: "different" }, { confirmation: "" },
-    { password: "a" * 73 }, { user_id: "" }, { user_id: " " } ].each do |change|
+    { password: "a" * 73 }, { password: "short" }, { password: "password123456789" },
+    { user_id: "" }, { user_id: " " } ].each do |change|
     it "rejects invalid admin input #{change.keys.inspect}: #{change.values.map(&:length)}" do
       inputs(**change)
 

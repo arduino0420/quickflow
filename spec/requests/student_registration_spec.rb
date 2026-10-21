@@ -4,7 +4,7 @@ RSpec.describe "Teacher-managed student registration", type: :request do
   let(:school) { School.create!(school_code: "REGISTER") }
   let(:teacher) { Teacher.create!(school: school, user_id: "register-teacher", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
-  let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "password123", password_confirmation: "password123" } }
+  let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "739162840517294", password_confirmation: "739162840517294" } }
 
   def login
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
@@ -26,14 +26,14 @@ RSpec.describe "Teacher-managed student registration", type: :request do
     expect(response).to redirect_to(new_student_path)
     pupil = Student.last
     expect(pupil.classroom).to eq(classroom)
-    expect(pupil.password_digest).not_to eq("password123")
-    expect(pupil.authenticate("password123")).to eq(pupil)
+    expect(pupil.password_digest).not_to eq(attributes[:password])
+    expect(pupil.authenticate(attributes[:password])).to eq(pupil)
     get assignments_path
     expect(response).to have_http_status(:ok)
     get student_assignments_path
     expect(response).to redirect_to(student_login_path)
     post student_login_path, params: { student_session: {
-      school_code: school.school_code, grade: 1, class_number: 1, attendance_number: 1, password: "password123"
+      school_code: school.school_code, grade: 1, class_number: 1, attendance_number: 1, password: attributes[:password]
     } }
     expect(response).to redirect_to(student_assignments_path)
     get assignments_path
@@ -102,7 +102,7 @@ RSpec.describe "Teacher-managed student registration", type: :request do
       teacher_id: teacher.id, role: "teacher", password_digest: "forged", user_id: "forged") }
     expect(response).to redirect_to(new_student_path)
     expect(Student.last.classroom).to eq(classroom)
-    expect(Student.last.authenticate("password123")).to be_truthy
+    expect(Student.last.authenticate(attributes[:password])).to be_truthy
     expect(Teacher.count).to eq(teacher_count)
   end
 

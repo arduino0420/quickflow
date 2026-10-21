@@ -45,8 +45,8 @@ RSpec.describe "Admin account management", type: :system do
     click_button "絞り込む"
     choose_operation(@first, "パスワード再設定")
     expect(page).to have_content("1年 1組 1番")
-    fill_in "新しいパスワード", with: "1234", exact: true
-    fill_in "新しいパスワード（確認）", with: "1234"
+    fill_in "新しいパスワード", with: "739162840517294", exact: true
+    fill_in "新しいパスワード（確認）", with: "739162840517294"
     fill_in "管理者自身のパスワード", with: "admin-secret"
     check "表示された対象と操作内容を確認しました"
     click_button "この生徒のパスワードを保存する"
@@ -56,13 +56,13 @@ RSpec.describe "Admin account management", type: :system do
     choose_operation(@second, "パスワード再設定")
     expect(page).to have_content("1年 1組 2番")
     expect(page).not_to have_field("管理者自身のパスワード")
-    fill_in "新しいパスワード", with: "aB!2", exact: true
-    fill_in "新しいパスワード（確認）", with: "aB!2"
+    fill_in "新しいパスワード", with: "584217963045781", exact: true
+    fill_in "新しいパスワード（確認）", with: "584217963045781"
     check "表示された対象と操作内容を確認しました"
     click_button "この生徒のパスワードを保存する"
     expect(page).to have_content("生徒ID #{@second.id} のパスワードを再設定しました。")
-    expect(@first.reload.authenticate("1234")).to be_truthy
-    expect(@second.reload.authenticate("aB!2")).to be_truthy
+    expect(@first.reload.authenticate("739162840517294")).to be_truthy
+    expect(@second.reload.authenticate("584217963045781")).to be_truthy
   end
 
   it "confirms an attendance correction before committing, then deletes only an explicitly confirmed unused account" do

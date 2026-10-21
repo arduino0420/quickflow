@@ -26,6 +26,7 @@
   <div>
     <%= form.label :password, "パスワード" %>
     <%= form.password_field :password, required: true, autocomplete: "new-password", value: nil %>
+    <p>推測しにくい数字15桁を設定してください。</p>
   </div>
   <div>
     <%= form.label :password_confirmation, "パスワード（確認）" %>
