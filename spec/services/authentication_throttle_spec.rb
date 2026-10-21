@@ -43,8 +43,8 @@ RSpec.describe AuthenticationThrottle do
     expect(limiter.authenticate("synthetic-secret")).to be(true)
     expect(AuthenticationAttemptBucket.count).to eq(0)
     10.times { limiter.authenticate("wrong") }
-    teacher.update!(password: "replacement-secret")
-    expect(limiter.authenticate("replacement-secret")).to be(true)
+    teacher.update!(password: "Replacement8392")
+    expect(limiter.authenticate("Replacement8392")).to be(true)
   end
 
   it "uses both approved reauthentication limits independently of login" do
@@ -78,7 +78,7 @@ RSpec.describe AuthenticationThrottle do
     teacher.reload
     expect(limiter.authenticate("synthetic-secret")).to be(true)
 
-    password = "  A long passphrase with spaces 492  "
+    password = "LegacyChanged492"
     teacher.update!(password: password)
     expect(limiter.authenticate(password)).to be(true)
   end

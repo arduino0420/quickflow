@@ -6,7 +6,7 @@ RSpec.describe "Admin student registration", type: :request do
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher", password: "teacher-password") }
   let(:classroom) { Classroom.create!(school: school, grade: 1, class_number: 1, teachers: [ teacher ]) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "existing-password") }
-  let(:attributes) { { grade: "1", class_number: "1", attendance_number: "2", password: "739162840517294", password_confirmation: "739162840517294" } }
+  let(:attributes) { { grade: "1", class_number: "1", attendance_number: "2", password: "58392047", password_confirmation: "58392047" } }
 
   def login_admin
     post admin_login_path, params: { admin_session: { user_id: admin.user_id, password: "synthetic-admin-password" } }

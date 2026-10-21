@@ -13,7 +13,7 @@ RSpec.describe CredentialSession do
     expect(described_class.valid?(teacher, proof.reverse)).to be(false)
     teacher.touch
     expect(described_class.valid?(teacher.reload, proof)).to be(true)
-    teacher.update!(password: "synthetic-secret")
+    teacher.update!(password: "Synthetic8392")
     expect(described_class.valid?(teacher.reload, proof)).to be(false)
   end
 end

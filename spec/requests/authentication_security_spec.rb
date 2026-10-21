@@ -51,7 +51,7 @@ RSpec.describe "Authentication security boundaries", type: :request do
       login(role, actor)
       login(role, actor, browser: other)
       expect(other.response.status).to eq(303)
-      replacement = role == :student ? "837416205938174" : "Replacement #{role} Passphrase 482"
+      replacement = { student: "65820473", teacher: "Teacher8392", admin: "Replacement admin Passphrase 482" }.fetch(role)
       actor.update!(password: replacement)
       get protected_path(role)
       expect(response.status).to eq(303)
@@ -139,7 +139,7 @@ RSpec.describe "Authentication security boundaries", type: :request do
     get edit_admin_student_password_reset_path(target)
     token = Nokogiri::HTML(response.body).at_css('input[name="edit_token"]')["value"]
     patch admin_student_password_reset_path(target), params: { edit_token: token, confirmed: "1", admin_password: password,
-      student: { password: "837416205938174", password_confirmation: "837416205938174" } }, headers: { "REMOTE_ADDR" => "192.0.2.20" }
+      student: { password: "65820473", password_confirmation: "65820473" } }, headers: { "REMOTE_ADDR" => "192.0.2.20" }
   end
 
   it "limits reauthentication across targets and invalidates all admin proof after password change" do
@@ -156,7 +156,7 @@ RSpec.describe "Authentication security boundaries", type: :request do
       expect(response.status).to eq(303)
       expect(request.session[:admin_reauthentication]).to be_present
       admin.update!(password: "replacement-admin-secret")
-      patch admin_student_password_reset_path(other), params: { confirmed: "1", student: { password: "837416205938174", password_confirmation: "837416205938174" } }
+      patch admin_student_password_reset_path(other), params: { confirmed: "1", student: { password: "65820473", password_confirmation: "65820473" } }
       expect(response.status).to eq(303)
       expect(other.reload.authenticate("synthetic-secret")).to be_truthy
     end
@@ -165,7 +165,7 @@ RSpec.describe "Authentication security boundaries", type: :request do
   it "returns 401 without redirecting or mutating drafts/submissions after revocation" do
     login(:student)
     token = AnswerDraftContext.issue(student, assignment)
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     original = [ AnswerDraft.count, Submission.count, ActiveStorage::Blob.count ]
     headers = { "X-Draft-Context" => token, "X-Handwritten-Submission" => "1" }
     get student_assignment_answer_draft_path(assignment), headers: headers
@@ -191,7 +191,7 @@ RSpec.describe "Authentication security boundaries", type: :request do
     allow_any_instance_of(Student::AnswerDraftsController).to receive(:valid_context?).and_wrap_original do |original|
       result = original.call
       unless changed
-        student.update!(password: "837416205938174")
+        student.update!(password: "65820473")
         changed = true
       end
       result
@@ -210,7 +210,7 @@ RSpec.describe "Authentication security boundaries", type: :request do
     token = AnswerDraftContext.issue(student, assignment)
     allow_any_instance_of(Student::SubmissionsController).to receive(:upload_answer_pdf).and_wrap_original do |original, upload|
       result = original.call(upload)
-      student.update!(password: "837416205938174")
+      student.update!(password: "65820473")
       result
     end
     path = student_assignment_submission_path(assignment)
