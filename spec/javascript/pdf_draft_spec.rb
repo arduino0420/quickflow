@@ -137,7 +137,7 @@ RSpec.describe "PDF draft autosave lifecycle" do
         [422,'draft_operations_limit','線の数'],
         [422,'draft_points_limit','細かな動きの記録'],
         [422,'invalid_data','正しく読み取れなかった'],
-        [422,'csrf_failed','ログイン状態'],
+        [422,'csrf_failed','ログインの有効期限'],
         [422,'<secret student answer>','保存の要求を受け付けられませんでした'],
         [422,null,'保存の要求を受け付けられませんでした'],
         [400,'invalid_json','正しく送信'],[415,'unsupported_content_type','正しく送信']
@@ -154,7 +154,8 @@ RSpec.describe "PDF draft autosave lifecycle" do
         assert.equal(d.blocked,!capacity);assert.equal(d.saveBlocked,capacity);
         assert.equal(d.failed,true);assert.equal(editable,capacity);assert.equal(d.dirty,true);
         assert.equal(d.version,null);assert.equal(JSON.stringify(value),original);assert.equal(JSON.stringify(d.lastAttempt),original);
-        const message=messages.at(-1)[0];assert(message.includes(expected),message);assert(message.includes('再読み込み'));
+        const message=messages.at(-1)[0];assert(message.includes(expected),message);
+        assert(message.includes(reason==='csrf_failed'?'画面を閉じず':'再読み込み'));
         assert(!message.includes('secret'));assert(!message.includes('private'));assert.notEqual(messages.at(-1)[1],true);
         const before=calls;d.changed();await d.retry();await d.save();
         if(capacity) {

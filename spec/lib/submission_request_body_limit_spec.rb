@@ -40,6 +40,29 @@ RSpec.describe SubmissionRequestBodyLimit do
     expect(headers["cache-control"]).to eq("no-store")
   end
 
+  it "bounds teacher material requests and explains the 413 error" do
+    app = ->(_request) { raise "oversized material reached Rails" }
+    input = instance_double(StringIO)
+    expect(input).not_to receive(:read)
+    env = { "REQUEST_METHOD" => "POST", "PATH_INFO" => "/assignments",
+      "CONTENT_LENGTH" => (described_class::MAX_BYTES + 1).to_s, "rack.input" => input }
+
+    status, _headers, body = described_class.new(app).call(env)
+
+    expect(status).to eq(413)
+    expect(body.join).to include("教材PDFは25MiB以下")
+  end
+
+  it "allows a teacher request of exactly 32MiB and rejects one byte more without Content-Length" do
+    app = ->(request) { request["rack.input"].read; [ 200, {}, [] ] }
+    env = { "REQUEST_METHOD" => "POST", "PATH_INFO" => "/assignments",
+      "CONTENT_LENGTH" => "", "rack.input" => StringIO.new("x" * described_class::MAX_BYTES) }
+    expect(described_class.new(app).call(env).first).to eq(200)
+
+    env["rack.input"] = StringIO.new("x" * (described_class::MAX_BYTES + 1))
+    expect(described_class.new(app).call(env).first).to eq(413)
+  end
+
   it "counts streamed bodies and accepts the exact limit" do
     input = StringIO.new("x" * described_class::MAX_BYTES)
     env = { "REQUEST_METHOD" => "POST", "PATH_INFO" => "/student/assignments/12/submission",

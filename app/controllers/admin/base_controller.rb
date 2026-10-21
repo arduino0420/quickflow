@@ -8,7 +8,10 @@ class Admin::BaseController < ApplicationController
   private
 
   def current_admin
-    Admin.find_by(id: session[:admin_id])
+    return @current_admin if defined?(@current_admin)
+
+    record = Admin.find_by(id: session[:admin_id])
+    @current_admin = CredentialSession.valid?(record, session[:credential_proof]) ? record : nil
   end
 
   def require_admin_login
@@ -29,7 +32,9 @@ class Admin::BaseController < ApplicationController
     password = params[:admin_password]
     return false unless password.nil? || (password.is_a?(String) && password.valid_encoding? && !password.include?("\0"))
     return true if !always && password.blank? && admin_reauthenticated?
-    return false unless password.is_a?(String) && password.present? && current_admin.authenticate(password)
+    return false if password.blank?
+    return false unless authenticate_with_limit(current_admin, role: :admin, identity: current_admin.user_id,
+      password: password, purpose: :reauthentication)
 
     if !always && !admin_reauthenticated?
       session[:admin_reauthentication] = { "admin_id" => current_admin.id, "school_id" => current_admin.school_id,

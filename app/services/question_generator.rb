@@ -24,9 +24,10 @@ class QuestionGenerator
 
         @client ||= AiClient.build
         begin
-          uploaded_file = @client.files.create(file: Pathname.new(file.path), purpose: "user_data")
+          uploaded_file = @client.files.create(file: Pathname.new(file.path), purpose: "user_data",
+            expires_after: { anchor: "created_at", seconds: 3600 })
           response = @client.responses.create(
-            model: @model, instructions: prompt,
+            model: @model, instructions: prompt, store: false,
             text: { format: { type: "json_schema", name: "generated_questions", strict: true, schema: response_schema } },
             input: [ { role: "user", content: [ { type: "input_file", file_id: uploaded_file.id } ] } ]
           )
@@ -50,6 +51,8 @@ class QuestionGenerator
           record_failure(assignment)
           log_failure(assignment, response)
           raise
+        ensure
+          AiFileCleanupJob.schedule(uploaded_file.id) if uploaded_file&.id
         end
       end
     end

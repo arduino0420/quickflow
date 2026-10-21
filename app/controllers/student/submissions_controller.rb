@@ -1,6 +1,8 @@
 class Student::SubmissionsController < ApplicationController
   MAX_PDF_BYTES = 25 * 1024 * 1024
 
+  rescue_from ActionController::InvalidAuthenticityToken, with: :reject_handwritten_csrf
+
   before_action :require_student_login
 
   def show
@@ -63,6 +65,13 @@ class Student::SubmissionsController < ApplicationController
   end
 
   private
+
+  def reject_handwritten_csrf
+    raise ActionController::InvalidAuthenticityToken unless handwritten?
+
+    response.headers["Cache-Control"] = "private, no-store"
+    render json: { error: "csrf_failed" }, status: :unprocessable_content
+  end
 
   def upload_answer_pdf(upload)
     @uploaded_blob = ActiveStorage::Blob.build_after_unfurling(io: upload.tempfile,
@@ -153,7 +162,14 @@ class Student::SubmissionsController < ApplicationController
   end
 
   def require_student_login
-    redirect_to student_login_path, status: :see_other unless current_student
+    return if current_student
+
+    if handwritten? || request.format.json? || action_name == "show"
+      response.headers["Cache-Control"] = "private, no-store"
+      head :unauthorized
+    else
+      redirect_to student_login_path, status: :see_other
+    end
   end
 
   def existing_submission

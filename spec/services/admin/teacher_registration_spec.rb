@@ -6,7 +6,14 @@ RSpec.describe Admin::TeacherRegistration do
 
   let(:admin) { Admin.create!(school: school, user_id: "registration-admin", password: "synthetic-admin-password") }
   let(:registration) { described_class.new(admin: admin) }
-  let(:attributes) { { user_id: "new-teacher", password: "synthetic-teacher-password", password_confirmation: "synthetic-teacher-password" } }
+  let(:attributes) { { user_id: "new-teacher", password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42" } }
+
+  it "rejects a common staff password before creating a teacher" do
+    expect(registration.call(attributes: attributes.merge(password: "password123456789",
+      password_confirmation: "password123456789"))).to be(false)
+    expect(registration.teacher.errors[:password]).to be_present
+    expect(Teacher.where(school: school)).to be_empty
+  end
 
   def counts
     [ Teacher, Classroom, TeacherClassroom ].map(&:count)

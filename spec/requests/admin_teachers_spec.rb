@@ -10,7 +10,7 @@ RSpec.describe "Admin teacher management", type: :request do
   let(:foreign_teacher) { Teacher.create!(school: foreign_school, user_id: "private-foreign-teacher", password: "foreign-password") }
   let(:foreign_classroom) { Classroom.create!(school: foreign_school, teachers: [ foreign_teacher ], grade: 3, class_number: 10) }
   let(:attributes) do
-    { user_id: "registered-teacher", password: "synthetic-teacher-password", password_confirmation: "synthetic-teacher-password",
+    { user_id: "registered-teacher", password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42",
       classroom_codes: [ "1-1", "2-2" ] }
   end
 

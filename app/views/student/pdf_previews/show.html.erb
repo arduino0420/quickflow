@@ -13,11 +13,17 @@
   data-pdf-preview-submission-url-value="<%= student_assignment_submission_path(@assignment) %>"
   data-pdf-preview-draft-url-value="<%= student_assignment_answer_draft_path(@assignment) %>"
   data-pdf-preview-draft-context-value="<%= @draft_context %>"
+  data-pdf-preview-recovery-url-value="<%= recovery_student_assignment_answer_draft_path(@assignment) %>"
+  data-pdf-preview-recovery-context-value="<%= @recovery_context %>"
   data-pdf-preview-assets-url-value="<%= request.script_name %>/vendor/pdfjs/6.4.299/"
   data-action="turbo:before-cache@document->pdf-preview#disconnect resize@window->pdf-preview#scheduleRender blur@window->pdf-preview#finishInput scroll@window->pdf-preview#scrolled beforeunload@window->pdf-preview#warnUnsaved turbo:before-visit@document->pdf-preview#confirmLeave online@window->pdf-preview#retryDraft">
   <p data-pdf-preview-target="status" role="status" aria-live="polite">問題を読み込んでいます。</p>
   <p class="pdf-preview-draft-status" data-pdf-preview-target="draftStatus" role="status" aria-live="polite">下書きの復元中…</p>
   <button type="button" data-pdf-preview-target="retry" data-action="pdf-preview#retryDraft" hidden>保存を再試行</button>
+  <div data-pdf-preview-target="recovery" hidden role="alert">
+    <p>ログインの有効期限が切れました。答案画面を閉じず、<%= link_to "別タブで再ログイン", student_login_path, target: "_blank", rel: "noopener" %>してください。</p>
+    <button type="button" data-action="pdf-preview#resumeAnswer" data-pdf-preview-target="resume">再開を確認</button>
+  </div>
   <aside class="pdf-input-diagnostics" data-pdf-preview-target="diagnostics" aria-label="開発者用入力診断" hidden>
     <strong>開発者用入力診断（この画面内のみ）</strong>
     <p>リセット後に10画書き、ペンdownと開始数を比較してください。イベントが届かない筆記は自動計測できません。</p>

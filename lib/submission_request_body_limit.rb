@@ -1,8 +1,7 @@
-# Bound request streaming before Rails parses multipart uploads, only on the
-# student submission endpoint. This keeps other upload and form routes intact.
+# Bound request streaming before Rails parses student answers or new materials.
 class SubmissionRequestBodyLimit
   MAX_BYTES = 32 * 1024 * 1024
-  PATH = %r{\A/student/assignments/[^/.]+/submission(?:\.[^/.]+)?\z}
+  PATH = %r{\A(?:/student/assignments/[^/.]+/submission(?:\.[^/.]+)?|/assignments(?:\.html)?)\z}
 
   class TooLarge < StandardError; end
 
@@ -65,20 +64,22 @@ class SubmissionRequestBodyLimit
     path = ActionDispatch::Journey::Router::Utils.normalize_path(env["PATH_INFO"])
     return @app.call(env) unless PATH.match?(path)
 
-    return reject if env["CONTENT_LENGTH"].to_i > MAX_BYTES
+    return reject(path) if env["CONTENT_LENGTH"].to_i > MAX_BYTES
 
     original_input = env["rack.input"]
     env["rack.input"] = LimitedInput.new(original_input, MAX_BYTES)
     @app.call(env)
   rescue TooLarge
-    reject
+    reject(path)
   ensure
     env["rack.input"] = original_input if original_input
   end
 
   private
 
-  def reject
-    [ 413, { "content-type" => "text/plain; charset=utf-8", "cache-control" => "no-store" }, [ "リクエストが上限サイズを超えています。" ] ]
+  def reject(path)
+    message = path.start_with?("/student/") ? "リクエストが上限サイズを超えています。" :
+      "教材PDFは25MiB以下を選択してください。ファイルを小さくして、もう一度配信してください。"
+    [ 413, { "content-type" => "text/plain; charset=utf-8", "cache-control" => "no-store" }, [ message ] ]
   end
 end

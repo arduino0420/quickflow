@@ -44,7 +44,7 @@ RSpec.describe "Assignment creation", type: :request do
     expect(points[:step]).to eq("1")
     file = document.at_css('input[name="assignment[material_file]"][type="file"]')
     expect(file).to be_present
-    expect(file[:accept]).to be_nil
+    expect(file[:accept]).to eq(".pdf,application/pdf")
     expect(file["data-direct-upload-url"]).to be_nil
     %w[teacher_id published_at].each do |field|
       expect(document.at_css("[name^='assignment[#{field}]']")).to be_nil
@@ -94,7 +94,7 @@ RSpec.describe "Assignment creation", type: :request do
       it "keeps distribution successful and records a #{failure} enqueue failure" do
         teacher_login
         if failure == :exception
-          allow(QuestionGenerationJob).to receive(:perform_later).and_raise("Queue unavailable")
+          allow(QuestionGenerationJob).to receive(:perform_later).and_raise("PRIVATE API KEY AND ANSWER")
         else
           allow(QuestionGenerationJob).to receive(:perform_later).and_return(false)
         end
@@ -105,24 +105,78 @@ RSpec.describe "Assignment creation", type: :request do
         expect(assignment.classrooms).to contain_exactly(classroom)
         expect(QuestionGenerator.new.failed?(assignment)).to be(true)
         expect(Rails.logger).to have_received(:error).with(/Question generation enqueue failed/).once
+        expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
       end
     end
   end
 
-  { "material.pdf" => "application/pdf", "material.txt" => "text/plain" }.each do |filename, content_type|
-    it "creates an assignment with #{filename}" do
-      teacher_login
+  it "creates an assignment with a valid PDF" do
+    teacher_login
 
-      expect do
-        post assignments_path, params: { assignment: attributes.merge(material_file: upload(filename, content_type)) }
-      end.to change(Assignment, :count).by(1)
+    expect do
+      post assignments_path, params: { assignment: attributes }
+    end.to change(Assignment, :count).by(1)
       .and change(AssignmentClassroom, :count).by(1)
 
-      expect(response).to have_http_status(:see_other)
-      assignment = Assignment.last
-      expect(assignment.material_file).to be_attached
-      expect(assignment.material_file.filename.to_s).to eq(filename)
-      expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files", filename)))
+    expect(response).to have_http_status(:see_other)
+    assignment = Assignment.last
+    expect(assignment.material_file).to be_attached
+    expect(assignment.material_file.filename.to_s).to eq("material.pdf")
+    expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+  end
+
+  [ "text/plain", "application/pdf" ].each do |declared_type|
+    it "rejects non-PDF content declared as #{declared_type} without creating records or jobs" do
+      teacher_login
+      counts = [ Assignment.count, AssignmentClassroom.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
+
+      post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.txt", declared_type)) }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.body).to include("有効なPDF")
+      expect([ Assignment.count, AssignmentClassroom.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]).to eq(counts)
+      expect(QuestionGenerationJob).not_to have_been_enqueued
+    end
+  end
+
+  it "accepts PDF content even when the declared MIME type differs" do
+    teacher_login
+    expect { post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.pdf", "text/plain")) } }
+      .to change(Assignment, :count).by(1)
+    expect(Assignment.last.material_file).to be_attached
+  end
+
+  it "does not persist a path-like upload filename" do
+    teacher_login
+    material = Rack::Test::UploadedFile.new(Rails.root.join("spec/fixtures/files/material.pdf"), "application/pdf",
+      original_filename: "../material.pdf")
+    expect { post assignments_path, params: { assignment: attributes.merge(material_file: material) } }
+      .to change(Assignment, :count).by(1)
+    expect(Assignment.last.material_file.filename.to_s).to eq("material.pdf")
+  end
+
+  [ 25 * 1024 * 1024, 25 * 1024 * 1024 + 1 ].each do |bytes|
+    it "applies the 25MiB material boundary at #{bytes} bytes" do
+      teacher_login
+      Tempfile.create([ "boundary", ".pdf" ]) do |file|
+        file.write("%PDF-1.4\n")
+        file.truncate(bytes)
+        file.rewind
+        material = Rack::Test::UploadedFile.new(file.path, "application/pdf", original_filename: "material.pdf")
+        counts = [ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
+
+        post assignments_path, params: { assignment: attributes.merge(material_file: material) }
+
+        if bytes == 25 * 1024 * 1024
+          expect(response).to have_http_status(:see_other)
+          expect(Assignment.count).to eq(counts.first + 1)
+        else
+          expect(response).to have_http_status(:content_too_large)
+          expect(response.body).to include("25MiB以下")
+          expect([ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]).to eq(counts)
+          expect(QuestionGenerationJob).not_to have_been_enqueued
+        end
+      end
     end
   end
 

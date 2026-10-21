@@ -6,9 +6,10 @@ import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus",
+  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus", "recovery", "resume",
     "diagnostics", "diagnosticSummary", "diagnosticEvents"]
-  static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String, submissionUrl: String }
+  static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String,
+    recoveryUrl: String, recoveryContext: String, submissionUrl: String }
 
   connect() {
     this.previousTurboSetting = document.documentElement.getAttribute("data-turbo")
@@ -517,7 +518,8 @@ export default class extends Controller {
         this.draftEditable = value
         if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || !this.pagesReady || !value
         if (!value) this.finishInput()
-      }
+      },
+      expired: () => this.showRecovery()
     })
     await this.draft.start()
   }
@@ -531,6 +533,76 @@ export default class extends Controller {
   async retryDraft() {
     await this.draft?.retry()
     if (this.active) this.queueRender()
+  }
+
+  showRecovery() {
+    if (this.hasRecoveryTarget) this.recoveryTarget.hidden = false
+    if (this.hasResumeTarget) this.resumeTarget.disabled = false
+    if (this.hasSubmitTarget) this.submitTarget.disabled = true
+    this.draftEditable = false
+    this.finishInput()
+  }
+
+  async resumeAnswer() {
+    if (!this.draft?.blocked || this.exporting || this.draft.saving || this.draft.retrying || this.draft.submitting) return
+    const session = this.session
+    this.resumeTarget.disabled = true
+    this.showDraftStatus("再ログインと答案の状態を確認しています…")
+    try {
+      const response = await fetch(this.recoveryUrlValue, {
+        credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000),
+        headers: { "Accept": "application/json", "X-Draft-Context": this.draftContextValue,
+          "X-Recovery-Context": this.recoveryContextValue }
+      })
+      if (!response.ok) { const error = new Error("recovery rejected"); error.code = response.status; throw error }
+      const state = await response.json()
+      if (!this.current(session)) return
+      if (state.submitted) {
+        if (!this.submissionAttempt || state.submission_token !== this.submissionAttempt.token ||
+            this.draft.revision !== this.submissionAttempt.revision) {
+          const error = new Error("another submission exists"); error.code = 409; throw error
+        }
+        this.submissionConfirmed = true
+        this.draft.stop()
+        window.location.assign(state.location)
+        return
+      }
+      if (typeof state.csrf_token !== "string" || !state.csrf_token) throw new Error("invalid recovery")
+      document.querySelector('meta[name="csrf-token"]').content = state.csrf_token
+      const submission = await this.submissionState()
+      if (!this.current(session)) return
+      if (submission.submitted) {
+        if (!this.submissionAttempt || submission.submission_token !== this.submissionAttempt.token ||
+            this.draft.revision !== this.submissionAttempt.revision) {
+          const error = new Error("another submission exists"); error.code = 409; throw error
+        }
+        this.submissionConfirmed = true
+        this.draft.stop()
+        window.location.assign(submission.location)
+        return
+      }
+      let resumed
+      if (this.draft.ready) resumed = this.draft.resume(state.draft)
+      else {
+        await this.draft.start()
+        resumed = this.draft.ready && !this.draft.blocked
+      }
+      if (!resumed) {
+        const error = new Error("draft conflict"); error.code = 409; throw error
+      }
+      this.recoveryTarget.hidden = true
+      this.showDraftStatus(this.draft.dirty ? "未保存" : "保存済み")
+      this.submitStatusTarget.textContent = ""
+    } catch (error) {
+      if (!this.current(session)) return
+      this.showDraftStatus(error.code === 401 ?
+        "再ログインが確認できません。答案画面を閉じず、別タブで再ログインしてください。" :
+        [403, 404, 409].includes(error.code) ?
+          "生徒・クラス・教材・下書き・提出状態が一致しません。答案画面を閉じず、先生に確認してください。" :
+          "確認できませんでした。答案はこの画面に残っています。接続を確認して再度お試しください。")
+    } finally {
+      if (this.current(session)) this.resumeTarget.disabled = false
+    }
   }
 
   warnUnsaved(event) {
@@ -553,6 +625,9 @@ export default class extends Controller {
     if (!response.ok) {
       const error = new Error("submission failed")
       error.code = response.status
+      if (response.status === 422) {
+        try { error.reason = (await response.json()).error } catch { /* Untrusted or empty response. */ }
+      }
       throw error
     }
     return response.json()
@@ -623,14 +698,17 @@ export default class extends Controller {
         status.setAttribute("role", "alert")
         status.textContent = error.code === 409 ?
           "教材または下書きが変更されています。提出を停止しました。手書きが残るこの画面を閉じず、先生に確認してください。" :
-          [401, 403, 404].includes(error.code) ?
+          error.code === 401 || (error.code === 422 && error.reason === "csrf_failed") ?
+            "ログインの有効期限が切れました。答案画面を閉じず、別タブで再ログインしてください。" :
+          [403, 404].includes(error.code) ?
             "ログイン状態または小テストの利用権限を確認できません。手書きが残るこの画面を閉じず、先生に確認してください。" :
           error.code === 413 ?
             "PDFのサイズが上限を超えています。手書きと下書きは残っています。ページ数を減らすか先生に確認してください。" :
             "提出できませんでした。手書きはこの画面に残っています。保存状況と接続を確認して、もう一度お試しください。"
-        if ([401, 403, 409, 404].includes(error.code)) {
+        if ([401, 403, 409, 404].includes(error.code) || (error.code === 422 && error.reason === "csrf_failed")) {
           this.draft.blocked = true
           this.draftEditable = false
+          if (error.code === 401 || (error.code === 422 && error.reason === "csrf_failed")) this.showRecovery()
         }
       }
     } finally {

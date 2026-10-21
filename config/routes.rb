@@ -37,7 +37,9 @@ Rails.application.routes.draw do
       get :material, on: :member
       get :result, on: :member
       get :answer, on: :member
-      resource :answer_draft, only: [ :show, :update ]
+      resource :answer_draft, only: [ :show, :update ] do
+        get :recovery, on: :member
+      end
       resource :pdf_preview, only: [ :show ], controller: "pdf_previews"
       resource :submission, only: [ :show, :create ]
     end

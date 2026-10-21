@@ -25,6 +25,7 @@ RSpec.describe AnswerGrader, type: :model do
     expect(results.all? { |result| result[:prompt_version] == described_class::PROMPT_VERSION && result[:graded_at].present? }).to be(true)
     expect(responses).to have_received(:create).once do |request|
       expect(request[:model]).to eq("configured-grading-model")
+      expect(request[:store]).to be(false)
       input = JSON.parse(request[:input])["problems"]
       expect(input.map { |item| item["question_id"] }).to eq([ question.id, second.id ])
       expect(input.map { |item| item["student_answer"] }).to eq([ "5x", "x*2" ])

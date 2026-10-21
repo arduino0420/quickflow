@@ -45,8 +45,8 @@ RSpec.describe Admin::TeacherUpdate do
   end
 
   it "changes only the password when supplied with matching confirmation" do
-    expect(update(attributes: { password: "new-password", password_confirmation: "new-password" })).to be(true)
-    expect(teacher.reload.authenticate("new-password")).to eq(teacher)
+    expect(update(attributes: { password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42" })).to be(true)
+    expect(teacher.reload.authenticate("Long River 8 Beacon 42")).to eq(teacher)
     expect(teacher.authenticate("password123")).to be(false)
   end
 

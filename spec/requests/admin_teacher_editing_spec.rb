@@ -67,25 +67,28 @@ RSpec.describe "Admin teacher editing", type: :request do
 
   it "resets a password and allows teacher login with the new password only" do
     edit_form
-    patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "new-password", password_confirmation: "new-password") }
+    patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42") }
     expect(response).to redirect_to(admin_teachers_path)
     post login_path, params: { session: { user_id: teacher.user_id, password: "teacher-password" } }
     expect(response).to have_http_status(422)
-    post login_path, params: { session: { user_id: teacher.user_id, password: "new-password" } }
+    post login_path, params: { session: { user_id: teacher.user_id, password: "Long River 8 Beacon 42" } }
     expect(response).to redirect_to(assignments_path)
   end
 
-  it "keeps an already logged-in teacher session after password reset under the current session design" do
+  it "rejects an old teacher session after password reset and accepts the new credential" do
     teacher_client = ActionDispatch::Integration::Session.new(Rails.application)
     teacher_client.post login_path, params: { session: { user_id: teacher.user_id, password: "teacher-password" } }
     expect(teacher_client.response.status).to eq(303)
     expect(teacher_client.response.location).to end_with(assignments_path)
     edit_form
-    patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "new-password", password_confirmation: "new-password") }
+    patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42") }
     expect(response).to redirect_to(admin_teachers_path)
     teacher_client.get assignments_path
+    expect(teacher_client.response.status).to eq(303)
+    expect(teacher_client.response.location).to end_with(login_path)
+    teacher_client.post login_path, params: { session: { user_id: teacher.user_id, password: "Long River 8 Beacon 42" } }
+    teacher_client.get assignments_path
     expect(teacher_client.response.status).to eq(200)
-    expect(teacher_client.request.session[:teacher_id]).to eq(teacher.id)
   end
 
   [ { password: "private-edited-secret", password_confirmation: "wrong" }, { password: "private-edited-secret", password_confirmation: "" },
@@ -197,11 +200,11 @@ RSpec.describe "Admin teacher editing", type: :request do
     originals = owners.to_h { |owner| [ owner, owner.logger ] }
     begin
       owners.each { |owner| owner.logger = ActiveSupport::Logger.new(output) }
-      patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "private-new-password", password_confirmation: "private-confirmation") }
+      patch admin_teacher_path(teacher), params: { admin_password: "admin-password", confirmed: "1", teacher: attributes.merge(password: "private-Long River 8 Beacon 42", password_confirmation: "private-confirmation") }
     ensure
       originals.each { |owner, logger| owner.logger = logger }
     end
     expect(response).to have_http_status(422)
-    expect(response.body + output.string).not_to include("private-new-password", "private-confirmation")
+    expect(response.body + output.string).not_to include("private-Long River 8 Beacon 42", "private-confirmation")
   end
 end

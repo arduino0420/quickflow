@@ -21,6 +21,7 @@
     <p>パスワードを変更しない場合は、両方のパスワード欄を空欄にしてください。</p>
     <%= form.label :password, "新しいパスワード" %>
     <%= form.password_field :password, autocomplete: "new-password", value: nil %>
+    <p>変更する場合は15文字以上、72バイト以下で設定してください。</p>
   </div>
   <div>
     <%= form.label :password_confirmation, "新しいパスワード（確認）" %>

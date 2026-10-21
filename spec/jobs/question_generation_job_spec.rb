@@ -146,7 +146,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
     it "preserves prepared answers and readings after a #{failure} grading enqueue failure" do
       original_reading = submission.extracted_text
       if failure == :exception
-        allow(AnswerGradingJob).to receive(:perform_later).and_raise("Queue unavailable")
+        allow(AnswerGradingJob).to receive(:perform_later).and_raise("PRIVATE API KEY AND ANSWER")
       else
         allow(AnswerGradingJob).to receive(:perform_later).and_return(false)
       end
@@ -157,6 +157,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
       expect(assignment.questions.count).to eq(1)
       expect(QuestionGenerator.new.failed?(assignment)).to be_falsey
       expect(Rails.logger).to have_received(:error).with(/QuestionGenerationJob grading enqueue failed/).once
+      expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
       expect(responses).to have_received(:create).once
     end
   end

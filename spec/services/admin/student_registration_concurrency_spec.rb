@@ -34,7 +34,7 @@ RSpec.describe "Admin student registration concurrency" do
             ready << true
             Timeout.timeout(5) { release.pop }
             registration.call(attributes: { grade: "1", class_number: "1", attendance_number: number,
-              password: "synthetic-password", password_confirmation: "synthetic-password" })
+              password: "739162840517294", password_confirmation: "739162840517294" })
           ensure
             connection.execute("SET lock_timeout = DEFAULT")
           end

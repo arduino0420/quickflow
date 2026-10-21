@@ -7,6 +7,7 @@ class Student::PdfPreviewsController < ApplicationController
       .where(teachers: { school_id: current_student.classroom.school_id })
       .find(params[:assignment_id])
     @draft_context = AnswerDraftContext.issue(current_student, @assignment)
+    @recovery_context = AnswerDraftContext.issue_recovery(current_student, @assignment)
   end
 
   private

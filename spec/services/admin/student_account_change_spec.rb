@@ -110,14 +110,22 @@ RSpec.describe Admin::StudentAccountChange do
     expect(Student.exists?(student.id)).to be(true)
   end
 
-  it "allows numeric, alphabetic and symbolic passwords using the existing hash and rejects replay" do
-    [ "1234", "abcd", "aB!1" ].each do |password|
+  it "accepts new random-looking 15-digit passwords using the existing hash and rejects replay" do
+    [ "739162840517294", "584217963045781" ].each do |password|
       token = editor.prepare("password").token
       expect(editor.call(operation: "password", token: token, attributes: { password: password, password_confirmation: password })).to be(true)
       expect(student.reload.authenticate(password)).to eq(student)
       expect(student.password_digest).not_to eq(password)
       expect(editor.call(operation: "password", token: token, attributes: { password: "other", password_confirmation: "other" })).to be(false)
     end
+  end
+
+  it "rejects a predictable 15-digit reset and retains the old password" do
+    original = student.password_digest
+    token = editor.prepare("password").token
+    expect(editor.call(operation: "password", token: token, attributes: {
+      password: "123456789012345", password_confirmation: "123456789012345" })).to be(false)
+    expect(student.reload.password_digest).to eq(original)
   end
 
   it "rejects blank, mismatched and oversized passwords without changing the hash" do

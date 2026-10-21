@@ -19,6 +19,8 @@ namespace :accounts do
     password = read_password.call("パスワード: ")
     confirmation = read_password.call("パスワード（確認）: ")
     abort "パスワード（確認）を入力してください。" if confirmation.blank?
+    message = PasswordPolicy.message_for(password, role: :admin)
+    abort message if message
     admin = Admin.new(school: school, user_id: user_id, password: password, password_confirmation: confirmation)
     begin
       I18n.with_locale(:ja) do
@@ -48,6 +50,8 @@ namespace :accounts do
     password = read_password.call("パスワード: ")
     confirmation = read_password.call("パスワード（確認）: ")
     abort "パスワード（確認）を入力してください。" if confirmation.blank?
+    message = PasswordPolicy.message_for(password, role: :teacher)
+    abort message if message
     teacher = Teacher.new(school: school, user_id: user_id, password: password, password_confirmation: confirmation)
     begin
       I18n.with_locale(:ja) do

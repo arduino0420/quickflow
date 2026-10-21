@@ -5,6 +5,7 @@
   <%= hidden_field_tag :edit_token, @edit_token %>
   <%= form.label :password, "新しいパスワード" %>
   <%= form.password_field :password, value: nil, autocomplete: "new-password", required: true %>
+  <p>推測しにくい数字15桁を設定してください。</p>
   <%= form.label :password_confirmation, "新しいパスワード（確認）" %>
   <%= form.password_field :password_confirmation, value: nil, autocomplete: "new-password", required: true %>
   <%= render "admin/shared/account_confirmation" %>

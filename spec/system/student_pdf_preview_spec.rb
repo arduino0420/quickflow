@@ -32,6 +32,301 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  it "retains saved and unsaved ink when password revocation rejects a real draft request" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_css('meta[name="csrf-token"]', visible: :all)
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    saved = AnswerDraft.find_by!(assignment: @assignment).attributes
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=0;
+      const original=editor.draft.request;
+      editor.draft.request=async (url,options)=>{
+        const response=await original(url,options);
+        if(options.method==='PUT') window.revokedDraftStatus=response.status;
+        return response;
+      };
+    JS
+    student = Student.find(saved.fetch("student_id"))
+    student.update!(password: "837416205938174")
+    ink_drag(0.3, 0.1, 0.4, 0.1)
+    expect(page).to have_text("ログインの有効期限が切れました", wait: 10)
+    expect(page.evaluate_script("window.revokedDraftStatus")).to eq(401)
+    expect(page).to have_current_path(student_assignment_pdf_preview_path(@assignment))
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.35, 0.1)).to be > 0
+    expect(page.evaluate_script(<<~JS)).to eq([ true, true, 2 ])
+      (()=>{const e=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        return [e.draft.dirty,e.draft.blocked,e.pageStates[0].ink.pages.get(1).length];})()
+    JS
+    expect(AnswerDraft.find(saved.fetch("id")).attributes).to eq(saved)
+    expect(Submission.where(assignment: @assignment)).to be_empty
+    expect(page).to have_button("提出する", disabled: true)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
+  it "resumes the same student's unsaved ink after a separate-tab login and submits once" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    saved_version = AnswerDraft.find_by!(assignment: @assignment).lock_version
+    student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
+    student.update!(password: "837416205938174")
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=0;
+    JS
+    ink_drag(0.3, 0.1, 0.4, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
+    expect(page.evaluate_script(<<~JS)).to eq([ true, true, 2 ])
+      (()=>{const e=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+        return [e.draft.dirty,e.draft.blocked,e.pageStates[0].ink.pages.get(1).length];})()
+    JS
+
+    login_tab = window_opened_by { click_link "別タブで再ログイン" }
+    within_window login_tab do
+      select "1年", from: "学年"
+      select "1組", from: "クラス番号"
+      select "1番", from: "出席番号"
+      fill_in "学校コード", with: "PDFSYS"
+      fill_in "パスワード", with: "837416205938174"
+      click_button "ログイン"
+      expect(page).to have_current_path(student_assignments_path)
+    end
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      const original=window.fetch.bind(window);
+      let once=true;
+      window.fetch=(url,options)=>{
+        if(once && String(url)===editor.recoveryUrlValue){once=false;throw new TypeError('offline');}
+        return original(url,options);
+      };
+    JS
+    click_button "再開を確認"
+    expect(page).to have_text("接続を確認して再度お試しください", wait: 10)
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true)
+    click_button "再開を確認"
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 15)
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: false)
+    expect(AnswerDraft.find_by!(assignment: @assignment).lock_version).to be > saved_version
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(2)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(ink_alpha(0.35, 0.1)).to be > 0
+
+    jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
+    click_button "提出する"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(Submission.where(assignment: @assignment).count).to eq(1)
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(jobs_before + 1)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
+  it "blocks recovery when another tab changed the saved draft version" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
+    student.update!(password: "837416205938174")
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=0;
+    JS
+    ink_drag(0.3, 0.1, 0.4, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
+    draft = AnswerDraft.find_by!(student: student, assignment: @assignment)
+    changed = draft.page_data.deep_dup
+    changed.first.fetch("operations").first["points"] = [ [ 50, 60 ] ]
+    draft.update!(page_data: changed)
+    snapshot = draft.reload.attributes
+    login_tab = window_opened_by { click_link "別タブで再ログイン" }
+    within_window login_tab do
+      select "1年", from: "学年"
+      select "1組", from: "クラス番号"
+      select "1番", from: "出席番号"
+      fill_in "学校コード", with: "PDFSYS"
+      fill_in "パスワード", with: "837416205938174"
+      click_button "ログイン"
+      expect(page).to have_current_path(student_assignments_path)
+    end
+    click_button "再開を確認"
+    expect(page).to have_text("下書き・提出状態が一致しません", wait: 10)
+    expect(page).to have_button("提出する", disabled: true)
+    expect(ink_alpha(0.35, 0.1)).to be > 0
+    expect(draft.reload.attributes).to eq(snapshot)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
+  it "keeps a stale answer stopped after another student logs in on the shared browser" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
+    other = Student.create!(classroom: student.classroom, attendance_number: 2, password: "password123")
+    student.update!(password: "837416205938174")
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=0;
+    JS
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
+    login_tab = window_opened_by { click_link "別タブで再ログイン" }
+    within_window login_tab do
+      select "1年", from: "学年"
+      select "1組", from: "クラス番号"
+      select "2番", from: "出席番号"
+      fill_in "学校コード", with: "PDFSYS"
+      fill_in "パスワード", with: "password123"
+      click_button "ログイン"
+      expect(page).to have_current_path(student_assignments_path)
+    end
+    click_button "再開を確認"
+    expect(page).to have_text("生徒・クラス・教材・下書き・提出状態が一致しません", wait: 10)
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true)
+    expect(page).to have_button("提出する", disabled: true)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(AnswerDraft.where(student: other, assignment: @assignment)).to be_empty
+    expect(Submission.where(student: other, assignment: @assignment)).to be_empty
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
+  it "reuses the same PDF and submission token after a rejected upload and submits once" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      const original=window.fetch.bind(window);
+      window.recoveryOriginalFetch=original;
+      window.fetch=(url,options={})=> options.method==='POST' && String(url)===editor.submissionUrlValue
+        ? new Promise(resolve=>window.releaseRecoveryUpload=()=>resolve(original(url,options).then(response=>{
+          window.recoveryUploadStatus=response.status;return response;
+        }))) : original(url,options);
+      window.recoveryPdf=()=>{const attempt=editor.submissionAttempt;return attempt && [attempt.token,attempt.revision,Array.from(attempt.bytes)];};
+    JS
+    click_button "提出する"
+    Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("typeof window.releaseRecoveryUpload==='function'") }
+    pdf = page.evaluate_script("window.recoveryPdf()")
+    student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
+    student.update!(password: "837416205938174")
+    page.execute_script("window.releaseRecoveryUpload()")
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
+    expect(page.evaluate_script("window.recoveryUploadStatus")).to eq(401)
+    expect(page.evaluate_script("window.recoveryPdf()")).to eq(pdf)
+    login_tab = window_opened_by { click_link "別タブで再ログイン" }
+    within_window login_tab do
+      select "1年", from: "学年"
+      select "1組", from: "クラス番号"
+      select "1番", from: "出席番号"
+      fill_in "学校コード", with: "PDFSYS"
+      fill_in "パスワード", with: "837416205938174"
+      click_button "ログイン"
+      expect(page).to have_current_path(student_assignments_path)
+    end
+    click_button "再開を確認"
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: false, wait: 10)
+    expect(page.evaluate_script("window.recoveryPdf()")).to eq(pdf)
+    page.execute_script("window.fetch=window.recoveryOriginalFetch")
+    click_button "提出する"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(Submission.where(assignment: @assignment).count).to eq(1)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(1)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
+  it "recognizes its own completed submission after the old session expires" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      const original=window.fetch.bind(window);
+      window.fetch=(url,options={})=> options.method==='POST' && String(url)===editor.submissionUrlValue
+        ? original(url,options).then(response=>new Promise(resolve=>{
+          window.committedUploadStatus=response.status;
+          window.finishCommittedUpload=()=>resolve(new Response(null,{status:401}));
+        })) : original(url,options);
+    JS
+    click_button "提出する"
+    Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("window.committedUploadStatus===200") }
+    expect(Submission.where(assignment: @assignment).count).to eq(1)
+    student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
+    student.update!(password: "837416205938174")
+    page.execute_script("window.finishCommittedUpload()")
+    expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
+    login_tab = window_opened_by { click_link "別タブで再ログイン" }
+    within_window login_tab do
+      select "1年", from: "学年"
+      select "1組", from: "クラス番号"
+      select "1番", from: "出席番号"
+      fill_in "学校コード", with: "PDFSYS"
+      fill_in "パスワード", with: "837416205938174"
+      click_button "ログイン"
+      expect(page).to have_current_path(student_assignments_path)
+    end
+    click_button "再開を確認"
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(Submission.where(assignment: @assignment).count).to eq(1)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
+  it "retains the generated PDF and ink when revocation rejects submission before authentication" do
+    previous_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_css('meta[name="csrf-token"]', visible: :all)
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      editor.draft.delay=60_000;
+      const original=window.fetch.bind(window);
+      window.fetch=(url,options={})=> options.method==='POST' && String(url)===editor.submissionUrlValue
+        ? new Promise(resolve=>window.releaseRevokedSubmission=()=>resolve(original(url,options).then(response=>{
+          window.revokedSubmissionStatus=response.status;return response;
+        }))) : original(url,options);
+      window.pendingPdf=()=>{const a=editor.submissionAttempt;return a && [a.token,a.revision,Array.from(a.bytes)];};
+    JS
+    ink_drag(0.1, 0.1, 0.2, 0.1)
+    click_button "提出する"
+    Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("typeof window.releaseRevokedSubmission==='function'") }
+    pdf = page.evaluate_script("window.pendingPdf()")
+    student = Student.joins(:classroom).find_by!(classrooms: { id: @assignment.classrooms.sole.id }, attendance_number: 1)
+    student.update!(password: "837416205938174")
+    page.execute_script("window.releaseRevokedSubmission()")
+    expect(page).to have_text("ログインの有効期限が切れました", wait: 10)
+    expect(page.evaluate_script("window.revokedSubmissionStatus")).to eq(401)
+    expect(page.evaluate_script("window.pendingPdf()")).to eq(pdf)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(page).to have_current_path(student_assignment_pdf_preview_path(@assignment))
+    expect(Submission.where(assignment: @assignment)).to be_empty
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+    expect(page).to have_button("提出する", disabled: true)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_protection
+  end
+
   it "saves with a small acknowledgment and restores every original coordinate" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
@@ -1223,7 +1518,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   [
     [ 413, "request_too_large", "送信する手書きデータの容量" ],
     [ 422, "draft_points_limit", "細かな動きの記録" ],
-    [ 422, "csrf_failed", "ログイン状態を確認できず" ],
+    [ 422, "csrf_failed", "ログインの有効期限が切れました" ],
     [ 422, "unknown", "保存の要求を受け付けられませんでした" ]
   ].each do |status, reason, message|
     it "retains saved and unsaved ink without retrying a #{status} #{reason} rejection" do
@@ -1248,7 +1543,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       JS
       ink_drag(0.3, 0.1, 0.31, 0.1)
       expect(page).to have_text(message, wait: 10)
-      expect(page).to have_text("再読み込み")
+      expect(page).to have_text(reason == "csrf_failed" ? "画面を閉じず" : "再読み込み")
       expect(page).to have_no_text("private content")
       expect(ink_alpha(0.15, 0.1)).to be > 0
       expect(ink_alpha(0.305, 0.1)).to be > 0
@@ -1279,6 +1574,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
         expect(AnswerDraft.find_by!(assignment: @assignment).attributes).to eq(saved)
       else
+        scroll_page(1)
         ink_drag(0.45, 0.2, 0.55, 0.2)
         expect(ink_region_alpha(0.5, 0.2)).to eq(0)
       end

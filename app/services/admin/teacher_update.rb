@@ -41,6 +41,9 @@ class Admin::TeacherUpdate
         end
         @teacher.assign_attributes(attributes.slice(:password, :password_confirmation))
         @teacher.valid?
+        if (message = PasswordPolicy.message_for(password, role: :teacher))
+          @teacher.errors.add(:password, message)
+        end
         @teacher.errors.add(:password_confirmation, :blank) if attributes[:password_confirmation].blank?
         return false if @teacher.errors.any?
       end

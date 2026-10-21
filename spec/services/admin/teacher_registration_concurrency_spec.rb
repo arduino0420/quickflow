@@ -32,7 +32,7 @@ RSpec.describe "Admin teacher registration concurrency" do
             registration = Admin::TeacherRegistration.new(admin: Admin.find(@admin.id))
             ready << true
             Timeout.timeout(5) { release.pop }
-            registration.call(attributes: { user_id: id, password: "synthetic-password", password_confirmation: "synthetic-password" },
+            registration.call(attributes: { user_id: id, password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42" },
               classroom_codes: [ "1-1" ])
           ensure
             connection.execute("SET lock_timeout = DEFAULT")

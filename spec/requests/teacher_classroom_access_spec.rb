@@ -13,7 +13,7 @@ RSpec.describe "Many-to-many classroom access", type: :request do
 
   def register_student(number)
     post students_path, params: { student: { classroom_id: classroom.id.to_s, attendance_number: number.to_s,
-      password: "password123", password_confirmation: "password123" } }
+      password: "704829163058271", password_confirmation: "704829163058271" } }
   end
 
   it "allows both assigned teachers to register students in the same classroom" do
