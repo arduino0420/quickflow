@@ -4,7 +4,7 @@ RSpec.describe "Teacher-managed student registration", type: :request do
   let(:school) { School.create!(school_code: "REGISTER") }
   let(:teacher) { Teacher.create!(school: school, user_id: "register-teacher", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
-  let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "739162840517294", password_confirmation: "739162840517294" } }
+  let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "58392047", password_confirmation: "58392047" } }
 
   def login
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }

@@ -5,7 +5,7 @@ RSpec.describe Admin::StudentRegistration do
   include_context "AI grading records"
   let(:admin) { Admin.create!(school: school, user_id: "student-admin", password: "synthetic-admin-password") }
   let(:registration) { described_class.new(admin: admin) }
-  let(:attributes) { { grade: "1", class_number: "1", attendance_number: "1", password: "739162840517294", password_confirmation: "739162840517294" } }
+  let(:attributes) { { grade: "1", class_number: "1", attendance_number: "1", password: "58392047", password_confirmation: "58392047" } }
 
   def counts
     [ School, Teacher, Classroom, TeacherClassroom, Student ].map(&:count)

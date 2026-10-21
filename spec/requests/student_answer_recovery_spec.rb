@@ -33,10 +33,10 @@ RSpec.describe "Student answer recovery", type: :request do
     expect(response.parsed_body).to include("draft" => nil)
     expect(response.headers["Cache-Control"]).to include("no-store")
 
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     get url, headers: headers
     expect(response).to have_http_status(:unauthorized)
-    login(student, "837416205938174")
+    login(student, "65820473")
     get url, headers: headers
     expect(response).to have_http_status(:ok)
     token = response.parsed_body.fetch("csrf_token")

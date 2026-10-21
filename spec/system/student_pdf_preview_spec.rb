@@ -52,7 +52,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       };
     JS
     student = Student.find(saved.fetch("student_id"))
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     ink_drag(0.3, 0.1, 0.4, 0.1)
     expect(page).to have_text("ログインの有効期限が切れました", wait: 10)
     expect(page.evaluate_script("window.revokedDraftStatus")).to eq(401)
@@ -79,7 +79,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     saved_version = AnswerDraft.find_by!(assignment: @assignment).lock_version
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     page.execute_script(<<~JS)
       const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
       editor.draft.delay=0;
@@ -97,7 +97,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       select "1組", from: "クラス番号"
       select "1番", from: "出席番号"
       fill_in "学校コード", with: "PDFSYS"
-      fill_in "パスワード", with: "837416205938174"
+      fill_in "パスワード", with: "65820473"
       click_button "ログイン"
       expect(page).to have_current_path(student_assignments_path)
     end
@@ -138,7 +138,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.1, 0.1, 0.2, 0.1)
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     page.execute_script(<<~JS)
       const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
       editor.draft.delay=0;
@@ -156,7 +156,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       select "1組", from: "クラス番号"
       select "1番", from: "出席番号"
       fill_in "学校コード", with: "PDFSYS"
-      fill_in "パスワード", with: "837416205938174"
+      fill_in "パスワード", with: "65820473"
       click_button "ログイン"
       expect(page).to have_current_path(student_assignments_path)
     end
@@ -176,7 +176,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
     other = Student.create!(classroom: student.classroom, attendance_number: 2, password: "password123")
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     page.execute_script(<<~JS)
       const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
       editor.draft.delay=0;
@@ -225,7 +225,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("typeof window.releaseRecoveryUpload==='function'") }
     pdf = page.evaluate_script("window.recoveryPdf()")
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     page.execute_script("window.releaseRecoveryUpload()")
     expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
     expect(page.evaluate_script("window.recoveryUploadStatus")).to eq(401)
@@ -236,7 +236,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       select "1組", from: "クラス番号"
       select "1番", from: "出席番号"
       fill_in "学校コード", with: "PDFSYS"
-      fill_in "パスワード", with: "837416205938174"
+      fill_in "パスワード", with: "65820473"
       click_button "ログイン"
       expect(page).to have_current_path(student_assignments_path)
     end
@@ -272,7 +272,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("window.committedUploadStatus===200") }
     expect(Submission.where(assignment: @assignment).count).to eq(1)
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     page.execute_script("window.finishCommittedUpload()")
     expect(page).to have_css('[data-pdf-preview-target="recovery"]', visible: true, wait: 10)
     login_tab = window_opened_by { click_link "別タブで再ログイン" }
@@ -281,7 +281,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       select "1組", from: "クラス番号"
       select "1番", from: "出席番号"
       fill_in "学校コード", with: "PDFSYS"
-      fill_in "パスワード", with: "837416205938174"
+      fill_in "パスワード", with: "65820473"
       click_button "ログイン"
       expect(page).to have_current_path(student_assignments_path)
     end
@@ -313,7 +313,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("typeof window.releaseRevokedSubmission==='function'") }
     pdf = page.evaluate_script("window.pendingPdf()")
     student = Student.joins(:classroom).find_by!(classrooms: { id: @assignment.classrooms.sole.id }, attendance_number: 1)
-    student.update!(password: "837416205938174")
+    student.update!(password: "65820473")
     page.execute_script("window.releaseRevokedSubmission()")
     expect(page).to have_text("ログインの有効期限が切れました", wait: 10)
     expect(page.evaluate_script("window.revokedSubmissionStatus")).to eq(401)

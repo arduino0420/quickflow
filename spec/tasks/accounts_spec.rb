@@ -14,7 +14,7 @@ RSpec.describe "Operator teacher provisioning" do
     allow($stdout).to receive(:puts)
   end
 
-  def inputs(user_id: "provisioned", password: "Long River 8 Beacon 42", confirmation: password)
+  def inputs(user_id: "provisioned", password: "Matsue2026", confirmation: password)
     school
     allow(STDIN).to receive(:gets).and_return("y\n", "PROVISION\n", "#{user_id}\n", "#{password}\n", "#{confirmation}\n")
   end
@@ -26,15 +26,15 @@ RSpec.describe "Operator teacher provisioning" do
     expect { task.invoke }.to change(Teacher, :count).by(1)
     teacher = Teacher.find_by!(user_id: "provisioned")
     expect(teacher.school).to eq(school)
-    expect(teacher.authenticate("Long River 8 Beacon 42")).to eq(teacher)
-    expect(teacher.password_digest).not_to eq("Long River 8 Beacon 42")
+    expect(teacher.authenticate("Matsue2026")).to eq(teacher)
+    expect(teacher.password_digest).not_to eq("Matsue2026")
     expect(STDIN).to have_received(:noecho).twice
-    expect($stdout).not_to have_received(:puts).with(/Long River 8 Beacon 42/)
-    expect($stdout).not_to have_received(:print).with(/Long River 8 Beacon 42/)
+    expect($stdout).not_to have_received(:puts).with(/Matsue2026/)
+    expect($stdout).not_to have_received(:print).with(/Matsue2026/)
     expect(School.count).to eq(original_schools)
     expect(Student.count).to eq(original_students)
     session = ActionDispatch::Integration::Session.new(Rails.application)
-    session.post("/login", params: { session: { user_id: teacher.user_id, password: "Long River 8 Beacon 42" } })
+    session.post("/login", params: { session: { user_id: teacher.user_id, password: "Matsue2026" } })
     expect(session.response.status).to eq(303)
     expect(URI(session.response.location).path).to eq("/assignments")
     session.get("/assignments")

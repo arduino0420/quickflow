@@ -45,8 +45,8 @@ RSpec.describe "Admin account management", type: :system do
     click_button "絞り込む"
     choose_operation(@first, "パスワード再設定")
     expect(page).to have_content("1年 1組 1番")
-    fill_in "新しいパスワード", with: "739162840517294", exact: true
-    fill_in "新しいパスワード（確認）", with: "739162840517294"
+    fill_in "新しいパスワード", with: "58392047", exact: true
+    fill_in "新しいパスワード（確認）", with: "58392047"
     fill_in "管理者自身のパスワード", with: "admin-secret"
     check "表示された対象と操作内容を確認しました"
     click_button "この生徒のパスワードを保存する"
@@ -56,13 +56,13 @@ RSpec.describe "Admin account management", type: :system do
     choose_operation(@second, "パスワード再設定")
     expect(page).to have_content("1年 1組 2番")
     expect(page).not_to have_field("管理者自身のパスワード")
-    fill_in "新しいパスワード", with: "584217963045781", exact: true
-    fill_in "新しいパスワード（確認）", with: "584217963045781"
+    fill_in "新しいパスワード", with: "72618490", exact: true
+    fill_in "新しいパスワード（確認）", with: "72618490"
     check "表示された対象と操作内容を確認しました"
     click_button "この生徒のパスワードを保存する"
     expect(page).to have_content("生徒ID #{@second.id} のパスワードを再設定しました。")
-    expect(@first.reload.authenticate("739162840517294")).to be_truthy
-    expect(@second.reload.authenticate("584217963045781")).to be_truthy
+    expect(@first.reload.authenticate("58392047")).to be_truthy
+    expect(@second.reload.authenticate("72618490")).to be_truthy
   end
 
   it "confirms an attendance correction before committing, then deletes only an explicitly confirmed unused account" do
@@ -139,12 +139,12 @@ RSpec.describe "Admin account management", type: :system do
     expect(page).to have_content("生徒のパスワード再設定")
     visit admin_teachers_path
     click_link "パスワード再設定"
-    fill_in "新しいパスワード", with: "new-teacher-secret", exact: true
-    fill_in "新しいパスワード（確認）", with: "new-teacher-secret"
+    fill_in "新しいパスワード", with: "NewTeacher8392", exact: true
+    fill_in "新しいパスワード（確認）", with: "NewTeacher8392"
     fill_in "管理者自身のパスワード（パスワード変更時）", with: "admin-secret"
     check "表示された教師のパスワード変更を確認しました"
     click_button "変更を保存する"
     expect(page).to have_content("教師アカウントを更新しました。")
-    expect(teacher.reload.authenticate("new-teacher-secret")).to be_truthy
+    expect(teacher.reload.authenticate("NewTeacher8392")).to be_truthy
   end
 end

@@ -29,7 +29,7 @@ RSpec.describe "Admin account management", type: :request do
     token
   end
 
-  def reset_password(password: "739162840517294", admin_password: "admin-secret", target: student, edit_token: password_form(target), **extra)
+  def reset_password(password: "58392047", admin_password: "admin-secret", target: student, edit_token: password_form(target), **extra)
     patch admin_student_password_reset_path(target), params: { edit_token: edit_token, confirmed: "1", admin_password: admin_password,
       student: { password: password, password_confirmation: password }, **extra }
   end
@@ -90,7 +90,7 @@ RSpec.describe "Admin account management", type: :request do
     login
     reset_password
     expect(response).to redirect_to(admin_students_path)
-    expect(student.reload.authenticate("739162840517294")).to eq(student)
+    expect(student.reload.authenticate("58392047")).to eq(student)
     expect(Student.where.not(id: student.id).order(:id).map(&:attributes)).to eq(other_students)
     client.get student_assignments_path
     expect(client.response.status).to eq(303)
@@ -99,7 +99,7 @@ RSpec.describe "Admin account management", type: :request do
       attendance_number: 1, password: "original-secret" } }
     expect(response).to have_http_status(422)
     post student_login_path, params: { student_session: { school_code: school.school_code, grade: 1, class_number: 1,
-      attendance_number: 1, password: "739162840517294" } }
+      attendance_number: 1, password: "58392047" } }
     expect(response).to redirect_to(student_assignments_path)
   end
 
@@ -109,13 +109,13 @@ RSpec.describe "Admin account management", type: :request do
       reset_password
       expect(response).to have_http_status(:see_other)
       travel 14.minutes
-      reset_password(password: "584217963045781", admin_password: "admin-secret")
+      reset_password(password: "72618490", admin_password: "admin-secret")
       expect(response).to have_http_status(:see_other)
       travel 1.minute
-      reset_password(password: "917304862551728", admin_password: nil)
+      reset_password(password: "49168307", admin_password: nil)
       expect(response).to have_http_status(:unprocessable_content)
-      expect(student.reload.authenticate("584217963045781")).to be_truthy
-      reset_password(password: "917304862551728", admin_password: "admin-secret")
+      expect(student.reload.authenticate("72618490")).to be_truthy
+      reset_password(password: "49168307", admin_password: "admin-secret")
       expect(response).to have_http_status(:see_other)
     end
   end
@@ -158,7 +158,7 @@ RSpec.describe "Admin account management", type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     expect(student.reload.password_digest).to eq(original)
     reset_password
-    reset_password(password: "381706249153820", admin_password: "wrong")
+    reset_password(password: "81470629", admin_password: "wrong")
     expect(response).to have_http_status(:unprocessable_content)
   end
 
@@ -172,9 +172,9 @@ RSpec.describe "Admin account management", type: :request do
     expect(student.reload.password_digest).to eq(original)
     stale = password_form
     reset_password
-    reset_password(password: "381706249153820", edit_token: stale)
+    reset_password(password: "81470629", edit_token: stale)
     expect(response).to have_http_status(:unprocessable_content)
-    expect(student.reload.authenticate("739162840517294")).to be_truthy
+    expect(student.reload.authenticate("58392047")).to be_truthy
   end
 
   it "preserves list filters and page on return without an arbitrary redirect" do
@@ -182,7 +182,7 @@ RSpec.describe "Admin account management", type: :request do
     form_token = password_form
     patch admin_student_password_reset_path(student, grade: 1, class_number: 1, page: 2), params: {
       edit_token: form_token, confirmed: "1", admin_password: "admin-secret", return_to: "https://example.invalid",
-      student: { password: "739162840517294", password_confirmation: "739162840517294" } }
+      student: { password: "58392047", password_confirmation: "58392047" } }
     expect(response).to redirect_to(admin_students_path(grade: 1, class_number: 1, page: 2))
   end
 
@@ -191,7 +191,7 @@ RSpec.describe "Admin account management", type: :request do
     original = student.attributes
     [ { school_id: foreign_school.id }, { classroom_id: foreign_room.id }, { id: foreign_student.id },
       { attendance_number: 4 }, { grade: 2 }, { password_digest: "forged" } ].each do |injection|
-      reset_password(student: { password: "739162840517294", password_confirmation: "739162840517294", **injection })
+      reset_password(student: { password: "58392047", password_confirmation: "58392047", **injection })
       expect(response).to have_http_status(:unprocessable_content)
       expect(student.reload.attributes).to eq(original)
     end
@@ -327,7 +327,7 @@ RSpec.describe "Admin account management", type: :request do
     post admin_login_path, params: { authenticity_token: csrf, admin_session: { user_id: admin.user_id, password: "admin-secret" } }
     form_token = password_form
     patch admin_student_password_reset_path(student), params: { edit_token: form_token, confirmed: "1", admin_password: "admin-secret",
-      student: { password: "739162840517294", password_confirmation: "739162840517294" } }
+      student: { password: "58392047", password_confirmation: "58392047" } }
     expect(response).to have_http_status(:unprocessable_content)
     post confirm_update_admin_student_path(student), params: { edit_token: "x", student: { grade: 1 } }
     expect(response).to have_http_status(:unprocessable_content)
@@ -354,7 +354,7 @@ RSpec.describe "Admin teacher password reauthentication", type: :request do
 
   def change_password(admin_password: nil, confirmed: "1", token: edit_token)
     patch admin_teacher_path(teacher), params: { admin_password: admin_password, confirmed: confirmed,
-      teacher: { password: "Long River 8 Beacon 42", password_confirmation: "Long River 8 Beacon 42", classroom_codes: [ "" ], edit_token: token } }
+      teacher: { password: "Matsue2026", password_confirmation: "Matsue2026", classroom_codes: [ "" ], edit_token: token } }
   end
 
   before do
@@ -388,7 +388,7 @@ RSpec.describe "Admin teacher password reauthentication", type: :request do
       change_password
       expect(response).to have_http_status(:unprocessable_content)
     end
-    expect(teacher.reload.authenticate("Long River 8 Beacon 42")).to be_truthy
+    expect(teacher.reload.authenticate("Matsue2026")).to be_truthy
   end
 
   it "expires old teacher edit confirmations even after fresh administrator reauthentication" do

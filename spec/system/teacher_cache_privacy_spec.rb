@@ -6,7 +6,7 @@ require_relative "../support/ai_grading_context"
 RSpec.describe "Teacher private page history", type: :system do
   include_context "AI grading records"
 
-  let(:teacher) { Teacher.create!(school: school, user_id: "private-page-teacher", password: "Long River 8 Beacon 42") }
+  let(:teacher) { Teacher.create!(school: school, user_id: "private-page-teacher", password: "Matsue2026") }
 
   before do
     Selenium::WebDriver.logger.level = :warn
@@ -17,7 +17,7 @@ RSpec.describe "Teacher private page history", type: :system do
     submission
     visit login_path
     fill_in "ユーザーID", with: teacher.user_id
-    fill_in "パスワード", with: "Long River 8 Beacon 42"
+    fill_in "パスワード", with: "Matsue2026"
     click_button "ログイン"
     expect(page).to have_current_path(assignments_path)
     visit assignment_path(assignment)
