@@ -132,7 +132,8 @@ manifestの日時はISO8601の6桁小数秒に統一し、1マイクロ秒の改
   切断前processの残存や他タスクの54888利用は観測されず、詳細ログ/pg_locks/pg_stat_activityを保持しています。
 - アプリ本体とDemo::SeedのNOWAITは維持します。guest request/systemのbeforeだけが明示requireする
   `spec/support/demo_seed_fixture.rb`で、外側fixture transactionを必須とし、同じ接続のsavepoint内で
-  Seedと同じ全表/順序のEXCLUSIVE lockを最大2秒だけ事前取得します。timeoutを元に戻し、lock保持中に元のSeedを呼びます。
+  Seedと同じ全表/順序のEXCLUSIVE lockを、各lock取得の待機上限を2秒にして事前取得します。
+  16表全体の総計2秒を保証する設定ではありません。timeoutを元に戻し、lock保持中に元のSeedを呼びます。
   retry/skipはありません。失敗時はsavepoint rollback後にPID/backend種別/transaction/lock/vacuum progressを記録してraiseします。
 - 既存のseed競合拒否specはこのhelperを使用しません。新しい4例で、別PG接続のShareUpdateExclusiveを
   実際のblocking PID barrierで観測して解除後成功、100ms上限の失敗とtimeout復元、直接Seedの即時拒否、
