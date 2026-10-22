@@ -86,6 +86,12 @@ module Demo
       db = @connection.quote(@target.fetch("database"))
       access = @connection.select_rows("SELECT has_database_privilege(#{role},#{db},'CONNECT'),has_database_privilege(#{role},#{db},'CREATE'),has_database_privilege(#{role},#{db},'TEMP')").first
       refuse!("Unsafe database access") unless access == [ true, false, false ]
+      other_databases = @connection.select_value(<<~SQL)
+        SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname<>#{db} AND datallowconn
+          AND (has_database_privilege(#{role},oid,'CONNECT') OR has_database_privilege(#{role},oid,'CREATE')
+            OR has_database_privilege(#{role},oid,'TEMP')))
+      SQL
+      refuse!("Runtime access to another database forbidden") if other_databases
       owns = @connection.select_value(<<~SQL)
         SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=#{db} AND datdba=#{oid})
           OR EXISTS(SELECT 1 FROM pg_namespace WHERE nspowner=#{oid})

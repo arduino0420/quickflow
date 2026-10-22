@@ -81,6 +81,9 @@ database = "quickflow_demo_#{SUFFIX}"
 admin.exec("CREATE DATABASE #{PG::Connection.quote_ident(database)} OWNER #{PG::Connection.quote_ident(roles.fetch('provision'))}")
 admin.exec("COMMENT ON DATABASE #{PG::Connection.quote_ident(database)} IS #{admin.escape_literal("quickflow-production-demo:#{ID}")}")
 admin.exec("GRANT pg_read_all_settings TO #{PG::Connection.quote_ident(roles.fetch('provision'))} WITH INHERIT TRUE")
+%w[postgres template1].each do |name|
+  admin.exec("REVOKE ALL ON DATABASE #{admin.quote_ident(name)} FROM PUBLIC")
+end
 admin.finish
 admin = PG.connect(host: "127.0.0.1", port: DB_PORT, dbname: database, user: admin_name)
 admin.exec("GRANT EXECUTE ON FUNCTION pg_control_system() TO #{PG::Connection.quote_ident(roles.fetch('provision'))}")

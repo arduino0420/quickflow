@@ -37,6 +37,8 @@ begin
     [ "database grant option", "GRANT CONNECT ON DATABASE #{database} TO #{runtime} WITH GRANT OPTION", "REVOKE GRANT OPTION FOR CONNECT ON DATABASE #{database} FROM #{runtime}" ],
     [ "schema grant option", "GRANT USAGE ON SCHEMA public TO #{runtime} WITH GRANT OPTION", "REVOKE GRANT OPTION FOR USAGE ON SCHEMA public FROM #{runtime}" ],
     [ "TEMP", "GRANT TEMP ON DATABASE #{database} TO #{runtime}", "REVOKE TEMP ON DATABASE #{database} FROM #{runtime}" ],
+    [ "other DB CONNECT", "GRANT CONNECT ON DATABASE postgres TO #{runtime}", "REVOKE CONNECT ON DATABASE postgres FROM #{runtime}" ],
+    [ "other DB TEMP", "GRANT TEMP ON DATABASE postgres TO #{runtime}", "REVOKE TEMP ON DATABASE postgres FROM #{runtime}" ],
     [ "schema CREATE", "GRANT CREATE ON SCHEMA public TO #{runtime}", "REVOKE CREATE ON SCHEMA public FROM #{runtime}" ],
     [ "role CREATEDB", "ALTER ROLE #{runtime} CREATEDB", "ALTER ROLE #{runtime} NOCREATEDB" ],
     [ "role membership", "GRANT pg_read_all_stats TO #{runtime}", "REVOKE pg_read_all_stats FROM #{runtime}" ],
@@ -90,6 +92,8 @@ begin
   sentinel_name = "quickflow_sentinel_#{SecureRandom.hex(8)}"
   # Refuse reuse: this creates one new synthetic database, never resets a database.
   admin.exec("CREATE DATABASE #{admin.quote_ident(sentinel_name)}")
+  admin.exec("REVOKE ALL ON DATABASE #{admin.quote_ident(sentinel_name)} FROM PUBLIC")
+  admin.exec("GRANT CONNECT ON DATABASE #{admin.quote_ident(sentinel_name)} TO #{runtime}")
   sentinel = PG.connect(host: target.fetch("host"), port: target.fetch("port"), dbname: sentinel_name, user: context.fetch("admin_name"))
   sentinel.exec("CREATE TABLE synthetic_sentinel(value text NOT NULL)")
   sentinel.exec("INSERT INTO synthetic_sentinel VALUES ('synthetic-only-do-not-change')")
@@ -102,6 +106,7 @@ begin
   ensure
     ApplicationRecord.establish_connection(original_config)
     sentinel.finish
+    admin.exec("REVOKE CONNECT ON DATABASE #{admin.quote_ident(sentinel_name)} FROM #{runtime}")
   end
   verifier.call
   puts "#{refusals} fail-closed cases passed with zero verifier SQL writes; synthetic sentinel and complete business/file manifest unchanged"

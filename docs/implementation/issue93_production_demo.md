@@ -14,6 +14,8 @@ The shared verifier compares the declared token-derived database, roles, loopbac
 
 The Disk root must be the dedicated absolute `tmp/production-demo-<32 hex isolation ID>` path with its matching marker and no symlinks. Its manifest includes every ordinary file, business/Active Storage table, Rails metadata and target contract. Authentication counters/nonces are the only excluded mutable state. Changes to schema/manifest contracts, including future #47 integration, require a new demo; do not automatically rebaseline or overwrite an existing demo.
 
+Runtime CONNECT/CREATE/TEMP access to any other connectable database in the dedicated cluster is also refused. The fresh-cluster bootstrap removes PUBLIC access from its own postgres/template databases; synthetic sentinel access is granted only for the wrong-endpoint diagnostic and revoked in ensure. A subsequently added database with permissive PUBLIC grants makes runtime verification fail closed.
+
 ## Local verification harness
 
 Use the repository's Ruby/PostgreSQL versions. `bundle exec ruby script/production_demo_smoke.rb` creates a **new** task-local cluster, dedicated database/roles/storage, verifies endpoint/process owner/data directory/system identifier, then explicitly provisions twice. It never accepts an existing database as a seed target. A partial provisioning failure is refused rather than repaired or reset.
