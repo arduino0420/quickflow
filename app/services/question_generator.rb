@@ -48,8 +48,9 @@ class QuestionGenerator
     snapshot.fetch(:blob).open do |file|
       raise "Material is not a PDF" unless Marcel::MimeType.for(file) == "application/pdf"
 
-      @client ||= AiClient.build
       begin
+        PdfReadabilityValidator.validate!(file)
+        @client ||= AiClient.build
         uploaded_file = @client.files.create(file: Pathname.new(file.path), purpose: "user_data",
           expires_after: { anchor: "created_at", seconds: 3600 })
         response = @client.responses.create(

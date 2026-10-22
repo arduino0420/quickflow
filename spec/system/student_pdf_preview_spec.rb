@@ -1034,6 +1034,23 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  it "keeps ink and the saved draft with accurate guidance when generated PDF validation fails" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.3, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    saved = AnswerDraft.find_by!(assignment: @assignment).attributes
+    allow(PdfReadabilityValidator).to receive(:validate!).and_raise(PdfReadabilityValidator::InvalidPdf)
+
+    click_button "提出する"
+
+    expect(page).to have_text("PDFの内容を確認できませんでした", wait: 30)
+    expect(page).to have_text("この画面を閉じず、先生に確認してください")
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+    expect(AnswerDraft.find_by!(assignment: @assignment).attributes).to eq(saved)
+    expect(Submission.where(assignment: @assignment)).to be_empty
+  end
+
   it "retains ink after submission PDF generation fails and succeeds on retry" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)

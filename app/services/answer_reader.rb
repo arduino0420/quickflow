@@ -11,6 +11,7 @@ class AnswerReader
     raise "Answer PDF is missing" unless blob
 
     blob.open do |file|
+      PdfReadabilityValidator.validate!(file)
       uploaded_file = @client.files.create(
         file: Pathname.new(file.path),
         purpose: "user_data",

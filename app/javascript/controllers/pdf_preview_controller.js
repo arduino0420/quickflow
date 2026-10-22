@@ -704,6 +704,8 @@ export default class extends Controller {
             "ログイン状態または小テストの利用権限を確認できません。手書きが残るこの画面を閉じず、先生に確認してください。" :
           error.code === 413 ?
             "PDFのサイズが上限を超えています。手書きと下書きは残っています。ページ数を減らすか先生に確認してください。" :
+          error.code === 422 && error.reason === "invalid_pdf" ?
+            "PDFの内容を確認できませんでした。手書きが残るこの画面を閉じず、先生に確認してください。" :
             "提出できませんでした。手書きはこの画面に残っています。保存状況と接続を確認して、もう一度お試しください。"
         if ([401, 403, 409, 404].includes(error.code) || (error.code === 422 && error.reason === "csrf_failed")) {
           this.draft.blocked = true

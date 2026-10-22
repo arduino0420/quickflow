@@ -32,10 +32,12 @@ FROM base AS build
 
 # Install packages needed to build gems
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libpq-dev libvips libyaml-dev pkg-config && \
+    apt-get install --no-install-recommends -y build-essential git libffi-dev libpq-dev libvips libyaml-dev pkg-config unzip && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Install application gems
+COPY bin/install-qpdf bin/install-qpdf
+RUN bin/install-qpdf
 COPY vendor/* ./vendor/
 COPY Gemfile Gemfile.lock ./
 
