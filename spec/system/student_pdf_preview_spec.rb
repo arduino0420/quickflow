@@ -512,6 +512,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "shows only the quiz title, hides routine notices and fits the wide submit button on narrow screens" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_no_css("footer, body.app-shell", visible: :all)
     expect(page).to have_css("h1", exact_text: @assignment.title)
     expect(page).to have_no_button("確認用PDFをダウンロード")
     expect(page).to have_no_text("確認用のダウンロードです。")
@@ -520,8 +521,11 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.1, 0.2, 0.4, 0.2)
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
     expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(1)
-    [ 1280, 360 ].each do |width|
+    [ 320, 390, 768, 1280 ].each do |width|
       page.current_window.resize_to(width, 900)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
+        width: width, height: 900, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("innerWidth")).to eq(width)
       layout = page.evaluate_script(<<~JS)
         (()=>{const button=document.querySelector('[data-pdf-preview-target="submit"]');
           const notice=document.querySelector('[data-pdf-preview-target="draftStatus"]');
@@ -544,6 +548,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(ink_alpha(0.2, 0.2)).to be > 0
   ensure
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
     page.current_window.resize_to(1280, 900)
   end
 

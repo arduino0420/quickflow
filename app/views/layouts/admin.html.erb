@@ -9,7 +9,7 @@
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
-  <body>
+  <body class="app-shell">
     <header class="app-header <%= controller_name == "sessions" ? "app-header--auth" : "app-header--with-actions" %>">
       <div class="app-header-inner">
         <% if current_admin %>
@@ -25,5 +25,6 @@
     <main class="app-main <%= "app-main--compact" if controller_name == "sessions" %>">
       <div class="page-card"><%= yield %></div>
     </main>
+    <%= render "shared/footer" %>
   </body>
 </html>
