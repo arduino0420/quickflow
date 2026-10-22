@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'docs/design'
 FONT = os.environ.get('DIAGRAM_FONT', '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc')
-BASELINE = '9bed9d2b6e35e89e51b8d76d1aa76df3e9f01b41'
+BASELINE = '1404453a24dce4f3661a7c6aee7fc570e8f6b683'
 labels = {'schools':'学校','admins':'管理者','teachers':'教師','classrooms':'クラス','students':'生徒','teacher_classrooms':'担当クラス','assignments':'小テスト・配信','assignment_classrooms':'配信先','answer_drafts':'答案下書き','questions':'設問・正答','submissions':'提出答案','grading_results':'採点結果','question_generation_requests':'正答生成要求','authentication_attempt_buckets':'認証制限・ゲスト有効期限','active_storage_attachments':'添付','active_storage_blobs':'ファイル情報','active_storage_variant_records':'派生画像'}
 def digest(path): return hashlib.sha256((ROOT/path).read_bytes()).hexdigest()
 def schema():
@@ -101,7 +101,7 @@ def screens():
        ('ログイン GET/POST /student/login',['学校コード・学年・組・出席番号・PW']),
        ('一覧 GET /student/assignments',['同じ学校・所属クラスへの配信のみ']),
        ('直接手書き GET …/:id/pdf_preview',['未提出カード → PDFに解答','GET/PATCH …/:id/answer_draft 自動保存','保存再試行 / 別タブ再ログイン→再開確認']),
-       ('提出 POST …/:id/submission',['下書き版・教材・提出済みを照合','応答不明時 GET submission / recovery','同じ答案を確認して結果画面へ']),
+       ('提出 POST …/:id/submission',['下書き版・教材・提出済み・PDF内容を照合','応答不明時 GET submission / recovery','同じ答案を確認して結果画面へ']),
        ('詳細・結果 GET …/:id',['submitted / grading は状態を再取得','completed：答案PDF・点数・問題別結果','failed：先生へ確認（生徒の再採点なし）']),
        ('副導線：従来のPDFアップロード',['詳細の折りたたみ → PDF選択 → POST','未提出時のみ。教材DL GET …/:id/material','GET …/:id/result は詳細へリダイレクト'])]),
       ('管理者',1120,'#eee1f8',[
@@ -130,7 +130,7 @@ def screens():
       '教師Excel・答案閲覧は許可。15分期限、ログアウトで失効',
       '実装と公開デプロイは別。現在の公開ゲストURLは未確認'], '#fff0cc',18)
     c.text(40,1710,'手書きの競合・教材変更・認証切れ・保存失敗は状態別に案内。読取を新たに再実行する UI はない。',21)
-    c.text(40,1750,'同じ画面の保存・確認・失敗状態を独立した製品画面として数えない。',21)
+    c.text(40,1750,'PDF内容不正は入力画面で案内。確認処理の利用不可は503、手書きと下書きを保持。',21)
     c.save('screen_transition')
 def details(t):
     data={'baseline_commit':BASELINE,'schema_sha256':digest('db/schema.rb'),'routes_sha256':digest('config/routes.rb'),'tables':t,'model_only_constraints':['same school for teacher_classrooms / assignment_classrooms','submission assignment distributed to student classroom','grading_result question belongs to submission assignment','Assignment current request belongs to same assignment'],'not_database_foreign_keys':['question_generation_requests.material_blob_id','active_storage_attachments.record_type + record_id'],'issue46_refresh':'pending: inspect merged main before final acceptance; no pending Submission claim attributes represented'}

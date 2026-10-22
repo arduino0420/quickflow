@@ -1,6 +1,6 @@
 # 実装と設計図の照合（#102 / #101）
 
-基準は main `9bed9d2b6e35e89e51b8d76d1aa76df3e9f01b41`。この版の図はレビュー用であり、#46 の未マージ属性を含まない。#46 がマージされた後、実際の schema・関連・復旧条件を確認して最終更新する。
+基準は main `1404453a24dce4f3661a7c6aee7fc570e8f6b683`。現在のマージ済み実装に対する #102 の部分更新。#46 の未マージ属性を含まない。#46 がマージされた後、実際の schema・関連・復旧条件を確認して追補し、最終受入とする。
 
 - [ER 図](../er_diagram.png) / [編集用 SVG](er_diagram.svg)
 - [画面遷移図](../screen_transition.png) / [編集用 SVG](screen_transition.svg)
@@ -34,6 +34,8 @@ ActiveStorage の多態参照は DB FK ではない。Assignment.material_file �
 | 採点の復旧 | `SubmissionsController#resume_grading`, `Recovery::GradingRecovery`。フラグ ON の教師のみ、failed または停止 grading 候補。サーバー側の追加安全条件で拒否されうる。読取再実行操作を追加していない | `spec/requests/teacher_grading_recovery_concurrency_spec.rb` |
 | ゲスト | `Demo::Guest` の有効条件・READS allowlist、`ApplicationController#guard_guest_session`。合成データ専用・書込禁止。既定 OFF。実装の存在を公開 URL の存在と扱わない | `spec/requests/guest_sessions_spec.rb`。実装・隔離の既存記録は [#93](../implementation/issue93_production_demo.md) |
 | エラー・共通 UI | `public/404.html` / `500.html` はトップへのリンク。認可エラーの head 応答もあり、全エラーを同一ページとはしない。role 別ヘッダーと共通 footer | `spec/requests/error_pages_spec.rb`, `footer_spec.rb`、[画面幅の既存監査](../implementation/issue95_screen_audit.md) |
+
+PDF の内容不正は入力画面または手書き提出のエラーで案内する。PDF 確認基盤の利用不可は 503。手書きと下書きを保持する。根拠は `PdfReadabilityValidator`、配信・提出 controller と `pdf_preview_controller.js`。既存検証は `spec/requests/pdf_readability_spec.rb` および `spec/system/student_pdf_preview_spec.rb`。
 
 ## 提出時の説明と未完了項目
 

@@ -1,6 +1,6 @@
 # 現行スキーマの全属性と制約
 
-基準 commit: `9bed9d2b6e35e89e51b8d76d1aa76df3e9f01b41`。`db/schema.rb` のみから生成。モデル検証とは区別する。
+基準 commit: `1404453a24dce4f3661a7c6aee7fc570e8f6b683`。`db/schema.rb` のみから生成。モデル検証とは区別する。
 
 NULL 可は明示。`options` は型の長さ・default 等を原文で保持。業務表と ActiveStorage は同一 DB の定義。
 
