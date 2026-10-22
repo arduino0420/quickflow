@@ -63,3 +63,13 @@ The invalid-version proof was repaired inside an existing example. No other test
 
 Local static checks: RuboCop over the repository and Brakeman (79 checks, zero warnings).
 Final-head full RSpec and remaining security checks are run by the draft PR CI.
+
+
+## Integration with Japanese default locale
+
+Normally merged main `09588f380a9b0ce6f09b0f8a22a7ba4d1a498f26`, including
+#50 documentation and #94 Japanese errors, without conflicts or history rewriting.
+Against that main, the diff remains only the seven reviewed Issue #98 test/audit files.
+Re-ran all model specs and PasswordPolicy service specs with the Japanese default:
+**393 examples, 0 failures**. RuboCop: **235 files, no offenses**.
+The added assertions use error details/attributes, not translated message text.
