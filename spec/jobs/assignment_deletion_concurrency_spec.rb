@@ -256,12 +256,11 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     [ generation, grading, reading, deletion ].compact.each { |thread| thread.join(10) }
   end
 
-  it "protects the initial material upload through the real teacher creation request's commit callback" do
+  it "keeps a teacher assignment invisible until its material upload succeeds, then permits deletion" do
     request_session = ActionDispatch::Integration::Session.new(Rails.application)
     request_session.post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
     entered = Queue.new
     release = Queue.new
-    pid = Queue.new
     title = "material-race-#{SecureRandom.hex(4)}"
     allow_any_instance_of(ActiveStorage::Service::DiskService).to receive(:upload).and_wrap_original do |method, *args, **options|
       entered << true
@@ -274,17 +273,17 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       request_session.response.status
     end
     Timeout.timeout(5) { entered.pop }
-    created = teacher.assignments.find_by!(title: title)
-    @additional_assignment_ids << created.id
-    blob = created.material_file.blob
-    deletion = run_thread do |connection|
-      pid << connection.select_value("SELECT pg_backend_pid()")
-      AssignmentDeletion.new.call(Assignment.find(created.id), teacher: teacher)
-    end
-    wait_until_blocked(Timeout.timeout(5) { pid.pop }, by: creator[:database_pid])
+    expect(teacher.assignments.exists?(title: title)).to be(false)
     release << true
     expect(creator.join(10)).to be_present
     expect(creator.value).to eq(303)
+    created = teacher.assignments.find_by!(title: title)
+    @additional_assignment_ids << created.id
+    blob = created.material_file.blob
+    expect(blob.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+    deletion = run_thread do
+      AssignmentDeletion.new.call(Assignment.find(created.id), teacher: teacher)
+    end
     expect(deletion.join(10)).to be_present
     expect(deletion.value).to eq(:deleted)
     perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
@@ -293,5 +292,8 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
   ensure
     release << true if release
     [ creator, deletion ].compact.each { |thread| thread.join(10) }
+    if title && (created_id = teacher.assignments.find_by(title: title)&.id)
+      @additional_assignment_ids << created_id
+    end
   end
 end
