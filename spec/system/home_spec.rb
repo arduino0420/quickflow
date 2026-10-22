@@ -7,6 +7,23 @@ RSpec.describe "Home login choices", type: :system do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
   end
 
+  it "uses the same QuickFlow typography as both existing login pages" do
+    [ [ 1280, 900 ], [ 375, 812 ] ].each do |width, height|
+      page.current_window.resize_to(width, height)
+      styles = [ root_path, login_path, student_login_path ].map do |path|
+        visit path
+        page.evaluate_script(<<~JS)
+          (() => {
+            const style = getComputedStyle(document.querySelector('.app-brand'));
+            return ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'color']
+              .map(property => style[property]);
+          })()
+        JS
+      end
+      expect(styles.uniq.length).to eq(1)
+    end
+  end
+
   it "supports keyboard navigation and both login destinations" do
     visit root_path
     page.find("body").send_keys(:tab)
