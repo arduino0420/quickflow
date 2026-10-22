@@ -23,6 +23,6 @@ class Admin::SessionsController < Admin::BaseController
 
   def destroy
     reset_session
-    redirect_to admin_login_path, status: :see_other
+    redirect_to(Demo::Profile.identity? ? root_path : admin_login_path, status: :see_other)
   end
 end

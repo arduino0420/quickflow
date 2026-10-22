@@ -29,6 +29,19 @@ redact = ->(text) { secrets.reduce(text) { |value, secret| value.gsub(secret, "[
 output, error, status = Open3.capture3(env.merge("QUICKFLOW_GUEST_LOGIN" => "false"), "bin/rails", "runner", "script/production_demo_runtime_checks.rb", chdir: root, unsetenv_others: true)
 File.write(File.join(control, "runtime-boot.log"), redact.call(output + error))
 raise "Runtime boot failed; redacted log retained" unless status.success?
+
+def logout_to_landing(http, cookie, token, path, previous_page)
+  request = Net::HTTP::Delete.new(path, "Cookie" => cookie)
+  request.set_form_data(authenticity_token: token)
+  result = http.request(request)
+  raise "Logout redirect failed: #{path}" unless result.code == "303" && URI(result["location"]).path == "/"
+  fresh_cookie = result.get_fields("set-cookie")&.find { |item| item.start_with?("__Host-qfd-") }&.split(";", 2)&.first.to_s
+  landing = http.get(URI(result["location"]).request_uri, "Cookie" => fresh_cookie)
+  body = landing.body.force_encoding("UTF-8")
+  raise "Logout landing failed: #{path}" unless landing.code == "200" && body.include?("架空データ専用の閲覧デモ") && !body.include?("架空データの閲覧専用ゲスト")
+  raise "Logged-out cookie remains active: #{path}" unless http.get(previous_page, "Cookie" => cookie).code == "401"
+end
+
 unless File.file?(File.join(root, "public/assets/.manifest.json"))
   output, error, status = Open3.capture3(env, "bin/rails", "assets:precompile", chdir: root, unsetenv_others: true)
   File.write(File.join(control, "assets.log"), redact.call(output + error))
@@ -161,11 +174,23 @@ begin
       raise "Business verb #{verb} expected 403, received #{mutation.code}" unless mutation.code == "403"
     end
   end
-  old_cookie = session_cookie
-  request = Net::HTTP::Delete.new("/student/logout", "Cookie" => session_cookie)
-  request.set_form_data(authenticity_token: token)
-  raise "Logout failed" unless http.request(request).code == "303"
-  raise "Logged-out cookie remains active" unless http.get("/student/assignments", "Cookie" => old_cookie).code == "401"
+  logout_to_landing(http, session_cookie, token, "/student/logout", "/student/assignments")
+  { "teacher" => "/assignments", "admin" => "/admin", "student" => "/student/assignments" }.each do |role, page|
+    fresh = http.get("/")
+    token = Nokogiri::HTML(fresh.body).at_css('meta[name="csrf-token"]')["content"]
+    cookie = fresh.get_fields("set-cookie").find { |item| item.start_with?("__Host-qfd-") }.split(";", 2).first
+    request = Net::HTTP::Post.new("/guest/#{role}", "Cookie" => cookie)
+    request.set_form_data(authenticity_token: token)
+    started = http.request(request)
+    raise "Shared logout fixture start failed: #{role}/#{started.code}" unless started.code == "303"
+    cookie = started.get_fields("set-cookie").find { |item| item.start_with?("__Host-qfd-") }.split(";", 2).first
+    view = http.get(page, "Cookie" => cookie)
+    document = Nokogiri::HTML(view.body)
+    raise "Shared guest logout form missing" unless document.at_css("aside form[action='/logout']")
+    cookie = view.get_fields("set-cookie")&.find { |item| item.start_with?("__Host-qfd-") }&.split(";", 2)&.first || cookie
+    token = document.at_css('meta[name="csrf-token"]')["content"]
+    logout_to_landing(http, cookie, token, "/logout", page)
+  end
   fresh = http.get("/")
   token = Nokogiri::HTML(fresh.body).at_css('meta[name="csrf-token"]')["content"]
   cookie = fresh.get_fields("set-cookie").find { |item| item.start_with?("__Host-qfd-") }.split(";", 2).first
@@ -181,6 +206,15 @@ begin
   raise "Expiry fixture nonce missing" unless expired.ntuples == 1
   database.finish
   raise "Expired nonce accepted" unless http.get("/student/assignments", "Cookie" => cookie).code == "401"
+  fresh = http.get("/")
+  token = Nokogiri::HTML(fresh.body).at_css('meta[name="csrf-token"]')["content"]
+  cookie = fresh.get_fields("set-cookie").find { |item| item.start_with?("__Host-qfd-") }.split(";", 2).first
+  request = Net::HTTP::Post.new("/guest/teacher", "Cookie" => cookie)
+  request.set_form_data(authenticity_token: token)
+  carried = http.request(request)
+  raise "Entry-OFF carry fixture start failed: #{carried.code}" unless carried.code == "303"
+  carry_cookie = carried.get_fields("set-cookie").find { |item| item.start_with?("__Host-qfd-") }.split(";", 2).first
+  raise "Carry fixture not active before restart" unless http.get("/assignments", "Cookie" => carry_cookie).code == "200"
   raise "Normal login available" unless http.get("/login").code == "403"
   normal_cookie = File.read(File.join(control, "old-normal-cookie"))
   raise "Old ordinary session admitted" unless http.get("/assignments", "Cookie" => normal_cookie).code == "403"
@@ -218,6 +252,14 @@ begin
   end
   raise "Entry-OFF home failed" unless response.code == "200"
   raise "Entry-OFF guest link remains" if response.body.include?("/guest/teacher")
+  carried = http.get("/assignments", "Cookie" => carry_cookie)
+  raise "Valid guest lost readonly access when entry disabled" unless carried.code == "200"
+  carry_cookie = carried.get_fields("set-cookie")&.find { |item| item.start_with?("__Host-qfd-") }&.split(";", 2)&.first || carry_cookie
+  carry_token = Nokogiri::HTML(carried.body).at_css('meta[name="csrf-token"]')["content"]
+  request = Net::HTTP::Post.new("/assignments", "Cookie" => carry_cookie)
+  request.set_form_data(authenticity_token: carry_token)
+  raise "Entry-OFF carried guest can mutate" unless http.request(request).code == "403"
+  logout_to_landing(http, carry_cookie, carry_token, "/logout", "/assignments")
   token = Nokogiri::HTML(response.body).at_css('meta[name="csrf-token"]')["content"]
   cookie = response.get_fields("set-cookie").find { |item| item.start_with?("__Host-qfd-") }.split(";", 2).first
   request = Net::HTTP::Post.new("/login", "Cookie" => cookie)
