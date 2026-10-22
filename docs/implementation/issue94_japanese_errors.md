@@ -44,7 +44,7 @@
 専用clone/branch、専用PostgreSQLクラスタ（127.0.0.1:57494 / quickflow_test）、clone内専用Storage。
 `PRIMARY_DATABASE_URL`と`DATABASE_URL`を同じ専用URLへ明示指定。
 migrate前にRailsの設定host/port/db、実SQLのhost/port/db/data_directory、Storage rootを読み取り照合。
-元DB/元作業ツリー/他タスクのサービスを変更せず、drop/reset/seed・実AI・本番アクセス・AWS操作なし。
+元DB/元作業ツリー/他タスクのサービスを変更せず、既存DBへのdrop/reset/seed・実AI・本番アクセス・AWS操作なし。
 
 ## 実行結果（#110確定head 75a9ee3上）
 
@@ -58,3 +58,11 @@ migrate前にRailsの設定host/port/db、実SQLのhost/port/db/data_directory�
 - ゲストrequest/Systemを単独実行: 18例、失敗0。上記競合は複合実行時のみ再現。
 - RuboCop: 233ファイル、指摘0。Brakeman: 警告0。`git diff --check`成功。
 - 全RSpec/CI/PRは#110の実merge・統合後の結果と区別する。
+
+## 最新main統合後
+
+- #110 merge `a4426ce1de70dfdc6c5a470dad31cabf15a98505`を通常mergeで取り込み、既存commitを保持。
+- fixture lock回帰・配信・静的ページ・管理者・提出・Excel・MVP・ゲスト・実狭幅Systemの組合せは失敗0。
+  正確な例数はPRに記録する。統合前に再現したNOWAIT競合は、この組合せでは再発していない。
+- RuboCop235ファイル指摘0、Brakeman警告0、mainとの差分は#94の17ファイルのみ。
+- 最終headの全RSpecはCIで実行し、ローカル関連テストの成功と区別する。親独立レビュー前にはmergeしない。
