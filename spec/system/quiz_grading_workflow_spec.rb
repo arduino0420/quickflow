@@ -66,6 +66,21 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     perform_enqueued_jobs(only: AnswerGradingJob)
   end
 
+  def download_grade_sheet
+    download_directory = Dir.mktmpdir("issue97-export-", Rails.root.join("tmp"))
+    page.driver.browser.execute_cdp("Browser.setDownloadBehavior", behavior: "allow", downloadPath: download_directory)
+    click_link "Excel出力"
+    download = nil
+    Timeout.timeout(15) do
+      loop do
+        download = Dir.glob(File.join(download_directory, "*.xlsx")).first
+        break if download
+        sleep 0.05 # Bounded wait for the actual browser download, not a fixed delay.
+      end
+    end
+    xlsx_worksheet(File.binread(download))
+  end
+
   it "persists generated questions, handwritten PDF and grading, saves teacher judgments, and downloads Excel through the displayed link" do
     student_login(@student)
     click_link @assignment.title
@@ -98,6 +113,10 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     click_link @assignment.title
     expect(page).to have_css("#grade_student_#{@unsubmitted.id} .grade-status", text: "未提出")
     expect(page).to have_css("#grade_student_#{@unsubmitted.id} .grade-score", text: "", exact_text: true)
+    sheet = download_grade_sheet
+    expect(%w[A2 B2 C2].map { |ref| xlsx_value(sheet, ref) }).to eq([ "1年1組", "1", "0" ])
+    expect(xlsx_cell(sheet, "C2")["t"]).to eq("n")
+    expect(xlsx_value(sheet, "C3")).to be_nil
     within("#grade_student_#{@student.id}") { click_link }
     expect(page).to have_css("iframe[src='#{answer_assignment_submission_path(@assignment, submission)}']")
     select "正解", from: "問題1の最終判定"
@@ -111,18 +130,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     expect(submission.reload.extracted_text).to eq(original_reading)
     expect(draft.reload.attributes).to eq(draft_before)
     click_link "小テスト詳細へ戻る"
-    download_directory = Dir.mktmpdir("issue97-export-", Rails.root.join("tmp"))
-    page.driver.browser.execute_cdp("Browser.setDownloadBehavior", behavior: "allow", downloadPath: download_directory)
-    click_link "Excel出力"
-    download = nil
-    Timeout.timeout(15) do
-      loop do
-        download = Dir.glob(File.join(download_directory, "*.xlsx")).first
-        break if download
-        sleep 0.05 # Bounded wait for the actual browser download, not a fixed delay.
-      end
-    end
-    sheet = xlsx_worksheet(File.binread(download))
+    sheet = download_grade_sheet
     expect(%w[A2 B2 C2].map { |ref| xlsx_value(sheet, ref) }).to eq([ "1年1組", "1", "5" ])
     expect(xlsx_value(sheet, "C3")).to be_nil
     student_login(@student)

@@ -105,3 +105,10 @@ Latest-main integration result: **141 examples, 0 failures** (2m22.8s):
 RuboCop: **241 files, no offenses**. Brakeman: **79 checks, zero warnings**.
 `git diff --check` passes. CI's complete RSpec and security checks are attached to
 the draft PR; their final-head status must be checked before independent review.
+
+Excel evidence refinement: the same Chrome workflow downloads the displayed Excel
+before teacher correction and asserts numeric `0` (`C2` type `n`) against the
+unsubmitted student's empty `C3`; it downloads again after correction and asserts
+`5`/empty. Both use the same download helper and actual browser downloads. The
+changed workflow alone passes **1 example, 0 failures** (49.41s), with RuboCop and
+`git diff --check` passing. Final-head CI is rechecked after this test-only update.
