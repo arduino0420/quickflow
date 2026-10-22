@@ -45,9 +45,14 @@ class QuestionGenerationRequest < ApplicationRecord
   end
 
   def fail!(token:, code: "generation_failed")
+    recorded = false
     with_selected_lock do |owner|
-      update!(state: "failed", failure_code: code, finished_at: Time.current) if owned?(owner, token)
+      if owned?(owner, token) && (!block_given? || yield(owner))
+        update!(state: "failed", failure_code: code, finished_at: Time.current)
+        recorded = true
+      end
     end
+    recorded
   end
 
   def enqueue_failed!

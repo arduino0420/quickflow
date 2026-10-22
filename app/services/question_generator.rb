@@ -29,6 +29,8 @@ class QuestionGenerator
 
     @request.with_selected_lock do |owner|
       @claim_token = @request.claim!
+      owner.reload
+      @request.reload(lock: true)
       next unless @claim_token && @request.owned?(owner, @claim_token)
       raise "Material PDF is missing" unless owner.material_file.attached?
 
@@ -86,10 +88,9 @@ class QuestionGenerator
   rescue StandardError
     # A failed atomic finalize rolls back before this fresh, equally fenced write.
     begin
-      @request&.with_selected_lock do |owner|
-        if snapshot && generation_owned?(owner, snapshot)
-          @request.update!(state: "failed", failure_code: "generation_failed", finished_at: Time.current)
-          @failure_recorded = true
+      if @request && @claim_token
+        @failure_recorded = @request.fail!(token: @claim_token) do |owner|
+          snapshot && generation_owned?(owner, snapshot)
         end
       end
     rescue ActiveRecord::RecordNotFound
