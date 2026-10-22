@@ -1,6 +1,7 @@
 require "rails_helper"
 require "capybara/rspec"
 require "tmpdir"
+require "selenium-webdriver"
 
 RSpec.describe "Fictional guest browsing", type: :system do
   around do |example|
@@ -50,5 +51,17 @@ RSpec.describe "Fictional guest browsing", type: :system do
     click_button "ゲストを終了"
     visit "/student/assignments"
     expect(page).to have_current_path("/student/login")
+  end
+  it "does not restore a guest page through Chrome back navigation after logout" do
+    driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    visit "/"
+    click_button "教師ゲストで閲覧"
+    expect(page).to have_content("架空データの閲覧専用ゲスト（教師）")
+    click_button "ゲストを終了"
+    expect(page).to have_current_path("/login")
+    page.go_back
+    expect(page).not_to have_content("架空データの閲覧専用ゲスト")
+    visit "/assignments"
+    expect(page).to have_current_path("/login")
   end
 end

@@ -105,3 +105,21 @@ manifestの日時はISO8601の6桁小数秒に統一し、1マイクロ秒の改
   3役閲覧、既存認証付き答案PDF、下書き書込み403、logout303、全業務行/ファイルdigest不変。
   実API生成禁止・enqueue通知例外の監視下でJob/APIなし。
 - 全RSpecと最終head CIの結果はPRで追記。ここまでの成功とは区別する。
+
+### 独立レビュー後の追加確認
+
+- サポートするゲスト起動設定ではtest.rbがCSRFを自動有効化します。通常のflag OFFテストと本番設定は変更しません。
+  手動allow_forgery_protection上書きに依存しない新規Railsプロセスの起動設定をRSpecで検証。
+- 新規loopback Puma（127.0.0.1:49557、専用49379 DB）へNet::HTTPで実通信し、開始/logoutの
+  tokenなし・不正tokenが422、3役の正規tokenで303→200、logout303と終了後の閲覧拒否を確認。
+  サーバーはtest設定で起動し、Web公開していません。通信後も業務行/ファイルmanifest不変。
+- logoutも隔離先検証を先に行い、OFF・誤接続・改変manifestで拒否した場合はsessionだけ破棄します。
+  これら3条件に古いcookieを再送し、logoutとGETでSQLのINSERT/UPDATE/DELETE等が0件と確認。
+  正常な同一デモでのlogoutはnonceを失効させ、cookie再送を拒否します。
+- 通常ログイン→生徒ゲスト→logout→通常ログイン後に、role/nonceが残らず課題更新できる回帰例を追加。
+  mutation経路は最初のverbだけではなく全POST/PUT/PATCH/DELETEを3役で検証。
+- Chromeでlogout後の戻る操作がゲストページを復元せず、再アクセスが通常loginへ戻る例を確認。
+  rack_testの導線確認だけではbrowser履歴/cacheを証明できないため別例で補完しています。
+  Chrome1構成の検証であり、すべてのbrowser/versionでのcache挙動を保証するものではありません。
+- 修正後関連RSpec46件・失敗0、RuboCop232ファイル指摘0、Brakeman警告0。
+- 初回head be3046eの全RSpec1736件・失敗0、CI #140全ジョブ成功。レビュー修正後headの全件/CIとは区別します。

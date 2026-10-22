@@ -18,7 +18,7 @@ class ApplicationController < ActionController::Base
   private
 
   def with_guest_read_snapshot
-    return yield unless guest_session? && request.get?
+    return yield unless guest_session? && request.get? && Demo::Guest.enabled?
 
     # Keep the manifest check and controller scopes on one PostgreSQL snapshot.
     # RSpec's surrounding fixture transaction already supplies this boundary.
@@ -33,11 +33,11 @@ class ApplicationController < ActionController::Base
   def guard_guest_session
     return unless guest_session?
     response.headers["Cache-Control"] = "private, no-store"
+    Demo::Guest.verify!
     if request.delete? && %w[sessions student_sessions admin/sessions].include?(controller_path) && action_name == "destroy"
       Demo::Guest.revoke(session)
       return
     end
-    Demo::Guest.verify!
     unless Demo::Guest.valid?(session)
       Demo::Guest.revoke(session)
       reset_session
@@ -47,7 +47,7 @@ class ApplicationController < ActionController::Base
     allowed = Demo::Guest::READS.fetch(session[:guest_role]).fetch(controller_path, [])
     head :forbidden unless request.get? && allowed.include?(action_name)
   rescue Demo::Guest::Unavailable, ActiveRecord::RecordNotFound
-    Demo::Guest.revoke(session)
+    # Never write authentication state to an unverified/unavailable database.
     reset_session
     head :service_unavailable
   end

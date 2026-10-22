@@ -1,5 +1,6 @@
 require "rails_helper"
 require "tmpdir"
+require "open3"
 
 RSpec.describe "Read-only fictional guests", type: :request do
   include ActiveSupport::Testing::TimeHelpers
@@ -21,6 +22,9 @@ RSpec.describe "Read-only fictional guests", type: :request do
     allow_any_instance_of(Demo::Seed).to receive(:guard!) { |seed| seed.instance_variable_set(:@root, @root) }
     allow(ActiveStorage::Blob.services).to receive(:fetch).with("demo_seed")
       .and_return(ActiveStorage::Service::DiskService.new(root: @root.to_s, name: "demo_seed"))
+    @normal_password = SecureRandom.hex(24)
+    allow(SecureRandom).to receive(:hex).and_call_original
+    allow(SecureRandom).to receive(:hex).with(24).and_return(@normal_password)
     Demo::Seed.new.call
     allow(AiClient).to receive(:build).and_call_original
     allow(ActiveJob::Base).to receive(:perform_later).and_raise("No jobs")
@@ -85,10 +89,11 @@ RSpec.describe "Read-only fictional guests", type: :request do
       Rails.application.routes.routes.each do |route|
         path = route.path.spec.to_s.delete_suffix("(.:format)")
         next if excluded.include?(path) || path.start_with?("/rails/")
-        verb = route.verb.to_s.split("|").find { |value| %w[POST PUT PATCH DELETE].include?(value) }
-        next unless verb
-        public_send(verb.downcase, path.gsub(/:[a-z_]+/, "1"), params: { arbitrary: "rejected" }, as: :json)
-        expect(response).to have_http_status(:forbidden), "#{verb} #{path}: #{response.status}"
+        verbs = route.verb.to_s.split("|").select { |value| %w[POST PUT PATCH DELETE].include?(value) }
+        verbs.each do |verb|
+          public_send(verb.downcase, path.gsub(/:[a-z_]+/, "1"), params: { arbitrary: "rejected" }, as: :json)
+          expect(response).to have_http_status(:forbidden), "#{verb} #{path}: #{response.status}"
+        end
       end
     end
     %w[/admin/students/1/confirm_destroy /admin/students/1/edit /admin/teachers/new
@@ -192,6 +197,74 @@ RSpec.describe "Read-only fictional guests", type: :request do
     expect { AiClient.build(api_key: "unused") }.to raise_error(Demo::Guest::Unavailable)
     expect { AuthenticationAttemptCleanupJob.perform_now }.to raise_error(Demo::Guest::Unavailable)
     expect(OpenAI::Client).not_to have_received(:new)
+  end
+
+  it "returns from a normal login through guest switching to a normal writable session" do
+    post "/login", params: { session: { user_id: "demo-teacher-2", password: @normal_password } }
+    expect(response).to have_http_status(:see_other)
+    normal_id = Teacher.find_by!(user_id: "demo-teacher-2").id
+    expect(request.session[:teacher_id]).to eq(normal_id)
+    start("student")
+    expect(request.session[:teacher_id]).to be_nil
+    expect(request.session[:guest_nonce]).to be_present
+    delete "/student/logout"
+    expect(request.session[:guest_nonce]).to be_nil
+    post "/login", params: { session: { user_id: "demo-teacher-2", password: @normal_password } }
+    expect(response).to have_http_status(:see_other)
+    expect(request.session[:teacher_id]).to eq(normal_id)
+    expect(request.session[:student_id]).to be_nil
+    expect(request.session[:admin_id]).to be_nil
+    expect(request.session[:guest_role]).to be_nil
+    expect(request.session[:guest_nonce]).to be_nil
+    get "/assignments/new"
+    expect(response).to have_http_status(:ok)
+    own = Teacher.find(normal_id).assignments.first
+    patch "/assignments/#{own.id}", params: { assignment: { title: "Normal update preserved" } }
+    expect(response).to have_http_status(:see_other)
+    expect(own.reload.title).to eq("Normal update preserved")
+  end
+
+  %w[off target manifest].each do |mode|
+    it "does not write to an unverified #{mode} target when given an old guest cookie" do
+      start("teacher")
+      key = Rails.application.config.session_options.fetch(:key)
+      original_cookie = cookies[key]
+      case mode
+      when "off"
+        ENV["QUICKFLOW_GUEST_LOGIN"] = nil
+      when "target"
+        guarded = Demo::Seed.new(env: { "QUICKFLOW_DEMO_SEED" => "true",
+          "QUICKFLOW_DEMO_ISOLATION_ID" => "a" * 32,
+          "QUICKFLOW_DEMO_DATABASE" => "quickflow_test", "QUICKFLOW_DEMO_PORT" => "65000" })
+        allow(guarded).to receive(:guard!).and_call_original
+        allow(Demo::Seed).to receive(:new).and_return(guarded)
+      when "manifest"
+        Assignment.first.update!(title: "Changed manifest")
+      end
+      writes = []
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
+        sql = event.payload[:sql]
+        writes << sql if sql.match?(/\A\s*(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE)\b/i)
+      end
+      [ [ :delete, "/logout" ], [ :get, "/assignments" ] ].each do |verb, path|
+        cookies[key] = original_cookie
+        public_send(verb, path)
+        expect(response).to have_http_status(:service_unavailable)
+      end
+      expect(writes).to be_empty
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+    end
+  end
+
+  it "enables CSRF through the supported guest startup configuration" do
+    %w[true false].each do |enabled|
+      output, error, status = Open3.capture3({ "QUICKFLOW_GUEST_LOGIN" => enabled },
+        RbConfig.ruby, Rails.root.join("bin/rails").to_s, "runner", "--skip-executor",
+        'puts "CSRF_CONFIG=#{ActionController::Base.allow_forgery_protection}"')
+      expect(status.success?).to be(true), error
+      expect(output).to include("CSRF_CONFIG=#{enabled}")
+    end
   end
 
   it "requires CSRF for guest start and logout" do
