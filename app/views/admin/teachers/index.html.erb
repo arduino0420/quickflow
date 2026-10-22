@@ -1,3 +1,4 @@
+<% content_for :title, "教師一覧 | QuickFlow" %>
 <h1>教師一覧</h1>
 <p>所属学校コード: <%= @school.school_code %></p>
 <nav class="admin-teacher-list-actions" aria-label="教師一覧メニュー">
@@ -6,6 +7,8 @@
 </nav>
 
 <% if flash[:notice].present? %><p role="status"><%= flash[:notice] %></p><% end %>
+
+<% if @teachers.empty? %><p>登録されている教師はいません。</p><% end %>
 
 <table class="admin-teacher-list">
   <thead><tr><th scope="col">教師ID</th><th scope="col">担当クラス</th><th scope="col">操作</th></tr></thead>
