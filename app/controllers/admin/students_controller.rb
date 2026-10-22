@@ -1,5 +1,5 @@
 class Admin::StudentsController < Admin::BaseController
-  rescue_from ActiveRecord::RecordNotFound, with: -> { head :not_found }
+  rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   before_action :set_school
 
   def index
@@ -96,6 +96,12 @@ class Admin::StudentsController < Admin::BaseController
   end
 
   private
+
+  def render_not_found
+    return head :not_found unless request.format.html?
+
+    render file: Rails.public_path.join("404.html"), layout: false, status: :not_found
+  end
 
   def student_account
     @return_filters = params.permit(:grade, :class_number, :page).to_h.select { |_, value| value.is_a?(String) && value.match?(/\A[0-9]{1,9}\z/) }

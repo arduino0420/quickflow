@@ -103,6 +103,7 @@ RSpec.describe "Student submissions", type: :request do
 
     expect { submit(upload) }.not_to have_enqueued_job(AnswerReadingJob)
     expect(response).to have_http_status(:content_too_large)
+    expect(document.at_css('[role="alert"]').text).to include("答案PDFは25MiB以下のPDFを選択してください")
     expect(counts).to eq(before_counts)
     expect(student.submissions).to be_empty
   end

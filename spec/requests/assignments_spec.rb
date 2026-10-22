@@ -133,7 +133,7 @@ RSpec.describe "Assignment creation", type: :request do
       post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.txt", declared_type)) }
 
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(response.body).to include("有効なPDF")
+      expect(response.body).to include("教材PDFは有効なPDFファイルを選択してください")
       expect([ Assignment.count, AssignmentClassroom.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]).to eq(counts)
       expect(QuestionGenerationJob).not_to have_been_enqueued
     end
@@ -172,7 +172,7 @@ RSpec.describe "Assignment creation", type: :request do
           expect(Assignment.count).to eq(counts.first + 1)
         else
           expect(response).to have_http_status(:content_too_large)
-          expect(response.body).to include("25MiB以下")
+          expect(response.body).to include("教材PDFは25MiB以下のPDFを選択してください")
           expect([ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]).to eq(counts)
           expect(QuestionGenerationJob).not_to have_been_enqueued
         end
@@ -192,7 +192,13 @@ RSpec.describe "Assignment creation", type: :request do
         .and not_change(AssignmentClassroom, :count)
 
       expect(response).to have_http_status(422)
-      expect(document.at_css('[role="alert"] li')).to be_present
+      message = if invalid_attributes.key?(:title)
+        "小テスト名を入力してください"
+      else
+        { "" => "1問あたりの点数を入力してください", "0" => "1問あたりの点数は1以上で入力してください",
+          "1.5" => "1問あたりの点数は整数で入力してください", "abc" => "1問あたりの点数は数値で入力してください" }.fetch(invalid_attributes[:point_per_question])
+      end
+      expect(document.at_css('[role="alert"]').text).to include(message)
       expect(document.at_css('input[name="assignment[title]"]')[:value].to_s).to eq(submitted[:title])
       expect(document.at_css('input[name="assignment[point_per_question]"]')[:value].to_s).to eq(submitted[:point_per_question])
       expect(document.at_css('form[action="/assignments"]')).to be_present
@@ -216,6 +222,7 @@ RSpec.describe "Assignment creation", type: :request do
     post assignments_path, params: { assignment: attributes.except(:material_file) }
     expect(response).to have_http_status(422)
     expect(Assignment.count).to eq(0)
+    expect(response.body).to include("教材PDFを選択してください")
 
     post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.pdf", "application/pdf")) }
     expect(response).to have_http_status(:see_other)
