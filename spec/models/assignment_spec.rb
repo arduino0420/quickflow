@@ -14,6 +14,30 @@ RSpec.describe Assignment, type: :model do
     expect(assignment.published_at).to be_nil
   end
 
+  describe ".distributed_to_school" do
+    it "includes target-school distributions once and excludes other-school and undistributed quizzes" do
+      target = described_class.create!(attributes)
+      [ 1, 2 ].each do |number|
+        classroom = Classroom.create!(school: school, grade: 1, class_number: number)
+        target.assignment_classrooms.create!(classroom: classroom)
+      end
+      other_school = School.create!(school_code: "OTHERSCOPE")
+      other_teacher = Teacher.create!(school: other_school, user_id: "other-scope", password: "password123")
+      other = described_class.create!(attributes.merge(teacher: other_teacher))
+      other.assignment_classrooms.create!(classroom: Classroom.create!(school: other_school, grade: 1, class_number: 1))
+      described_class.create!(attributes)
+
+      expect(described_class.distributed_to_school(school.id)).to contain_exactly(target)
+      expect(described_class.distributed_to_school(other_school.id)).to contain_exactly(other)
+    end
+
+    it "returns an empty relation when the school has no distributions" do
+      described_class.create!(attributes)
+
+      expect(described_class.distributed_to_school(school.id)).to be_empty
+    end
+  end
+
   it "returns its questions" do
     assignment = described_class.create!(attributes)
     question = Question.create!(assignment: assignment, question_label: "1", position: 1,

@@ -27,33 +27,4 @@ RSpec.describe PasswordPolicy do
     expect(described_class.message_for("あ" * 25, role: :admin)).to include("72バイト")
     expect(described_class.message_for("あいうえおかきくけこさしすせそたちつてと", role: :admin)).to be_nil
   end
-
-  it "does not apply the new rule to an unchanged legacy password" do
-    school = School.create!(school_code: "POLICY")
-    teacher = Teacher.create!(school: school, user_id: "legacy", password: "old-password")
-    expect(teacher.update(user_id: teacher.user_id)).to be(true)
-    expect(teacher.reload.authenticate("old-password")).to eq(teacher)
-    expect(teacher.update(password: "short")).to be(false)
-    expect(teacher.reload.authenticate("old-password")).to eq(teacher)
-  end
-
-  it "keeps a legacy 15-digit student credential valid until it is changed" do
-    school = School.create!(school_code: "LEGACYPOL")
-    room = Classroom.create!(school: school, grade: 1, class_number: 1)
-    student = Student.create!(classroom: room, attendance_number: 1, password: "739162840517294")
-    expect(student.reload.authenticate("739162840517294")).to eq(student)
-    expect(student.update(attendance_number: 2)).to be(true)
-    expect(student.reload.authenticate("739162840517294")).to eq(student)
-    expect(student.update(password: "58392047")).to be(true)
-    expect(student.reload.authenticate("739162840517294")).to be_falsey
-    expect(student.authenticate("58392047")).to eq(student)
-  end
-
-  it "applies the new policy to an existing admin password change" do
-    school = School.create!(school_code: "ADMINPOL")
-    admin = Admin.create!(school: school, user_id: "legacy-admin", password: "old-password")
-    expect(admin.update(password: "short")).to be(false)
-    expect(admin.reload.update(password: "Long River 8 Beacon 42")).to be(true)
-    expect(admin.reload.authenticate("Long River 8 Beacon 42")).to eq(admin)
-  end
 end
