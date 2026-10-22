@@ -1,0 +1,4 @@
+.home-page { text-align: center; padding-top: clamp(2rem, 10vh, 6rem); }
+.home-page .app-brand { font-size: clamp(2.5rem, 8vw, 3.5rem); line-height: 1.7; }
+.home-login-options { display: grid; gap: 1rem; margin-top: 2rem; }
+.home-login-options .button { min-height: 3.5rem; }
