@@ -11,11 +11,15 @@ RSpec.describe "Teacher material upload safety", type: :request do
   around do |example|
     Dir.mktmpdir("teacher-material-storage") do |root|
       original_service = ActiveStorage::Blob.service
+      original_services = ActiveStorage::Blob.services
+      @storage_root = root
       ActiveStorage::Blob.service = ActiveStorage::Service.configure(:test,
         { test: { service: "Disk", root: root } })
+      ActiveStorage::Blob.services = { "test" => ActiveStorage::Blob.service }
       example.run
     ensure
       ActiveStorage::Blob.service = original_service
+      ActiveStorage::Blob.services = original_services
     end
   end
 
@@ -24,7 +28,10 @@ RSpec.describe "Teacher material upload safety", type: :request do
     classroom
     @uploads = []
     allow(ActiveStorage::Blob).to receive(:build_after_unfurling).and_wrap_original do |method, **options|
-      method.call(**options).tap { |blob| @uploads << blob }
+      method.call(**options).tap do |blob|
+        expect(blob.service.root.to_s).to eq(@storage_root)
+        @uploads << blob
+      end
     end
   end
 
