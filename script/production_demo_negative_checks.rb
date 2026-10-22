@@ -30,6 +30,8 @@ end
 begin
   verifier.call
   [
+    [ "UPDATE on ledger", "GRANT UPDATE ON question_generation_requests TO #{runtime}", "REVOKE UPDATE ON question_generation_requests FROM #{runtime}" ],
+    [ "ledger sequence access", "GRANT USAGE ON SEQUENCE question_generation_requests_id_seq TO #{runtime}", "REVOKE USAGE ON SEQUENCE question_generation_requests_id_seq FROM #{runtime}" ],
     [ "UPDATE on business table", "GRANT UPDATE ON schools TO #{runtime}", "REVOKE UPDATE ON schools FROM #{runtime}" ],
     [ "column INSERT", "GRANT INSERT (school_code) ON schools TO #{runtime}", "REVOKE INSERT (school_code) ON schools FROM #{runtime}" ],
     [ "grant option", "GRANT SELECT ON schools TO #{runtime} WITH GRANT OPTION", "REVOKE GRANT OPTION FOR SELECT ON schools FROM #{runtime}" ],
@@ -69,6 +71,17 @@ begin
     ensure
       path.binwrite(original)
     end
+  end
+  manifest_path = root.join(".seed-manifest.json")
+  original_manifest = manifest_path.binread
+  old_manifest = JSON.parse(original_manifest)
+  old_manifest.fetch("tables").delete("question_generation_requests")
+  manifest_path.write(JSON.generate(old_manifest))
+  begin
+    expect_refusal.call("old manifest missing generation ledger")
+    raise "Manifest was automatically repaired" unless JSON.parse(manifest_path.read) == old_manifest
+  ensure
+    manifest_path.binwrite(original_manifest)
   end
   probe = root.join("forbidden-symlink")
   probe.make_symlink(root.join(".demo-isolation"))

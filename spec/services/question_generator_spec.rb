@@ -3,6 +3,7 @@ require_relative "../support/ai_grading_context"
 
 RSpec.describe QuestionGenerator, type: :model do
   include_context "AI grading records"
+  let(:generation_model) { "configured-generator-model" }
 
   let(:generated_question) do
     { question_label: "1(1)", question_text: problem[:question_text], correct_answer: "5x",
@@ -238,7 +239,7 @@ RSpec.describe QuestionGenerator, type: :model do
     expected_blob_id = assignment.material_file.blob.id
     assignment.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "replacement.pdf", content_type: "application/pdf")
-    expect { generator.call(assignment, material_blob_id: expected_blob_id) }.to raise_error(/Material PDF has changed/)
+    expect(generator.call(assignment, material_blob_id: expected_blob_id)).to be_nil
     expect(files).not_to have_received(:create)
     expect(responses).not_to have_received(:create)
   end
@@ -248,7 +249,7 @@ RSpec.describe QuestionGenerator, type: :model do
     assignment.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "replacement.pdf", content_type: "application/pdf")
     expect { generator.saved_questions(assignment) }.to raise_error(/Material PDF has changed/)
-    expect { generator.call(assignment) }.to raise_error(/Material PDF has changed/)
+    expect(generator.call(assignment)).to be_nil
     expect(files).to have_received(:create).once
     expect(responses).to have_received(:create).once
     expect(assignment.questions.count).to eq(1)
@@ -349,6 +350,7 @@ RSpec.describe QuestionGenerator, type: :model do
 
   it "rejects non-PDF material before calling the API" do
     assignment.material_file.attach(io: StringIO.new("text"), filename: "material.txt", content_type: "text/plain")
+    QuestionGenerationRequest.select_for_distribution!(assignment, model: generation_model)
     expect { generator.call(assignment) }.to raise_error("Material is not a PDF")
     expect(files).not_to have_received(:create)
     expect(responses).not_to have_received(:create)
@@ -401,6 +403,7 @@ RSpec.describe QuestionGenerator, type: :model do
       allow(responses).to receive(:create).and_raise(StandardError, "API failed")
       expect { generator.call(assignment) }.to raise_error("API failed")
       allow(responses).to receive(:create).and_return(response)
+      QuestionGenerationRequest.select_for_distribution!(assignment, model: "another-model")
       expect(described_class.new(client: client, model: "another-model").call(assignment).size).to eq(1)
       expect(responses).to have_received(:create).twice
     end

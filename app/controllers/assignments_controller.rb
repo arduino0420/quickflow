@@ -85,6 +85,7 @@ class AssignmentsController < ApplicationController
         @assignment.material_file = @uploaded_material_blob if @uploaded_material_blob
         @assignment.save!
         acquire.call(@assignment.id)
+        QuestionGenerationRequest.select_for_distribution!(@assignment)
         selected_classrooms.each do |classroom|
           @assignment.assignment_classrooms.create!(classroom: classroom)
         end
@@ -171,10 +172,11 @@ class AssignmentsController < ApplicationController
   end
 
   def enqueue_question_generation
-    job = QuestionGenerationJob.perform_later(@assignment, @assignment.material_file.blob.id)
+    request = @assignment.current_question_generation_request
+    job = QuestionGenerationJob.perform_later(@assignment, request.material_blob_id, 0, request_id: request.id)
     raise "Could not enqueue question generation" unless job
   rescue StandardError => error
-    QuestionGenerator.new.record_failure(@assignment)
+    request&.enqueue_failed!
     Rails.logger.error("Question generation enqueue failed: assignment_id=#{@assignment.id} #{error.class}")
   end
 

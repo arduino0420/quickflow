@@ -4,6 +4,7 @@ require_relative "../support/ai_grading_context"
 
 RSpec.describe "Concurrent AI processing", type: :job do
   include_context "AI grading records"
+  let(:generation_model) { AiClient.model(:question_generation) }
   self.use_transactional_tests = false
 
   around do |example|
@@ -25,6 +26,8 @@ RSpec.describe "Concurrent AI processing", type: :job do
     Question.where(assignment_id: assignment.id).delete_all
     assignment.material_file.purge
     AssignmentClassroom.where(assignment: assignment).delete_all
+    assignment.update!(current_question_generation_request: nil)
+    QuestionGenerationRequest.where(assignment_id: assignment.id).delete_all
     assignment.destroy!
     @other_student&.destroy!
     student.destroy!
@@ -53,6 +56,10 @@ RSpec.describe "Concurrent AI processing", type: :job do
       end
     end
     Timeout.timeout(10) { entered.pop }
+
+    request = QuestionGenerationRequest.find(assignment.current_question_generation_request_id)
+    expect(request.state).to eq("running")
+    expect(request.claim_token).to be_present
 
     # This separate connection uses the same INSERT and attachment save as the controller.
     other_submission = Submission.transaction do
@@ -115,8 +122,8 @@ RSpec.describe "Concurrent AI processing", type: :job do
         grading_rule: "同類項をまとめる。", requires_work: false } ])
     end
     overlap(
-      -> { QuestionGenerationJob.perform_now(Assignment.find(assignment_id), blob_id) },
-      -> { QuestionGenerationJob.perform_now(Assignment.find(assignment_id), blob_id) }, entered, release)
+      -> { QuestionGenerationJob.perform_now(Assignment.find(assignment_id), blob_id, request_id: assignment.current_question_generation_request_id) },
+      -> { QuestionGenerationJob.perform_now(Assignment.find(assignment_id), blob_id, request_id: assignment.current_question_generation_request_id) }, entered, release)
     expect(assignment.questions.count).to eq(1)
     expect(files).to have_received(:create).once
   end
@@ -157,7 +164,8 @@ RSpec.describe "Concurrent AI processing", type: :job do
     end
     results = overlap(attempt, attempt, entered, release)
     expect(results.first).to eq("Timed out")
-    expect(results.last).to include("automatic reattempt is disabled")
+    expect(results.last).to be_nil # A busy duplicate cannot take over or report a new failure.
+    expect(QuestionGenerationRequest.find(assignment.current_question_generation_request_id).state).to eq("failed")
     expect(assignment.questions).to be_empty
     expect(files).to have_received(:create).once
   end

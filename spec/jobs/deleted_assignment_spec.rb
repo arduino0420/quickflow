@@ -12,7 +12,7 @@ RSpec.describe "AI jobs after assignment deletion", type: :job do
         serialized = job_class.new(*args).serialize
         AssignmentDeletion.new.call(assignment, teacher: teacher)
         expect(AiClient).not_to receive(:build)
-        expect_any_instance_of(QuestionGenerator).not_to receive(:record_failure)
+        expect_any_instance_of(QuestionGenerationRequest).not_to receive(:fail!)
         expect {
           mode == :serialized ? ActiveJob::Base.execute(serialized) : job_class.perform_now(*args)
         }.not_to raise_error

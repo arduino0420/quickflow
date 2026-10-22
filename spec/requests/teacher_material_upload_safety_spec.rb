@@ -27,6 +27,11 @@ RSpec.describe "Teacher material upload safety", type: :request do
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
     classroom
     @uploads = []
+    allow(QuestionGenerationRequest).to receive(:select_for_distribution!).and_wrap_original do |method, item|
+      blob = item.material_file.blob
+      expect(blob.service.exist?(blob.key)).to be(true)
+      method.call(item)
+    end
     allow(ActiveStorage::Blob).to receive(:build_after_unfurling).and_wrap_original do |method, **options|
       method.call(**options).tap do |blob|
         expect(blob.service.root.to_s).to eq(@storage_root)
@@ -58,7 +63,7 @@ RSpec.describe "Teacher material upload safety", type: :request do
   end
 
   def counts
-    [ Assignment.count, AssignmentClassroom.count, ActiveStorage::Attachment.count, ActiveStorage::Blob.count ]
+    [ Assignment.count, AssignmentClassroom.count, ActiveStorage::Attachment.count, ActiveStorage::Blob.count, QuestionGenerationRequest.count ]
   end
 
   def expect_no_file(blob)
@@ -104,7 +109,8 @@ RSpec.describe "Teacher material upload safety", type: :request do
       saved = Assignment.last
       expect(saved.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
       expect(saved.classrooms).to contain_exactly(classroom)
-      expect(QuestionGenerationJob).to have_been_enqueued.with(saved, saved.material_file.blob.id).exactly(:once)
+      expect(saved.current_question_generation_request.state).to eq("pending")
+      expect(QuestionGenerationJob).to have_been_enqueued.with(saved, saved.material_file.blob.id, 0, request_id: saved.current_question_generation_request_id).exactly(:once)
     end
   end
 
@@ -137,13 +143,13 @@ RSpec.describe "Teacher material upload safety", type: :request do
     expect(response.body).to include("教材PDFを保存できませんでした")
     expect(response.body).not_to include("PRIVATE")
     expect(counts.first(3)).to eq(original_counts.first(3))
+    expect(QuestionGenerationRequest.count).to eq(original_counts.last)
     expect(@uploads.last.attachments).to be_empty
     expect(QuestionGenerationJob).not_to have_been_enqueued
   end
 
   it "retains the committed upload and distribution when generation enqueue raises" do
     allow(QuestionGenerationJob).to receive(:perform_later).and_raise(IOError, "PRIVATE queue")
-    allow_any_instance_of(QuestionGenerator).to receive(:record_failure)
 
     post_material
 
@@ -158,6 +164,16 @@ RSpec.describe "Teacher material upload safety", type: :request do
       end
     end.value
     expect(persisted).to eq(saved.material_file.download)
-    expect(QuestionGenerationJob).to have_received(:perform_later).with(saved, saved.material_file.blob.id).once
+    request = saved.current_question_generation_request
+    expect(request.state).to eq("failed")
+    expect(request.failure_code).to eq("enqueue_failed")
+    committed = Thread.new do
+      ActiveRecord::Base.connection_pool.with_connection do
+        item = Assignment.find(saved.id)
+        [ item.current_question_generation_request_id, item.current_question_generation_request.state ]
+      end
+    end.value
+    expect(committed).to eq([ request.id, "failed" ])
+    expect(QuestionGenerationJob).to have_received(:perform_later).with(saved, saved.material_file.blob.id, 0, request_id: saved.current_question_generation_request_id).once
   end
 end

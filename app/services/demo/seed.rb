@@ -9,7 +9,7 @@ module Demo
     class UnsafeTarget < StandardError; end
     MODELS = [ School, Admin, Teacher, Classroom, Student, TeacherClassroom,
       Assignment, AssignmentClassroom, Question, Submission, GradingResult, AnswerDraft ].freeze
-    EXTRA_MODELS = [ ActiveStorage::Blob, ActiveStorage::Attachment,
+    EXTRA_MODELS = [ QuestionGenerationRequest, ActiveStorage::Blob, ActiveStorage::Attachment,
       ActiveStorage::VariantRecord, AuthenticationAttemptBucket ].freeze
     TABLE_MODELS = (MODELS + EXTRA_MODELS).freeze
     LABEL = "架空のサンプル"
@@ -27,7 +27,7 @@ module Demo
         ApplicationRecord.transaction do
           connection.execute(<<~SQL)
             LOCK TABLE schools, admins, teachers, classrooms, students, teacher_classrooms,
-              assignments, assignment_classrooms, questions, submissions, grading_results,
+              assignments, assignment_classrooms, question_generation_requests, questions, submissions, grading_results,
               answer_drafts, active_storage_blobs, active_storage_attachments,
               active_storage_variant_records, authentication_attempt_buckets IN EXCLUSIVE MODE NOWAIT
           SQL
@@ -184,6 +184,7 @@ module Demo
         refuse!("Unexpected count: #{model.table_name}") unless model.count == (model == Student ? 10 : 5)
         model.find_each { |record| refuse!("Invalid model: #{model.table_name}") unless record.valid? }
       end
+      refuse!("Synthetic samples must have no generation history") if QuestionGenerationRequest.exists? || Assignment.where.not(current_question_generation_request_id: nil).exists?
       refuse!("Unexpected infrastructure records") if AuthenticationAttemptBucket.exists? || ActiveStorage::VariantRecord.exists?
       refuse!("Unexpected attachments") unless ActiveStorage::Blob.count == 10 && ActiveStorage::Attachment.count == 10
       Assignment.find_each { |assignment| QuestionGenerator.new.saved_questions(assignment) }

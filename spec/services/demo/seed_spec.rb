@@ -28,8 +28,42 @@ RSpec.describe Demo::Seed do
     described_class::TABLE_MODELS.to_h { |model| [ model.table_name, model.order(model.primary_key).map(&:attributes) ] }
   end
 
+  it "uses the exact business/framework inventory including the immutable generation ledger" do
+    expect(described_class::TABLE_MODELS.map(&:table_name).sort).to eq(%w[
+      schools admins teachers classrooms students teacher_classrooms assignments assignment_classrooms
+      questions submissions grading_results answer_drafts question_generation_requests
+      active_storage_blobs active_storage_attachments active_storage_variant_records authentication_attempt_buckets
+    ].sort)
+  end
+
+  it "rejects an old manifest missing the new ledger without rebaselining" do
+    seed.call
+    path = @directory.join(".seed-manifest.json")
+    manifest = JSON.parse(path.read)
+    manifest.fetch("tables").delete("question_generation_requests")
+    path.write(JSON.generate(manifest))
+    before = rows
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect { seed.verify_guest! }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect(rows).to eq(before)
+    expect(JSON.parse(path.read)).to eq(manifest)
+  end
+
+  it "refuses ledger tampering as business state, with no repair or authentication exemption" do
+    seed.call
+    assignment = Assignment.first
+    request = QuestionGenerationRequest.select_for_distribution!(assignment, model: "synthetic-no-api")
+    before = rows
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /generation history/)
+    expect { seed.verify_guest! }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect(rows).to eq(before)
+    expect(request.reload.state).to eq("pending")
+  end
+
   it "creates valid fictional associations, PDF bytes, reading JSON and draft contexts without AI or jobs" do
     expect(seed.call.values).to all(be >= 5)
+    expect(QuestionGenerationRequest.count).to eq(0)
+    expect(Assignment.where.not(current_question_generation_request_id: nil)).not_to exist
     expect(ActiveStorage::Blob.count).to eq(10)
     expect(ActiveStorage::Attachment.count).to eq(10)
     expect(Submission.all.map(&:score)).to eq([ 10 ] * 5)

@@ -117,8 +117,10 @@ RSpec.describe Recovery::SubmissionInspector do
   end
 
   it "does not write SQL, change data, enqueue jobs, access cache or PDF bytes, or construct AI clients" do
+    request = QuestionGenerationRequest.select_for_distribution!(assignment)
+    request.update!(state: "failed", failure_code: "generation_failed", finished_at: Time.current)
     result = create_result(create_question, teacher_judgment: :incorrect, student_answer: "PRIVATE-STUDENT-ANSWER")
-    models = [ Submission, Assignment, Question, GradingResult, ActiveStorage::Attachment, ActiveStorage::Blob ]
+    models = [ QuestionGenerationRequest, Submission, Assignment, Question, GradingResult, ActiveStorage::Attachment, ActiveStorage::Blob ]
     before_data = models.map { |model| model.order(:id).map(&:attributes) }
     expect(AiClient).not_to receive(:build)
     expect(OpenAI::Client).not_to receive(:new)
