@@ -20,7 +20,40 @@ RSpec.describe AnswerDraft, type: :model do
     expect(draft.lock_version).to eq(0)
     copy = draft.dup
     expect(copy).not_to be_valid
+    expect(copy.errors.details[:student_id]).to include(error: :taken, value: student.id)
     expect { copy.save!(validate: false) }.to raise_error(ActiveRecord::RecordNotUnique)
+  end
+
+  [ :student, :assignment ].each do |association|
+    it "requires #{association}" do
+      draft.public_send("#{association}=", nil)
+
+      expect(draft).not_to be_valid
+      expect(draft.errors.details[association]).to include(error: :blank)
+    end
+  end
+
+  [ nil, "", "a" * 63, "a" * 65, "A" * 64, "g" * 64 ].each do |fingerprint|
+    it "rejects invalid material fingerprint #{fingerprint.inspect}" do
+      draft.material_fingerprint = fingerprint
+
+      expect(draft).not_to be_valid
+      expect(draft.errors.details[:material_fingerprint]).to include(error: :invalid, value: fingerprint)
+    end
+  end
+
+  it "allows another student for the same assignment" do
+    draft.save!
+    other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+
+    expect(draft.dup.tap { |copy| copy.student = other_student }.save).to be(true)
+  end
+
+  it "allows another assignment for the same student" do
+    draft.save!
+    other_assignment = Assignment.create!(teacher: teacher, title: "Other draft", point_per_question: 5)
+
+    expect(draft.dup.tap { |copy| copy.assignment = other_assignment }.save).to be(true)
   end
 
   it "detects stale saves with optimistic locking" do
@@ -59,8 +92,12 @@ RSpec.describe AnswerDraft, type: :model do
     expect(draft).not_to be_valid
     draft.page_data.first["operations"] = [ stroke.merge("width" => 100) ]
     expect(draft).not_to be_valid
+    draft.page_data.first["operations"] = [ stroke.deep_dup ]
+    expect(draft).to be_valid
     draft.format_version = 2
     expect(draft).not_to be_valid
+    expect(draft.errors.details[:format_version]).to include(error: :inclusion, value: 2)
+    expect(draft.errors[:page_data]).to be_empty
   end
 
   it "bounds point counts and payload bytes" do

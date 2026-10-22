@@ -130,4 +130,23 @@ RSpec.describe Teacher, type: :model do
       end
     end.to raise_error(ActiveRecord::InvalidForeignKey)
   end
+
+  it "preserves a legacy credential until a valid password change succeeds" do
+    teacher = described_class.create!(attributes.merge(password: "old-password")).reload
+    original_digest = teacher.password_digest
+
+    expect(teacher.update(updated_at: teacher.updated_at + 1.second)).to be(true)
+    expect(teacher.reload.password_digest).to eq(original_digest)
+    expect(teacher.authenticate("old-password")).to eq(teacher)
+
+    expect(teacher.update(password: "short")).to be(false)
+    expect(teacher.errors[:password]).to be_present
+    expect(teacher.reload.password_digest).to eq(original_digest)
+    expect(teacher.authenticate("old-password")).to eq(teacher)
+
+    expect(teacher.update(password: "Teacher8392")).to be(true)
+    expect(teacher.reload.password_digest).not_to eq(original_digest)
+    expect(teacher.authenticate("old-password")).to be(false)
+    expect(teacher.authenticate("Teacher8392")).to eq(teacher)
+  end
 end

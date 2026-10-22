@@ -133,4 +133,23 @@ RSpec.describe Admin, type: :model do
       end
     end.to raise_error(ActiveRecord::InvalidForeignKey)
   end
+
+  it "preserves a legacy credential until a valid password change succeeds" do
+    admin = described_class.create!(attributes.merge(password: "old-password")).reload
+    original_digest = admin.password_digest
+
+    expect(admin.update(user_id: "admin2")).to be(true)
+    expect(admin.reload.password_digest).to eq(original_digest)
+    expect(admin.authenticate("old-password")).to eq(admin)
+
+    expect(admin.update(password: "short")).to be(false)
+    expect(admin.errors[:password]).to be_present
+    expect(admin.reload.password_digest).to eq(original_digest)
+    expect(admin.authenticate("old-password")).to eq(admin)
+
+    expect(admin.update(password: "Long River 8 Beacon 42")).to be(true)
+    expect(admin.reload.password_digest).not_to eq(original_digest)
+    expect(admin.authenticate("old-password")).to be(false)
+    expect(admin.authenticate("Long River 8 Beacon 42")).to eq(admin)
+  end
 end
