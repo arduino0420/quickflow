@@ -51,6 +51,30 @@ RSpec.describe "Student assignments", type: :request do
     expect(document.at_css("form[action='/student/logout'] input[name='_method']")[:value]).to eq("delete")
   end
 
+  it "shows the current student's classroom and attendance number beside logout after switching accounts" do
+    login
+    follow_redirect!
+    actions = document.at_css("header .student-header-actions")
+    expect(actions.at_css(".student-header-identity").text).to eq("1年1組1番")
+    expect(actions.element_children.map(&:name)).to eq(%w[span form])
+    expect(actions.at_css("form")[:action]).to eq(student_logout_path)
+    expect(actions.at_css("button").text).to eq("ログアウト")
+
+    delete student_logout_path
+    expect(response).to redirect_to(student_login_path)
+    next_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 3)
+    next_student = Student.create!(classroom: next_classroom, attendance_number: 40, password: "student-password")
+    post student_login_path, params: { student_session: {
+      school_code: school.school_code, grade: next_classroom.grade, class_number: next_classroom.class_number,
+      attendance_number: next_student.attendance_number, password: "student-password"
+    } }
+    expect(response).to redirect_to(student_assignments_path)
+    follow_redirect!
+    actions = document.at_css("header .student-header-actions")
+    expect(actions.at_css(".student-header-identity").text).to eq("2年3組40番")
+    expect(actions.text).not_to include("1年1組1番")
+  end
+
   it "shows an empty list" do
     login
     get student_assignments_path
@@ -183,7 +207,7 @@ RSpec.describe "Student assignments", type: :request do
     follow_redirect!
     get document.at_css("a[href='#{student_assignment_pdf_preview_path(item)}']")[:href]
     expect(response.body).to include("配信教材", "提出する")
-    get document.at_css("a[href='#{student_assignment_path(item)}']")[:href]
+    get student_assignment_path(item)
     expect(response.body).to include("配信教材", "material.pdf")
     get document.at_css("a[href='#{material_student_assignment_path(item, download: "1")}']")[:href]
     expect(response).to have_http_status(:ok)

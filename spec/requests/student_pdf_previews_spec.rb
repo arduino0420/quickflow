@@ -47,7 +47,8 @@ RSpec.describe "Student PDF previews", type: :request do
     expect(document.at_css("h1").text).to eq(assignment.title)
     expect(preview.text).not_to include("確認用PDF", "正式提出は行いません")
     expect(preview.css('[data-action="pdf-preview#download"]')).to be_empty
-    expect(document.at_css("a[href='#{student_assignment_path(assignment)}']").text).to eq("小テストの詳細へ戻る")
+    expect(document.at_css("a[href='#{student_assignment_path(assignment)}']")).to be_nil
+    expect(document.css("a").map(&:text)).not_to include("小テストの詳細へ戻る")
     expect(document.css('input[type="file"], input[type="submit"]')).to be_empty
 
     get material_student_assignment_path(assignment)

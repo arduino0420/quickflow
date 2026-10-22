@@ -43,6 +43,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
       link = document.css("a").find { |node| node.text == "Excel出力" }
       expect(link[:href]).to eq(export_path(second_classroom))
       expect(link["data-turbo"]).to eq("false")
+      expect(link["class"].split).to contain_exactly("button", "button-excel-export")
       get link[:href], params: { filter: filter }
 
       expect(response).to have_http_status(:ok)

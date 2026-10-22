@@ -2,7 +2,10 @@
   <meta name="turbo-cache-control" content="no-cache">
 <% end %>
 <% content_for :header_actions do %>
-  <%= button_to "ログアウト", student_logout_path, method: :delete, class: "teacher-logout-button" %>
+  <div class="student-header-actions">
+    <span class="student-header-identity"><%= "#{current_student.classroom.grade}年#{current_student.classroom.class_number}組#{current_student.attendance_number}番" %></span>
+    <%= button_to "ログアウト", student_logout_path, method: :delete, class: "teacher-logout-button" %>
+  </div>
 <% end %>
 <h1>配信された小テスト</h1>
 
