@@ -36,6 +36,8 @@ AIは「正解・不正解・要確認」を保存し、教師が修正できま
 
 Ruby **4.0.6**（`.ruby-version`）、Rails **8.1.4**（`Gemfile.lock`）、PostgreSQL（開発基準18.6）、Puma、Active Record/Active Storage、Hotwire/Importmap、PDF.js/pdf-lib、OpenAI SDK、caxlsx、Solid Queue/Cache/Cableを使用します。DockerfileとKamal設定、GitHub Actions CIがあります。AWS EC2/Caddyは既存配備側の構成であり、リポジトリのKamal設定をそのまま実稼働設定とは扱いません。公開設定の確定・確認は#51/#99の範囲です。
 
+PDFの読み取り事前確認にはqpdf 12.4.2を使用します。ローカル起動・テストの前に`bin/install-qpdf`を実行してください（curl/unzipが必要）。公式配布物のSHA-256を確認して`vendor/qpdf`内だけに配置し、Docker/CIにも組み込みます。[受入仕様・実行上限・暗号化PDFの制約](docs/implementation/operations_details.md#pdf読み取り事前確認issue-48)を参照してください。
+
 ## ローカル起動とテスト
 
 Ruby 4.0.6、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意します。System SpecにはChrome/Chromiumと対応Selenium driver（Selenium Manager利用時は取得可能なネットワーク）が必要です。既存DBと共有しない新しいclone・専用DB/Storageを使ってください。通常の開発は`storage/`、テストはclone内`tmp/storage/`です。
@@ -44,6 +46,7 @@ Ruby 4.0.6、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意しま�
 git clone https://github.com/arduino0420/quickflow.git
 cd quickflow
 bundle install
+bin/install-qpdf
 export RAILS_ENV=development
 export DATABASE_URL=postgresql://127.0.0.1:5432/quickflow_local_development
 # 専用DB名・接続先であることを確認してから作成
