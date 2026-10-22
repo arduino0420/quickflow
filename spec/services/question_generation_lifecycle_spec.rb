@@ -36,6 +36,21 @@ RSpec.describe "Durable question generation lifecycle" do
     Rails.cache = original_cache
   end
 
+  it "uses the persisted model rather than the current generator configuration" do
+    select_request(model: "persisted-model")
+    QuestionGenerator.new(client: client, model: "changed-environment-model").call(assignment)
+    expect(responses).to have_received(:create).with(hash_including(model: "persisted-model")).once
+  end
+
+  it "does not execute an unavailable historical prompt version" do
+    request = QuestionGenerationRequest.create!(assignment: assignment, material_blob_id: assignment.material_file.blob.id,
+      model: "historical-model", prompt_version: "previous-prompt")
+    assignment.update!(current_question_generation_request: request)
+    expect(generator.call(assignment)).to be_nil
+    expect(request.reload.state).to eq("pending")
+    expect(responses).not_to have_received(:create)
+  end
+
   it "keeps a selected historical prompt failure visible to late submissions without executing that prompt" do
     request = QuestionGenerationRequest.create!(assignment: assignment, material_blob_id: assignment.material_file.blob.id,
       model: "historical-model", prompt_version: "previous-prompt", state: "failed", failure_code: "generation_failed")
