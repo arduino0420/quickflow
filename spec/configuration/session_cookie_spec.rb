@@ -1,9 +1,14 @@
 require "spec_helper"
 require "open3"
 require "json"
+require "uri"
 
 RSpec.describe "Session cookie configuration" do
   def boot(environment)
+    # CI supplies an endpoint without a database; every probe must use the test DB.
+    database_url = URI(ENV.fetch("DATABASE_URL", "postgresql:///quickflow_test"))
+    database_url.path = "/quickflow_test" if [ "", "/" ].include?(database_url.path)
+
     script = <<~'SCRIPT'
       require "json"
       require "rack/mock"
@@ -23,7 +28,8 @@ RSpec.describe "Session cookie configuration" do
       end
       puts "SESSION_RESULT=#{JSON.generate(result)}"
     SCRIPT
-    output, error, status = Open3.capture3({ "RAILS_ENV" => environment, "SECRET_KEY_BASE" => "a" * 128 },
+    output, error, status = Open3.capture3({ "RAILS_ENV" => environment, "SECRET_KEY_BASE" => "a" * 128,
+      "DATABASE_URL" => database_url.to_s },
       "bundle", "exec", "rails", "runner", script)
     expect(status.success?).to be(true), error + output
     JSON.parse(output.lines.find { |line| line.start_with?("SESSION_RESULT=") }.delete_prefix("SESSION_RESULT="))
