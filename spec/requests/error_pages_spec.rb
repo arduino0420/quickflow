@@ -10,9 +10,18 @@ RSpec.describe "Static error pages", type: :request do
     Rails.application.env_config.merge!(original)
   end
 
-  { 404 => "ページが見つかりません", 500 => "処理中に問題が発生しました" }.each do |status, heading|
-    it "serves the standalone Japanese #{status} page through the exception middleware" do
-      if status == 500
+  { 400 => "リクエストを処理できません", 404 => "ページが見つかりません",
+    406 => "お使いのブラウザは対応していません", 422 => "操作を完了できません", 500 => "処理中に問題が発生しました" }.each do |status, heading|
+    it "preserves status and serves the standalone Japanese #{status} page" do
+      if status == 400
+        post login_path, params: { private_parameter: "private parameter details" }
+      elsif status == 406
+        get root_path, headers: { "User-Agent" => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36" }
+      elsif status == 422
+        old_csrf = ActionController::Base.allow_forgery_protection
+        ActionController::Base.allow_forgery_protection = true
+        post login_path, params: { session: { user_id: "private-user", password: "private-password" }, authenticity_token: "invalid" }
+      elsif status == 500
         allow_any_instance_of(HomeController).to receive(:index).and_raise(StandardError, "private exception details")
         get root_path
       else
@@ -21,8 +30,8 @@ RSpec.describe "Static error pages", type: :request do
 
       expect(response.status).to eq(status)
       expect(response.media_type).to eq("text/html")
-      expect(response.body).to eq(Rails.public_path.join("#{status}.html").read)
-      expect(response.body).not_to include("private exception details", "StandardError", "RoutingError")
+      expect(response.body).to eq(Rails.public_path.join(status == 406 ? "406-unsupported-browser.html" : "#{status}.html").read)
+      expect(response.body).not_to include("private exception details", "private parameter details", "private-user", "private-password", "StandardError", "RoutingError", "InvalidAuthenticityToken")
 
       document = Nokogiri::HTML(response.body)
       expect(document.at_css("html")["lang"]).to eq("ja")
@@ -33,6 +42,8 @@ RSpec.describe "Static error pages", type: :request do
       expect(document.css("a").map { |link| [ link.text, link["href"] ] }).to eq([ [ "トップページへ", "/" ] ])
       expect(document.css("script, link, img, iframe, form, [src], [onclick], meta[http-equiv='refresh']")).to be_empty
       expect(document.at_css("style").text).not_to match(/url\s*\(|@import/i)
+    ensure
+      ActionController::Base.allow_forgery_protection = old_csrf if status == 422
     end
   end
 

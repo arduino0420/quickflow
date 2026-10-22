@@ -80,6 +80,7 @@ RSpec.describe "Admin student registration", type: :request do
     before_counts = counts
     post admin_students_path, params: { student: attributes.merge(attendance_number: "1") }
     expect(response).to have_http_status(422)
+    expect(response.body).to include("出席番号はすでに登録されています")
     expect(counts).to eq(before_counts)
     expect(student.reload.attributes).to eq(original)
   end
@@ -94,6 +95,7 @@ RSpec.describe "Admin student registration", type: :request do
       expect(response).to have_http_status(422)
       expect(counts).to eq(original)
       expect(document.at_css("[role='alert']")).to be_present
+      expect(response.body).to include("パスワード（確認）がパスワードと一致しません") if change[:password_confirmation] == "different"
       expect(document.css("input[type='password']").map { |input| input[:value] }).to all(be_blank)
       expect(response.body).not_to include(attributes[:password], "different")
     end
