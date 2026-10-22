@@ -23,7 +23,7 @@ class QuestionGenerator
     raise saved_error if saved_error && !@request
     raise "Question generation history is unknown; automatic regeneration is disabled" unless @request
     return unless @request.selected_input?(assignment)
-    return if material_blob_id && material_blob_id != @request.material_blob_id
+    return if !material_blob_id.nil? && material_blob_id != @request.material_blob_id
 
     @claim_token = @request.claim!
     return unless @claim_token
@@ -101,7 +101,7 @@ class QuestionGenerator
   def failed?(assignment)
     assignment.reload
     selected = assignment.question_generation_requests.find_by(id: assignment.current_question_generation_request_id)
-    selected&.selected_input?(assignment) && selected.state == "failed"
+    selected && selected.material_blob_id == assignment.material_file.blob&.id && selected.state == "failed"
   end
 
   private

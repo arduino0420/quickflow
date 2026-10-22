@@ -165,6 +165,7 @@ RSpec.describe "Concurrent AI processing", type: :job do
     results = overlap(attempt, attempt, entered, release)
     expect(results.first).to eq("Timed out")
     expect(results.last).to be_nil # A busy duplicate cannot take over or report a new failure.
+    expect(QuestionGenerationRequest.find(assignment.current_question_generation_request_id).state).to eq("failed")
     expect(assignment.questions).to be_empty
     expect(files).to have_received(:create).once
   end

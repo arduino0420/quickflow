@@ -59,6 +59,7 @@ RSpec.describe "Assignment creation", type: :request do
       post assignments_path, params: { assignment: attributes }
     end.to change(Assignment, :count).by(1)
       .and change(AssignmentClassroom, :count).by(1)
+      .and change(QuestionGenerationRequest, :count).by(1)
 
     assignment = Assignment.last
     expect(assignment.teacher).to eq(teacher)
@@ -68,6 +69,13 @@ RSpec.describe "Assignment creation", type: :request do
     expect(assignment.published_at).to be_nil
     expect(assignment.classrooms).to contain_exactly(classroom)
     expect(assignment.questions).to be_empty
+    request = assignment.current_question_generation_request
+    expect(request.assignment_id).to eq(assignment.id)
+    expect(request.material_blob_id).to eq(assignment.material_file.blob.id)
+    expect(request.model).to eq(AiClient.model(:question_generation))
+    expect(request.prompt_version).to eq(QuestionGenerator::PROMPT_VERSION)
+    expect(request.state).to eq("pending")
+    expect(request.claim_token).to be_nil
     expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).exactly(:once)
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(new_assignment_path)
@@ -104,6 +112,11 @@ RSpec.describe "Assignment creation", type: :request do
         assignment = Assignment.last
         expect(assignment.classrooms).to contain_exactly(classroom)
         expect(QuestionGenerator.new.failed?(assignment)).to be(true)
+        request = assignment.current_question_generation_request
+        expect(request.state).to eq("failed")
+        expect(request.failure_code).to eq("enqueue_failed")
+        expect(request.finished_at).to be_present
+        expect(request.started_at).to be_nil
         expect(Rails.logger).to have_received(:error).with(/Question generation enqueue failed/).once
         expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
       end

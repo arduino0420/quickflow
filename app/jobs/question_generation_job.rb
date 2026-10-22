@@ -8,7 +8,7 @@ class QuestionGenerationJob < ApplicationJob
     return unless request_id
 
     request = assignment.question_generation_requests.find_by(id: request_id)
-    return unless request
+    return unless request && request.material_blob_id == material_blob_id && request.selected_input?(assignment)
     return if request.state == "failed"
 
     initial_token = request.claim_token

@@ -113,19 +113,27 @@ RSpec.describe "Submission processing generations", type: :job do
 
   it "does not let an old question job fail a newer submission" do
     submission.update!(processing_generation: 1, status: :grading)
-    generator = instance_double(QuestionGenerator)
+    request = QuestionGenerationRequest.select_for_distribution!(assignment)
+    token = request.claim!
+    generator = instance_double(QuestionGenerator, claim_token: token)
     allow(QuestionGenerator).to receive(:new).and_return(generator)
-    allow(generator).to receive(:call).and_raise(StandardError, "generation failed")
-    QuestionGenerationJob.perform_now(assignment, 0)
+    allow(generator).to receive(:call) do
+      request.fail!(token: token)
+      raise StandardError, "generation failed"
+    end
+    QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id)
+    expect(request.reload.state).to eq("failed")
     expect(submission.reload).to be_grading
     expect(submission.grading_results).to be_empty
   end
 
   it "does not let an old question job enqueue grading for a newer submission" do
     submission.update!(processing_generation: 1, status: :grading)
+    request = QuestionGenerationRequest.select_for_distribution!(assignment)
+    request.update!(state: "succeeded", claim_token: "token")
     generator = instance_double(QuestionGenerator, call: [ create_question ], claim_token: nil)
     allow(QuestionGenerator).to receive(:new).and_return(generator)
-    expect { QuestionGenerationJob.perform_now(assignment, 0) }.not_to have_enqueued_job(AnswerGradingJob)
+    expect { QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id) }.not_to have_enqueued_job(AnswerGradingJob)
     expect(submission.reload).to be_grading
   end
 

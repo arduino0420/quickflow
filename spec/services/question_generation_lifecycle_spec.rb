@@ -36,6 +36,16 @@ RSpec.describe "Durable question generation lifecycle" do
     Rails.cache = original_cache
   end
 
+  it "keeps a selected historical prompt failure visible to late submissions without executing that prompt" do
+    request = QuestionGenerationRequest.create!(assignment: assignment, material_blob_id: assignment.material_file.blob.id,
+      model: "historical-model", prompt_version: "previous-prompt", state: "failed", failure_code: "generation_failed")
+    assignment.update!(current_question_generation_request: request)
+    expect(QuestionGenerator.new.failed?(assignment)).to be(true)
+    AnswerGradingJob.perform_now(submission)
+    expect(submission.reload).to be_failed
+    expect(responses).not_to have_received(:create)
+  end
+
   it "keeps the failed A row when explicitly selecting B then A" do
     first = select_request
     allow(responses).to receive(:create).and_raise("failed")
@@ -58,6 +68,24 @@ RSpec.describe "Durable question generation lifecycle" do
     expect(QuestionGenerationRequest.count).to eq(0)
     expect(responses).not_to have_received(:create)
     expect(Recovery::SubmissionInspector.new.call(submission)[:question_generation]).to eq(state: "legacy_unknown")
+  end
+
+  it "does not let a legacy job infer a current request even when one exists" do
+    request = select_request
+    QuestionGenerationJob.perform_now(assignment, request.material_blob_id)
+    expect(request.reload.state).to eq("pending")
+    expect(request.claim_token).to be_nil
+    expect(responses).not_to have_received(:create)
+  end
+
+  [ nil, 0, false ].each do |blob_id|
+    it "does not treat #{blob_id.inspect} as the immutable job input" do
+      request = select_request
+      QuestionGenerationJob.perform_now(assignment, blob_id, request_id: request.id)
+      expect(request.reload.state).to eq("pending")
+      expect(request.claim_token).to be_nil
+      expect(responses).not_to have_received(:create)
+    end
   end
 
   it "reuses valid legacy questions without creating history" do
@@ -175,6 +203,23 @@ RSpec.describe "Durable question generation lifecycle" do
     expect(submission.reload).to be_submitted
     expect(submission.extracted_text).to eq(original_reading)
     expect(AnswerGradingJob).not_to have_been_enqueued
+  end
+
+  it "retains successful questions if the worker is interrupted before fan-out, without replaying AI" do
+    request = select_request
+    submission.update!(status: :grading)
+    allow(AiClient).to receive(:build).and_return(client)
+    allow_any_instance_of(QuestionGenerator).to receive(:call).and_wrap_original do |method, *args, **options|
+      method.call(*args, **options)
+      raise Interrupt, "simulated worker interruption"
+    end
+    expect { QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id) }.to raise_error(Interrupt)
+    expect(request.reload.state).to eq("succeeded")
+    expect(assignment.questions.count).to eq(1)
+    expect(submission.reload).to be_grading
+    expect(Recovery::SubmissionInspector.new.call(submission)[:question_generation][:state]).to eq("succeeded")
+    expect(AnswerGradingJob).not_to have_been_enqueued
+    expect(responses).to have_received(:create).once
   end
 
   it "does not adopt a replacement claim token for success fan-out" do
