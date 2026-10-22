@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+if [[ "${RAILS_ENV-}" != production || "${QUICKFLOW_DEMO_PROFILE-}" != production ]]; then
+  echo 'Explicit production demo identity required' >&2
+  exit 1
+fi
+# Boot verifies the target and effective runtime privileges; never run db:prepare.
+exec bundle exec puma -C config/demo_puma.rb
