@@ -61,7 +61,7 @@ RSpec.describe "AI response and error log safety", type: :job do
           if stage == :reading
             expect(submission.reload).to be_grading
             expect(JSON.parse(submission.extracted_text)).to eq(JSON.parse(JSON.generate(data)))
-            expect(AnswerGradingJob).to have_been_enqueued.with(submission, 0)
+            expect(AnswerGradingJob).to have_been_enqueued.with(submission, 0, admission: kind_of(String))
           else
             expect(submission.reload).to be_completed
             expect(submission.grading_results.map(&:final_judgment)).to contain_exactly("correct", "needs_review")
@@ -125,13 +125,9 @@ RSpec.describe "AI response and error log safety", type: :job do
 
       it "does not log private exception text from the outer failure handler" do
         if stage == :reading
-          calls = 0
-          allow(submission).to receive(:with_lock).and_wrap_original do |method, *args, **options, &block|
-            calls += 1
-            raise StandardError, private_text if calls == 1
-
-            method.call(*args, **options, &block)
-          end
+          # Exercise an error after the short claim has committed; the old
+          # submission.with_lock instance is no longer the worker boundary.
+          allow_any_instance_of(SubmissionProcessingClaim).to receive(:submission).and_raise(StandardError, private_text)
         else
           submission.update!(extracted_text: "{#{private_text}")
         end

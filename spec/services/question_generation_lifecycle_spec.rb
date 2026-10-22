@@ -186,10 +186,17 @@ RSpec.describe "Durable question generation lifecycle" do
 
         ai_response(payload)
       end
-      expect { generator.call(assignment) }.to raise_error(outcome == :error ? "late error" : /input is stale/)
-      # Pointer changes inside the API transaction roll back with its questions.
+      if outcome == :error
+        expect { generator.call(assignment) }.to raise_error("late error")
+      else
+        expect(generator.call(assignment)).to be_nil
+      end
+      # Pointer replacement commits independently of external work. The stale
+      # worker may neither save Questions nor mark its old request failed.
       expect(assignment.questions.count).to eq(0)
-      expect(request.reload.state).to eq("failed")
+      expect(request.reload.state).to eq("running")
+      expect(assignment.reload.current_question_generation_request.model).to eq("model-B")
+      expect(assignment.current_question_generation_request.state).to eq("pending")
     end
   end
 

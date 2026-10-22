@@ -1,0 +1,242 @@
+{
+  "head": "9bed9d2b6e35e89e51b8d76d1aa76df3e9f01b41",
+  "measurements": {
+    "teacher_list": [
+      {
+        "ms": 29.368,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 18.404,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 23.809,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 13.865,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 23.03,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 12.048,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 11.749,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 12.491,
+        "physical": 4,
+        "cached": 0
+      },
+      {
+        "ms": 10.827,
+        "physical": 4,
+        "cached": 0
+      }
+    ],
+    "teacher_grades": [
+      {
+        "ms": 110.691,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 108.749,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 106.252,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 102.273,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 167.061,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 100.051,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 106.331,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 94.716,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 96.015,
+        "physical": 53,
+        "cached": 39
+      }
+    ],
+    "teacher_filtered": [
+      {
+        "ms": 165.335,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 203.869,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 229.531,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 207.542,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 218.113,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 193.426,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 119.403,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 118.667,
+        "physical": 53,
+        "cached": 39
+      },
+      {
+        "ms": 104.006,
+        "physical": 53,
+        "cached": 39
+      }
+    ],
+    "export": [
+      {
+        "ms": 118.067,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 149.193,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 114.021,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 111.349,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 152.505,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 129.38,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 143.281,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 134.055,
+        "physical": 47,
+        "cached": 39
+      },
+      {
+        "ms": 141.206,
+        "physical": 47,
+        "cached": 39
+      }
+    ],
+    "student_list": [
+      {
+        "ms": 29.758,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 28.831,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 27.119,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 33.609,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 30.28,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 32.033,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 23.815,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 25.685,
+        "physical": 14,
+        "cached": 0
+      },
+      {
+        "ms": 29.704,
+        "physical": 14,
+        "cached": 0
+      }
+    ]
+  },
+  "variant": "9bed9d2 public score callers",
+  "method": "40 synthetic students, 3 assignments x 10 questions, 2 warmups + 9 measured requests per path, monotonic clock, sequential before/after, ANALYZE synthetic tables before requests"
+}

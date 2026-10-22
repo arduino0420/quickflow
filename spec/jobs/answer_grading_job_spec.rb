@@ -113,8 +113,22 @@ RSpec.describe AnswerGradingJob, type: :job do
 
   it "rolls back all results when a later result cannot be saved" do
     second = create_question(position: 2, label: "1(2)")
-    allow(grader).to receive(:call).and_return([ result, result.merge(question: second, ai_model_name: nil) ])
+    allow(generator).to receive(:saved_questions).and_return([ question, second ])
+    allow(grader).to receive(:call).with(submission, [ question, second ])
+      .and_return([ result, result.merge(question: second, ai_model_name: nil) ])
+    first_inserted = false
+    allow_any_instance_of(GradingResult).to receive(:save!).and_wrap_original do |method, *arguments, **options|
+      row = method.receiver
+      if row.question_id == second.id
+        expect(first_inserted).to be(true)
+        expect(submission.grading_results.where(question_id: question.id)).to exist
+      end
+      saved = method.call(*arguments, **options)
+      first_inserted = true if row.question_id == question.id
+      saved
+    end
     described_class.perform_now(submission)
+    expect(first_inserted).to be(true)
     expect(submission.reload).to be_failed
     expect(submission.grading_results).to be_empty
   end
@@ -134,9 +148,11 @@ RSpec.describe AnswerGradingJob, type: :job do
   end
 
   it "rolls back results if completion cannot be saved" do
-    allow(submission).to receive(:update!).with(status: :grading).and_call_original
-    allow(submission).to receive(:update!).with(status: :failed).and_call_original
-    allow(submission).to receive(:update!).with(status: :completed).and_raise(ActiveRecord::RecordInvalid.new(submission))
+    allow_any_instance_of(Submission).to receive(:update!).and_wrap_original do |method, **attributes|
+      raise ActiveRecord::RecordInvalid.new(method.receiver) if attributes[:status] == :completed
+
+      method.call(**attributes)
+    end
     described_class.perform_now(submission)
     expect(submission.reload).to be_failed
     expect(submission.grading_results).to be_empty
@@ -169,7 +185,7 @@ RSpec.describe "Shared questions after a grading API failure", type: :job do
     expect(submission.reload).to be_failed
     question_id = assignment.questions.sole.id
     other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
-    other_submission = Submission.create!(assignment: assignment, student: other_student, submitted_at: Time.current,
+    other_submission = Submission.create!(processing_claim_stage: "ready", assignment: assignment, student: other_student, submitted_at: Time.current,
       extracted_text: JSON.generate(problems: [ problem ]))
     AnswerGradingJob.perform_now(other_submission)
 

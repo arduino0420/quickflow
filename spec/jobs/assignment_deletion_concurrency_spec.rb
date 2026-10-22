@@ -83,7 +83,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     expect(GradingResult.joins(:submission).where(submissions: { assignment_id: @assignment_id })).to be_empty
   end
 
-  def deletion_behind_job(job_class, *args, **options)
+  def deletion_during_job(job_class, *args, **options)
     entered = Queue.new
     release = Queue.new
     pid = Queue.new
@@ -94,7 +94,10 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       pid << connection.select_value("SELECT pg_backend_pid()")
       AssignmentDeletion.new.call(Assignment.find(@assignment_id), teacher: teacher)
     end
-    wait_until_blocked(Timeout.timeout(5) { pid.pop }, by: worker[:database_pid])
+    expect(deletion.join(5)).to be_present
+    expect(worker).to be_alive
+    expect(deletion.value).to eq(:deleted)
+    assert_deleted
     release << true
     expect(worker.join(10)).to be_present
     expect(deletion.join(10)).to be_present
@@ -106,41 +109,46 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     [ worker, deletion ].compact.each { |thread| thread.join(10) }
   end
 
-  it "waits for running question generation before deleting its generated questions" do
-    allow(AiClient).to receive(:build).and_return(client)
-    allow(files).to receive(:create).and_return(double(id: "stub-material"))
-    blob_id = assignment.material_file.blob.id
-    deletion_behind_job(QuestionGenerationJob, Assignment.find(@assignment_id), blob_id, request_id: assignment.current_question_generation_request_id) do |entered, release|
-      expect(responses).to receive(:create).once do
-        entered << true
-        Timeout.timeout(8) { release.pop }
-        ai_response(questions: [ { question_label: "1(1)", question_text: "3x+2x", correct_answer: "5x",
-          grading_rule: "同類項", requires_work: false } ])
+  [ :success, :error ].each do |outcome|
+    it "deletes during paused generation before late #{outcome}" do
+      allow(AiClient).to receive(:build).and_return(client)
+      allow(files).to receive(:create).and_return(double(id: "stub-material"))
+      blob_id = assignment.material_file.blob.id
+      deletion_during_job(QuestionGenerationJob, Assignment.find(@assignment_id), blob_id, request_id: assignment.current_question_generation_request_id) do |entered, release|
+        expect(responses).to receive(:create).once do
+          entered << true
+          Timeout.timeout(8) { release.pop }
+          raise "Late external error" if outcome == :error
+          ai_response(questions: [ { question_label: "1(1)", question_text: "3x+2x", correct_answer: "5x",
+            grading_rule: "同類項", requires_work: false } ])
+        end
       end
     end
-  end
 
-  it "waits for reading and safely handles a grading enqueue racing with deletion" do
-    submission.update!(extracted_text: nil)
-    reader = instance_double(AnswerReader)
-    allow(AnswerReader).to receive(:new).and_return(reader)
-    deletion_behind_job(AnswerReadingJob, Submission.find(@submission_id)) do |entered, release|
-      expect(reader).to receive(:call).once do
-        entered << true
-        Timeout.timeout(8) { release.pop }
-        JSON.generate(problems: [ problem ])
+    it "deletes during paused reading before late #{outcome}" do
+      submission.update!(extracted_text: nil)
+      reader = instance_double(AnswerReader)
+      allow(AnswerReader).to receive(:new).and_return(reader)
+      deletion_during_job(AnswerReadingJob, Submission.find(@submission_id)) do |entered, release|
+        expect(reader).to receive(:call).once do
+          entered << true
+          Timeout.timeout(8) { release.pop }
+          raise "Late external error" if outcome == :error
+          JSON.generate(problems: [ problem ])
+        end
       end
     end
-  end
 
-  it "waits for grading before deleting results without deadlock or recreated records" do
-    question = create_question
-    allow(AiClient).to receive(:build).and_return(client)
-    deletion_behind_job(AnswerGradingJob, Submission.find(@submission_id)) do |entered, release|
-      expect(responses).to receive(:create).once do
-        entered << true
-        Timeout.timeout(8) { release.pop }
-        ai_response(results: [ judgment(question) ])
+    it "deletes during paused grading before late #{outcome}" do
+      question = create_question
+      allow(AiClient).to receive(:build).and_return(client)
+      deletion_during_job(AnswerGradingJob, Submission.find(@submission_id)) do |entered, release|
+        expect(responses).to receive(:create).once do
+          entered << true
+          Timeout.timeout(8) { release.pop }
+          raise "Late external error" if outcome == :error
+          ai_response(results: [ judgment(question) ])
+        end
       end
     end
   end
@@ -198,63 +206,48 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     assert_deleted
   end
 
-  it "serializes deletion with three simultaneous jobs and proves each blocking dependency" do
+  it "deletes while reading and grading are both paused on separate submissions" do
     question = create_question
     other = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
     @additional_students << other
-    reading_submission = Submission.create!(assignment: assignment, student: other, submitted_at: Time.current)
-    entered = { generation: Queue.new, grading: Queue.new, reading: Queue.new }
-    releases = { generation: Queue.new, grading: Queue.new, reading: Queue.new }
-    allow_any_instance_of(QuestionGenerator).to receive(:call).and_wrap_original do |method, item, **options|
-      item.with_lock("FOR NO KEY UPDATE") do
-        entered[:generation] << true
-        Timeout.timeout(8) { releases[:generation].pop }
-        method.call(item, **options)
-      end
-    end
+    reading_submission = Submission.create!(processing_claim_stage: "ready", assignment: assignment,
+      student: other, submitted_at: Time.current)
+    entered = Queue.new
+    release = Queue.new
     grader = instance_double(AnswerGrader)
     allow(AnswerGrader).to receive(:new).and_return(grader)
     expect(grader).to receive(:call).once do
-      entered[:grading] << true
-      Timeout.timeout(8) { releases[:grading].pop }
-      [ judgment(question).merge(ai_model_name: "test", prompt_version: "v1", graded_at: Time.current) ]
+      entered << true
+      Timeout.timeout(8) { release.pop }
+      [ { question: question, student_answer: "5x", ai_judgment: "correct",
+        ai_model_name: "test", prompt_version: "v1", graded_at: Time.current } ]
     end
     reader = instance_double(AnswerReader)
     allow(AnswerReader).to receive(:new).and_return(reader)
     expect(reader).to receive(:call).once do
-      entered[:reading] << true
-      Timeout.timeout(8) { releases[:reading].pop }
+      entered << true
+      Timeout.timeout(8) { release.pop }
       JSON.generate(problems: [ problem ])
     end
-    generation = run_thread { QuestionGenerationJob.perform_now(Assignment.find(@assignment_id), assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id) }
     grading = run_thread { AnswerGradingJob.perform_now(Submission.find(@submission_id)) }
     reading = run_thread { AnswerReadingJob.perform_now(Submission.find(reading_submission.id)) }
-    entered.each_value { |queue| Timeout.timeout(5) { queue.pop } }
-    pid = Queue.new
-    deletion = run_thread do |connection|
-      pid << connection.select_value("SELECT pg_backend_pid()")
-      AssignmentDeletion.new.call(Assignment.find(@assignment_id), teacher: teacher)
-    end
-    deletion_pid = Timeout.timeout(5) { pid.pop }
-    wait_until_blocked(deletion_pid, by: generation[:database_pid])
-    releases[:generation] << true
-    expect(generation.join(10)).to be_present
-    generation.value
-    wait_until_blocked(deletion_pid, by: grading[:database_pid])
-    releases[:grading] << true
-    expect(grading.join(10)).to be_present
-    grading.value
-    wait_until_blocked(deletion_pid, by: reading[:database_pid])
-    releases[:reading] << true
-    expect(reading.join(10)).to be_present
-    reading.value
-    expect(deletion.join(10)).to be_present
+    2.times { Timeout.timeout(5) { entered.pop } }
+    deletion = run_thread { AssignmentDeletion.new.call(Assignment.find(@assignment_id), teacher: teacher) }
+    expect(deletion.join(5)).to be_present
     expect(deletion.value).to eq(:deleted)
+    expect(grading).to be_alive
+    expect(reading).to be_alive
+    assert_deleted
+    2.times { release << true }
+    [ grading, reading ].each do |thread|
+      expect(thread.join(10)).to be_present
+      thread.value
+    end
     expect(Submission.exists?(reading_submission.id)).to be(false)
     assert_deleted
   ensure
-    releases&.each_value { |queue| queue << true }
-    [ generation, grading, reading, deletion ].compact.each { |thread| thread.join(10) }
+    2.times { release << true } if release
+    [ grading, reading, deletion ].compact.each { |thread| thread.join(10) }
   end
 
   it "keeps a teacher assignment invisible until its material upload succeeds, then permits deletion" do
