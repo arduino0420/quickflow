@@ -6,6 +6,7 @@ class AnswerReader
 
   def call(submission)
     submission.answer_file.open do |file|
+      PdfReadabilityValidator.validate!(file)
       uploaded_file = @client.files.create(
         file: Pathname.new(file.path),
         purpose: "user_data",
