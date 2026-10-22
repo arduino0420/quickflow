@@ -182,7 +182,14 @@ class AssignmentsController < ApplicationController
       point_per_question: failed_assignment.point_per_question_before_type_cast
     )
     @assignment.errors.copy!(failed_assignment.errors)
-    render :new, status: @material_too_large ? :content_too_large : :unprocessable_entity
+    status = if @material_too_large
+      :content_too_large
+    elsif @material_check_unavailable
+      :service_unavailable
+    else
+      :unprocessable_entity
+    end
+    render :new, status: status
   end
 
   def assignment_params
@@ -209,6 +216,12 @@ class AssignmentsController < ApplicationController
     upload.tempfile.rewind
     pdf = safe_name && Marcel::MimeType.for(upload.tempfile) == "application/pdf"
     @assignment.errors.add(:material_file, "は有効なPDFファイルを選択してください") unless pdf
+    PdfReadabilityValidator.validate!(upload.tempfile) if pdf && @assignment.errors.empty?
+  rescue PdfReadabilityValidator::InvalidPdf
+    @assignment.errors.add(:material_file, "の内容を確認できません。有効なPDFファイルを選択してください")
+  rescue PdfReadabilityValidator::Unavailable
+    @material_check_unavailable = true
+    @assignment.errors.add(:base, "PDFの確認処理を利用できません。時間をおいて、もう一度お試しください。")
   ensure
     upload.tempfile.rewind if upload.is_a?(ActionDispatch::Http::UploadedFile)
   end
