@@ -46,6 +46,7 @@ Ruby 4.0.6、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意しま�
 git clone https://github.com/arduino0420/quickflow.git
 cd quickflow
 bundle install
+bin/install-qpdf
 export RAILS_ENV=development
 export DATABASE_URL=postgresql://127.0.0.1:5432/quickflow_local_development
 # 専用DB名・接続先であることを確認してから作成
