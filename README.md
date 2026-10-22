@@ -4,7 +4,7 @@
 
 ![教師の成績一覧・答案確認・生徒のPDF手書き画面（架空データ）](docs/implementation/issue95-evidence/flow-390.jpg)
 
-画像は[Issue #95の実Chrome監査](docs/implementation/issue95_screen_audit.md)で撮影した架空データです。長文・空状態の試験を含み、AIの実実行結果や本番画面ではありません。現行ビューと導線を照合して再利用しています。
+画像は[Issue #95の実Chrome監査](docs/implementation/issue95_screen_audit.md)で撮影した架空データです。長文・空状態の試験を含み、AIの実行結果や本番画面ではありません。現行ビューと導線を照合して再利用しています。
 
 ## 現在の実装と検証範囲
 
