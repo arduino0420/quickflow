@@ -46,4 +46,14 @@ RSpec.describe AnswerReader, type: :model do
     expect(Rails.logger).to have_received(:error).with(/reason=enqueue_rejected/)
     expect(submission.answer_file).to be_attached
   end
+  it "schedules nothing when upload fails before returning an ID" do
+    submission.answer_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
+      filename: "answer.pdf", content_type: "application/pdf")
+    allow(files).to receive(:create).and_raise(Timeout::Error)
+    expect(AiFileCleanupJob).not_to receive(:schedule)
+    expect(responses).not_to receive(:create)
+
+    expect { described_class.new(client: client).call(submission) }.to raise_error(Timeout::Error)
+    expect(submission.answer_file).to be_attached
+  end
 end

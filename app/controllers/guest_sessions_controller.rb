@@ -5,6 +5,7 @@ class GuestSessionsController < ApplicationController
     # Fixed server-side identity bounds cardinality; successful starts consume the budget too.
     authenticate_with_limit(nil, role: :guest, identity: "demo-start", password: nil)
     account = Demo::Guest.record(role)
+    Demo::Guest.cleanup_expired!
     Demo::Guest.revoke(session)
     reset_session
     nonce = SecureRandom.hex(32)

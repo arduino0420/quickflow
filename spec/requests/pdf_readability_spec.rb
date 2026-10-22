@@ -37,6 +37,7 @@ RSpec.describe "PDF readability at upload boundaries", type: :request do
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
     classroom
     original = counts
+    expect_any_instance_of(ActiveStorage::Blob).not_to receive(:upload_without_unfurling)
     expect { teacher_post(upload) }.not_to have_enqueued_job(QuestionGenerationJob)
     expect(response.status).to eq(422)
     expect(counts).to eq(original)
@@ -47,6 +48,7 @@ RSpec.describe "PDF readability at upload boundaries", type: :request do
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
     classroom
     original = counts
+    expect_any_instance_of(ActiveStorage::Blob).not_to receive(:upload_without_unfurling)
     teacher_post(upload("%PDF-1.4\n".ljust(25 * 1024 * 1024, "\0")))
     expect(response.status).to eq(422)
     expect(counts).to eq(original)
@@ -57,6 +59,7 @@ RSpec.describe "PDF readability at upload boundaries", type: :request do
     classroom
     original = counts
     allow(PdfReadabilityValidator).to receive(:validate!).and_raise(PdfReadabilityValidator::Unavailable)
+    expect_any_instance_of(ActiveStorage::Blob).not_to receive(:upload_without_unfurling)
     teacher_post(upload(valid_pdf_bytes))
     expect(response.status).to eq(503)
     expect(counts).to eq(original)

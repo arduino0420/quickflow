@@ -240,9 +240,18 @@ Blobが残っている場合、対象IDだけを再取得し、`attachments.exis
 その場合、失敗Jobを無条件に再実行しても復旧できません。削除ログのストレージ・キーに対応する対象オブジェクトだけを、ストレージ管理機能で確認・削除してください。
 既存Blobが同じキーを参照していないことも確認し、ファイル名やディレクトリ全体を指定した一括削除は行わないでください。
 
-**外部OpenAI側に既にアップロードされたファイルは今回の削除対象外です。**
-現行実装は外部ファイルIDを永続保存していないため、外部側のファイルを正確に追跡して削除することはできません。
-小テスト削除処理から外部OpenAI APIへの削除要求は行いません。
+### 外部OpenAIファイルの保持・削除（Issue #45）
+
+教材・答案PDFは `QuestionGenerator` / `AnswerReader` が `purpose: "user_data"` で送信し、作成時から3600秒の `expires_after` を指定します。Responses API は `store: false` を指定します。
+取得したファイルIDは処理中に保持し、成功・APIエラー・解析失敗・保存ロールバックのいずれでも `ensure` から `AiFileCleanupJob` を登録します。削除は非同期なので、処理完了時点で削除済みとは限りません。
+
+ジョブは同じIDに削除を要求し、`deleted: true` なら終了します。例外または `deleted: false` では1・3・10・20分の待機を挟み、初回を含む最大5回まで試行します。404は削除済み・期限切れとアクセス不能を区別できないため、成功と断定せず `AI file cleanup uncertain` / `not_found_or_inaccessible` を警告して終了します。
+
+Active Storage の添付・物理ファイル削除とは別のライフサイクルです。小テスト削除処理から外部API削除は要求せず、外部削除ジョブも元の添付を削除しません。外部IDの専用台帳はありません。キュー引数または登録失敗等のログに残ったIDを、対象環境・APIプロジェクトと照合して個別再確認・再登録に利用できます。どちらにも記録されなかったIDは、アプリから追跡できません。ID取得前のアップロード失敗・応答喪失や、ID取得後から登録までのプロセス停止ではIDを追跡できず、アプリからの削除を保証できません。新規アップロードの期限指定はその補完策であり、過去の期限未指定ファイルには遡及しません。
+
+**失敗監視と再確認:** `AI file cleanup failed` の `enqueue_rejected` / `enqueue_error` / `retry_enqueue_rejected` / `retry_enqueue_error` / `final_delete_error` / `final_delete_not_confirmed` と、上記の警告を監視します。終端エラーは捕捉してログに記録するため、Solid Queue の失敗ジョブ一覧だけでは検知できません。記録するのはファイルID・理由・例外クラスで、教材・答案本文や例外メッセージは含めません。ログへのアクセスを制限し、運用担当者は障害解消後、対象ID・環境・APIプロジェクト・権限とキュー状態を照合して、削除状態や期限を確認します。必要な再登録は対象ID単位で承認された運用として実施し、404だけで削除済みと判断したり、履歴やアカウント全体を一括削除したりしません。
+
+公式仕様（2026-10-22確認）では [Files の期限指定](https://developers.openai.com/api/reference/resources/files/methods/create) による自動削除と、[データ保持ポリシー](https://developers.openai.com/api/docs/guides/your-data) の不正利用監視用ログ（通常最大30日、法的義務等の例外あり）は別扱いです。3600秒はFileの期限であり、プロバイダー側の全データが1時間以内に消える保証ではありません。`store: false` も保持ゼロの証明ではなく、契約・プロジェクト設定・機能別の例外を確認する必要があります。学校の保存規程や事業者との条件は本実装で確定しません。
 
 ## 設計資料
 
@@ -466,4 +475,5 @@ STEP 2-Aには世代を増やす操作、採点再開サービス、教師ボタ
 通常の起動・`db:prepare`・`db:seed`ではデモデータを作成しません。
 新規の専用ローカルPostgreSQLクラスタ・専用Storageを準備し、接続と隔離印を照合する
 明示タスクのみ対応しています。[実行手順・全表の棚卸し・失敗時の扱い](docs/implementation/issue92_safe_demo_seed.md)を確認してください。
-ゲストのローカル検証範囲は[Issue #93 実装メモ](docs/implementation/issue93_read_only_guest.md)を参照してください。公開環境は未実装です。内部表を含む卒業要件の解釈が残るため、12業務表のseedだけで全要件完了とは扱いません。
+ゲストは[初期test profile](docs/implementation/issue93_read_only_guest.md)に加え、[独立したproduction-mode profile](docs/implementation/issue93_production_demo.md)を実装し、隔離ローカル環境で3ロール・権限・logout・HTTPSを検証済みです。外部公開は未実施です。
+初期データは12業務表と正規添付の件数・整合性を実証し、内部運用状態を捏造しない適用判断を実行手順に記録しています。公開時の費用・運用承認と実インフラ検証は、既存の公開・運用作業で別途扱います。
