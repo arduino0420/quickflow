@@ -116,9 +116,19 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     sheet = download_grade_sheet
     expect(%w[A2 B2 C2].map { |ref| xlsx_value(sheet, ref) }).to eq([ "1年1組", "1", "0" ])
     expect(xlsx_cell(sheet, "C2")["t"]).to eq("n")
+    expect(xlsx_value(sheet, "B3")).to eq(@unsubmitted.attendance_number.to_s)
+    expect(xlsx_cell(sheet, "C3")).to be_present
     expect(xlsx_value(sheet, "C3")).to be_nil
     within("#grade_student_#{@student.id}") { click_link }
     expect(page).to have_css("iframe[src='#{answer_assignment_submission_path(@assignment, submission)}']")
+    @assignment.questions.order(:position).each do |question|
+      within("#question_#{question.id}") do
+        expect(page).to have_css("dt", text: "問題文", exact_text: true)
+        expect(page).to have_css("dd", text: question.question_text, exact_text: true)
+        expect(page).to have_css("dt", text: "正答", exact_text: true)
+        expect(page).to have_css("dd", text: question.correct_answer, exact_text: true)
+      end
+    end
     select "正解", from: "問題1の最終判定"
     select "不正解", from: "問題3の最終判定"
     click_button "保存"
@@ -132,11 +142,17 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     click_link "小テスト詳細へ戻る"
     sheet = download_grade_sheet
     expect(%w[A2 B2 C2].map { |ref| xlsx_value(sheet, ref) }).to eq([ "1年1組", "1", "5" ])
+    expect(xlsx_value(sheet, "B3")).to eq(@unsubmitted.attendance_number.to_s)
+    expect(xlsx_cell(sheet, "C3")).to be_present
     expect(xlsx_value(sheet, "C3")).to be_nil
     student_login(@student)
     click_link @assignment.title
     expect(page).to have_css("#student-score", text: "現在の点数：5点", exact_text: true)
     expect(page).to have_css(".final-judgment", text: "最終判定：正解", count: 1, exact_text: true)
+    within("#question_#{results.second.question_id}") do
+      expect(page).to have_css("dt", text: "正答", exact_text: true)
+      expect(page).to have_css("dd", text: "5x", exact_text: true)
+    end
     expect(Submission.where(assignment: @assignment, student: @student).count).to eq(1)
     expect(responses).to have_received(:create).exactly(3).times
   end
