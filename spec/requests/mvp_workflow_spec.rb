@@ -87,7 +87,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
     expect(response).to have_http_status(:see_other)
     assignment = teacher.assignments.sole
     expect(assignment.classrooms).to match_array(classrooms)
-    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).once
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).once
     perform_enqueued_jobs(only: QuestionGenerationJob)
     expect(assignment.questions.count).to eq(3)
     question_ids = assignment.questions.order(:position).pluck(:id)

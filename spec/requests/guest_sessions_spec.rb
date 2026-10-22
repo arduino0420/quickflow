@@ -53,6 +53,8 @@ RSpec.describe "Read-only fictional guests", type: :request do
       expect(response.body).not_to include("小テスト配信", "教師を新規登録", "生徒を新規登録")
     end
     expect(snapshot).to eq(original)
+    expect(QuestionGenerationRequest.count).to eq(0)
+    expect(Assignment.where.not(current_question_generation_request_id: nil)).not_to exist
     expect(AiClient).not_to have_received(:build)
     expect(ActiveJob::Base).not_to have_received(:perform_later)
   end

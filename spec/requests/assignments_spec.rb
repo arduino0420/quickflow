@@ -1,8 +1,10 @@
 require "rails_helper"
+require_relative "../support/pdf_fixture_builder"
 
 RSpec::Matchers.define_negated_matcher :not_change, :change
 
 RSpec.describe "Assignment creation", type: :request do
+  include PdfFixtureBuilder
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
@@ -59,6 +61,7 @@ RSpec.describe "Assignment creation", type: :request do
       post assignments_path, params: { assignment: attributes }
     end.to change(Assignment, :count).by(1)
       .and change(AssignmentClassroom, :count).by(1)
+      .and change(QuestionGenerationRequest, :count).by(1)
 
     assignment = Assignment.last
     expect(assignment.teacher).to eq(teacher)
@@ -68,7 +71,14 @@ RSpec.describe "Assignment creation", type: :request do
     expect(assignment.published_at).to be_nil
     expect(assignment.classrooms).to contain_exactly(classroom)
     expect(assignment.questions).to be_empty
-    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).exactly(:once)
+    request = assignment.current_question_generation_request
+    expect(request.assignment_id).to eq(assignment.id)
+    expect(request.material_blob_id).to eq(assignment.material_file.blob.id)
+    expect(request.model).to eq(AiClient.model(:question_generation))
+    expect(request.prompt_version).to eq(QuestionGenerator::PROMPT_VERSION)
+    expect(request.state).to eq("pending")
+    expect(request.claim_token).to be_nil
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).exactly(:once)
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(new_assignment_path)
     follow_redirect!
@@ -104,6 +114,11 @@ RSpec.describe "Assignment creation", type: :request do
         assignment = Assignment.last
         expect(assignment.classrooms).to contain_exactly(classroom)
         expect(QuestionGenerator.new.failed?(assignment)).to be(true)
+        request = assignment.current_question_generation_request
+        expect(request.state).to eq("failed")
+        expect(request.failure_code).to eq("enqueue_failed")
+        expect(request.finished_at).to be_present
+        expect(request.started_at).to be_nil
         expect(Rails.logger).to have_received(:error).with(/Question generation enqueue failed/).once
         expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
       end
@@ -159,8 +174,7 @@ RSpec.describe "Assignment creation", type: :request do
     it "applies the 25MiB material boundary at #{bytes} bytes" do
       teacher_login
       Tempfile.create([ "boundary", ".pdf" ]) do |file|
-        file.write("%PDF-1.4\n")
-        file.truncate(bytes)
+        file.write(valid_pdf_bytes(size: bytes))
         file.rewind
         material = Rack::Test::UploadedFile.new(file.path, "application/pdf", original_filename: "material.pdf")
         counts = [ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
@@ -401,7 +415,7 @@ RSpec.describe "Assignment creation", type: :request do
         .and change(AssignmentClassroom, :count).by(2)
       expect(response).to have_http_status(:see_other)
       expect(Assignment.last.classrooms).to contain_exactly(classroom, other_classroom)
-      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id).exactly(:once)
+      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id, 0, request_id: Assignment.last.current_question_generation_request_id).exactly(:once)
     end
 
     it "requires material without changing model validations" do

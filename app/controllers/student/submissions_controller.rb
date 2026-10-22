@@ -52,6 +52,14 @@ class Student::SubmissionsController < ApplicationController
 
       submitted_response
     end
+  rescue PdfReadabilityValidator::Unavailable
+    message = "PDFの確認処理を利用できません。手書きと下書きは残っています。時間をおいて、もう一度お試しください。"
+    if handwritten?
+      render json: { error: "pdf_check_unavailable", message: message }, status: :service_unavailable
+    else
+      @submission.errors.add(:base, "PDFの確認処理を利用できません。時間をおいて、もう一度お試しください。")
+      render "student/assignments/show", status: :service_unavailable
+    end
   rescue ActiveRecord::RecordInvalid
     return redirect_already_submitted if existing_submission
 
@@ -197,7 +205,11 @@ class Student::SubmissionsController < ApplicationController
     pdf = File.extname(upload.original_filename).downcase == ".pdf" &&
       Marcel::MimeType.for(upload.tempfile) == "application/pdf"
     @submission.errors.add(:base, "PDFファイルを選択してください") unless pdf
+    PdfReadabilityValidator.validate!(upload.tempfile) if pdf
     pdf
+  rescue PdfReadabilityValidator::InvalidPdf
+    @submission.errors.add(:base, "PDFの内容を確認できません。有効なPDFファイルを選択してください")
+    false
   ensure
     upload.tempfile.rewind if upload.is_a?(ActionDispatch::Http::UploadedFile)
   end
