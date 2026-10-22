@@ -38,6 +38,9 @@ body {
 .app-header--with-actions .app-header-inner { max-width: none; justify-content: space-between; }
 .app-header-actions { margin-left: auto; flex: 0 0 auto; }
 .app-header-actions form.button_to { margin: 0; }
+.student-header-actions { display: flex; align-items: center; gap: 0.75rem; }
+.student-header-identity { white-space: nowrap; }
+.student-header-actions form.button_to { flex-shrink: 0; }
 a.app-brand { text-decoration: none; }
 .app-header--auth { background: var(--color-background); border-bottom: 0; }
 .app-header--auth .app-header-inner { justify-content: center; padding: 2rem 1rem 0.5rem; }
@@ -130,6 +133,8 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 .distributed-classrooms li::before { content: none; }
 .grade-export-actions { display: flex; justify-content: flex-end; margin-top: 1.5rem; }
 .grade-export-actions .button { max-width: 100%; }
+.button-excel-export { background: var(--color-success-text); color: var(--color-surface); }
+.button-excel-export:hover { background: #14532d; color: var(--color-surface); }
 .assignment-list--student .assignment-list-title { flex-basis: 100%; }
 .assignment-list--student .button { margin-left: auto; }
 .assignment-metadata { display: grid; grid-template-columns: minmax(8rem, auto) minmax(0, 1fr); gap: 0.75rem 1.5rem; margin: 1.5rem 0; padding: 1.25rem; background: var(--color-background); border-radius: var(--control-radius); }

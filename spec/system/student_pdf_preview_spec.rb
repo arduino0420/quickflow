@@ -414,14 +414,14 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.3, 0.2)).to be > 0
   end
 
-  it "requests leave confirmation for an unsaved stroke on the detail link and browser Forward" do
+  it "requests leave confirmation for an unsaved stroke on the QuickFlow link and browser Forward" do
     click_link "表示試験"
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     page.execute_script("window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'), 'pdf-preview').draft.delay = 60_000")
     ink_drag(0.1, 0.2, 0.5, 0.2)
     record_leave_guard
-    click_link "小テストの詳細へ戻る"
-    expect(page).to have_current_path(student_assignment_path(@assignment))
+    click_link "QuickFlow"
+    expect(page).to have_current_path(student_assignments_path)
     expect(leave_guard_value).to eq("true")
 
     page.go_back
@@ -433,7 +433,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page.evaluate_script("window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'), 'pdf-preview').draft.dirty")).to be(true)
     record_leave_guard
     page.go_forward
-    expect(page).to have_current_path(student_assignment_path(@assignment))
+    expect(page).to have_current_path(student_assignments_path)
     expect(leave_guard_value).to eq("true")
   end
 
@@ -810,7 +810,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     ink_drag(0.2, 0.2, 0.2, 0.2, 10)
     expect(ink_alpha(0.2, 0.2, 10)).to be > 0
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"].pdf-preview-status-quiet', text: "保存済み", wait: 10)
-    click_link "小テストの詳細へ戻る"
+    visit student_assignment_path(@assignment)
     expect(page).to have_current_path(student_assignment_path(@assignment))
     expect(page).to have_link("PDFに解答する")
     expect(page).to have_css('details input[type="file"]', visible: :all)
@@ -966,7 +966,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(page).not_to have_text("書いた内容は保存されません")
       expect(page).not_to have_text("ページを表示しています")
       expect(page).not_to have_css(".pdf-preview-page-number")
-      expect(page).to have_link("小テストの詳細へ戻る")
+      expect(page).not_to have_link("小テストの詳細へ戻る")
       ink_drag(0.1, 0.15, 0.35, 0.15, 1)
       ink_drag(0.1, 0.15, 0.35, 0.15, count) if count > 1
       reading_jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
@@ -1718,10 +1718,22 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "restores legacy width 12 and saves new width 18 without rewriting old operations" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    input_size = find('[data-pdf-preview-target="ink"]').evaluate_script("({ width: this.getBoundingClientRect().width, height: this.getBoundingClientRect().height })")
     ink_drag(0.1, 0.1, 0.9, 0.1)
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     draft = AnswerDraft.find_by!(assignment: @assignment)
     data = draft.page_data.deep_dup
+    pen = data.first.fetch("operations").first
+    # The fixture is 200 x 300 PDF units; WebDriver rounds input to whole CSS pixels.
+    rounding_error = [ 200.0 / input_size.fetch("width"), 300.0 / input_size.fetch("height") ].map { |units_per_pixel| units_per_pixel * 0.5 + 1e-9 }
+    expect(pen.fetch("tool")).to eq("pen")
+    expect(pen.fetch("width")).to eq(1.2)
+    [ pen.fetch("points").first, pen.fetch("points").last ].zip([ [ 20, 270 ], [ 180, 270 ] ]).each do |actual, intended|
+      actual.zip(intended, rounding_error).each do |coordinate, expected, tolerance|
+        expect(coordinate).to be_within(tolerance).of(expected)
+      end
+    end
+    pen.fetch("points").each { |point| expect(point[1]).to be_within(rounding_error.last).of(270) }
     legacy = { "id" => 2, "tool" => "eraser", "width" => 12, "color" => "#000000", "points" => [ [ 40, 270 ] ] }
     data.first["operations"] << legacy
     draft.update!(page_data: data)
@@ -1736,6 +1748,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.65, 0.1)).to be > 0
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     operations = draft.reload.page_data.first["operations"]
+    expect(operations.first).to eq(pen)
     expect(operations[1]).to eq(legacy)
     expect(operations.last["width"]).to eq(18)
     page.refresh
@@ -1752,7 +1765,10 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         const page=await pdf.getPage(1), viewport=page.getViewport({scale:3});
         const canvas=document.createElement('canvas'); canvas.width=viewport.width;canvas.height=viewport.height;
         const context=canvas.getContext('2d');await page.render({canvasContext:context,viewport}).promise;
-        const pixels=[.2,.64,.65].map(x=>Array.from(context.getImageData(Math.round(viewport.width*x),Math.round(viewport.height*.1),1,1).data).slice(0,3));
+        // Sample the validated stroke's center, choosing the nearest pixel center.
+        const [,lineY]=viewport.convertToViewportPoint(0,#{pen.fetch("points").first[1].to_json});
+        const sampleY=Math.round(lineY-.5);
+        const pixels=[.2,.64,.65].map(x=>Array.from(context.getImageData(Math.round(viewport.width*x),sampleY,1,1).data).slice(0,3));
         canvas.width=canvas.height=0; done(pixels);
       })().catch(error=>done({error:String(error)}));
     JS
