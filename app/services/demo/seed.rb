@@ -21,23 +21,7 @@ module Demo
     def call
       guard!
       @manifest = nil
-      expected_tables = TABLE_MODELS.map(&:table_name) + %w[schema_migrations ar_internal_metadata]
-      # connection.tables is search_path-limited. Inspect every user namespace,
-      # including empty ones, and reject hidden tables/views without reading data.
-      inventory = connection.select_rows(<<~SQL)
-        SELECT namespaces.nspname, relations.relname
-        FROM pg_namespace AS namespaces
-        LEFT JOIN pg_class AS relations ON relations.relnamespace = namespaces.oid
-          AND relations.relkind IN ('r', 'p', 'f', 'm', 'v')
-        WHERE namespaces.nspname <> 'information_schema'
-          AND (namespaces.nspname !~ '^pg_'
-            OR (namespaces.nspname ~ '^pg_temp_[0-9]+$' AND relations.oid IS NOT NULL))
-      SQL
-      unexpected = inventory.any? do |schema, table|
-        schema != "public" || (table.present? && !expected_tables.include?(table))
-      end
-      refuse!("Unexpected database schemas or tables") if unexpected
-      refuse!("Storage contains symbolic links") if @root.glob("**/*", File::FNM_DOTMATCH).any?(&:symlink?)
+      verify_inventory!
       File.open(@root.join(".seed.lock"), File::RDWR | File::CREAT, 0o600) do |lock|
         refuse!("Seed already running") unless lock.flock(File::LOCK_EX | File::LOCK_NB)
         ApplicationRecord.transaction do
@@ -70,7 +54,43 @@ module Demo
       MODELS.to_h { |model| [ model.table_name, model.count ] }
     end
 
+    # Never seeds, repairs, resets credentials or creates lock files.
+    # Authentication counters/session revocations are intentionally mutable internal state.
+    def verify_guest!
+      guard!
+      verify_inventory!
+      refuse!("Missing seed manifest") unless @root.join(".seed-manifest.json").file?
+      File.open(@root.join(".seed.lock"), File::RDONLY) do |lock|
+        refuse!("Seed already running") unless lock.flock(File::LOCK_SH | File::LOCK_NB)
+        expected = JSON.parse(@root.join(".seed-manifest.json").read)
+        actual = snapshot
+        [ expected, actual ].each { |value| value.fetch("tables").delete(AuthenticationAttemptBucket.table_name) }
+        refuse!("Demo data changed: #{actual.fetch("tables").keys.select { |name| actual["tables"][name] != expected["tables"][name] }.join(",")}") unless actual == expected
+      end
+      true
+    end
+
     private
+
+    def verify_inventory!
+      expected_tables = TABLE_MODELS.map(&:table_name) + %w[schema_migrations ar_internal_metadata]
+      # connection.tables is search_path-limited. Inspect every user namespace,
+      # including empty ones, and reject hidden tables/views without reading data.
+      inventory = connection.select_rows(<<~SQL)
+        SELECT namespaces.nspname, relations.relname
+        FROM pg_namespace AS namespaces
+        LEFT JOIN pg_class AS relations ON relations.relnamespace = namespaces.oid
+          AND relations.relkind IN ('r', 'p', 'f', 'm', 'v')
+        WHERE namespaces.nspname <> 'information_schema'
+          AND (namespaces.nspname !~ '^pg_'
+            OR (namespaces.nspname ~ '^pg_temp_[0-9]+$' AND relations.oid IS NOT NULL))
+      SQL
+      unexpected = inventory.any? do |schema, table|
+        schema != "public" || (table.present? && !expected_tables.include?(table))
+      end
+      refuse!("Unexpected database schemas or tables") if unexpected
+      refuse!("Storage contains symbolic links") if @root.glob("**/*", File::FNM_DOTMATCH).any?(&:symlink?)
+    end
 
     def connection
       ApplicationRecord.connection
@@ -132,6 +152,9 @@ module Demo
         content_type: "application/pdf", service_name: "demo_seed", identify: false,
         metadata: { identified: true, analyzed: true, demo_sample: true })
       record.public_send(name).attach(blob)
+      # Active Storage schedules a deferred parent touch. Persist it before the
+      # manifest; a later commit callback must not change the recorded timestamp.
+      record.touch
     end
 
     # One-page PDF with a real cross-reference table; ASCII label is visible in all viewers.
@@ -177,7 +200,9 @@ module Demo
 
     def snapshot
       tables = TABLE_MODELS.to_h do |model|
-        data = model.order(model.primary_key).map(&:attributes)
+        data = model.order(model.primary_key).map do |record|
+          record.attributes.transform_values { |value| value.respond_to?(:usec) ? value.iso8601(6) : value }
+        end
         [ model.table_name, Digest::SHA256.hexdigest(JSON.generate(data)) ]
       end
       files = @root.glob("**/*", File::FNM_DOTMATCH).select(&:file?).reject { |path| [ @root.join(".seed.lock"), @root.join(".seed-manifest.json") ].include?(path) }

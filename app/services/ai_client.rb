@@ -13,6 +13,8 @@ class AiClient
   end
 
   def self.build(api_key: nil)
+    raise Demo::Guest::Unavailable, "External AI disabled in demo mode" if Demo::Guest.configured?
+
     api_key ||= Rails.application.credentials.dig(:openai, :api_key)
     raise "OpenAI API key is not configured" if api_key.blank?
 

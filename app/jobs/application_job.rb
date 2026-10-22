@@ -1,4 +1,8 @@
 class ApplicationJob < ActiveJob::Base
+  before_perform do
+    raise Demo::Guest::Unavailable, "Jobs disabled in demo mode" if Demo::Guest.configured?
+  end
+
   # Automatically retry jobs that encountered a deadlock
   # retry_on ActiveRecord::Deadlocked
 

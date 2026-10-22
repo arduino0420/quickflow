@@ -9,7 +9,7 @@
 <% if alert.present? %><p role="alert"><%= alert %></p><% end %>
 
 <nav class="assignment-list-actions" aria-label="教師メニュー">
-  <%= link_to "小テスト配信", new_assignment_path, class: "button button-primary" %>
+<% unless guest_session? %>  <%= link_to "小テスト配信", new_assignment_path, class: "button button-primary" %><% end %>
 </nav>
 
 <% if @assignments.empty? %>

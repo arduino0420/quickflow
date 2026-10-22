@@ -23,7 +23,8 @@
       </div>
     </header>
     <main class="app-main <%= "app-main--compact" if controller_name == "sessions" %>">
-      <div class="page-card"><%= yield %></div>
+      <div class="page-card"><%= render "shared/guest" %>
+        <%= yield %></div>
     </main>
     <%= render "shared/footer" %>
   </body>

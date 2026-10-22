@@ -2,7 +2,7 @@
 <% if notice.present? %><p role="status"><%= notice %></p><% end %>
 <p>所属学校コード: <%= @school.school_code %></p>
 <nav class="admin-student-actions" aria-label="生徒一覧メニュー">
-  <%= link_to "生徒を新規登録", new_admin_student_path, class: "button button-primary" %>
+<% unless guest_session? %>  <%= link_to "生徒を新規登録", new_admin_student_path, class: "button button-primary" %><% end %>
   <%= link_to "管理者トップへ戻る", admin_root_path %>
 </nav>
 
@@ -35,9 +35,9 @@
           <td data-label="利用状態"><%= "利用可能" %></td>
           <td data-label="操作"><div class="admin-student-row-actions">
             <% filters = { grade: @grade, class_number: @class_number, page: @page }.compact %>
-            <%= link_to "編集", edit_admin_student_path(student, **filters), class: "button button-secondary" %>
-            <%= link_to "削除", confirm_destroy_admin_student_path(student, **filters), class: "button button-secondary" %>
-            <%= link_to "パスワード再設定", edit_admin_student_password_reset_path(student, **filters), class: "button button-secondary" %>
+<% unless guest_session? %>            <%= link_to "編集", edit_admin_student_path(student, **filters), class: "button button-secondary" %><% end %>
+<% unless guest_session? %>            <%= link_to "削除", confirm_destroy_admin_student_path(student, **filters), class: "button button-secondary" %><% end %>
+<% unless guest_session? %>            <%= link_to "パスワード再設定", edit_admin_student_password_reset_path(student, **filters), class: "button button-secondary" %><% end %>
           </div></td>
         </tr>
       <% end %>

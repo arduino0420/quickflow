@@ -1,0 +1,10 @@
+<% if guest_session? %>
+  <aside role="status">
+    <strong>架空データの閲覧専用ゲスト（<%= { "admin" => "管理者", "teacher" => "教師", "student" => "生徒" }[session[:guest_role]] %>）</strong>
+    <p>採点は架空サンプルです。実際のAI実行結果ではありません。変更・提出・実AI採点はできません。15分で終了します。</p>
+    <% %w[admin teacher student].each do |role| %>
+      <%= button_to "#{ { "admin" => "管理者", "teacher" => "教師", "student" => "生徒" }[role]}ゲストに切り替える", guest_login_path(role: role), method: :post if Demo::Guest.enabled? %>
+    <% end %>
+    <%= button_to "ゲストを終了", logout_path, method: :delete %>
+  </aside>
+<% end %>

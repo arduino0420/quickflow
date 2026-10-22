@@ -5,3 +5,13 @@
   <%= link_to "教師としてログインする", login_path, class: "button button-primary" %>
   <%= link_to "生徒としてログインする", student_login_path, class: "button button-secondary" %>
 </nav>
+
+<% if Demo::Guest.enabled? %>
+  <section aria-label="架空データのゲスト体験">
+    <h2>架空データを閲覧する</h2>
+    <p>変更・提出・実AI採点はできません。ローカル検証専用です。</p>
+    <% { "admin" => "管理者", "teacher" => "教師", "student" => "生徒" }.each do |role, label| %>
+      <%= button_to "#{label}ゲストで閲覧", guest_login_path(role: role), method: :post %>
+    <% end %>
+  </section>
+<% end %>

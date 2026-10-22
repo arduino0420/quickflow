@@ -16,7 +16,7 @@
     <% @assignments.each do |assignment| %>
       <% submission = @submissions_by_assignment_id[assignment.id] %>
       <li id="assignment_<%= assignment.id %>" class="assignment-card<%= " assignment-card--submitted" if submission&.persisted? %>">
-        <%= link_to (submission&.persisted? ? student_assignment_path(assignment) : student_assignment_pdf_preview_path(assignment)), class: "assignment-card-link student-card-link" do %>
+        <%= link_to ((submission&.persisted? || guest_session?) ? student_assignment_path(assignment) : student_assignment_pdf_preview_path(assignment)), class: "assignment-card-link student-card-link" do %>
           <span class="student-card-info">
             <span class="assignment-list-title"><%= assignment.title %></span>
           </span>

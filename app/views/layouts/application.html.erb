@@ -40,6 +40,7 @@
     </header>
     <main class="app-main <%= "app-main--compact" if [ "sessions", "student_sessions" ].include?(controller_name) %>">
       <div class="page-card">
+        <%= render "shared/guest" %>
         <%= yield %>
       </div>
     </main>

@@ -1,7 +1,7 @@
 <h1>教師一覧</h1>
 <p>所属学校コード: <%= @school.school_code %></p>
 <nav class="admin-teacher-list-actions" aria-label="教師一覧メニュー">
-  <%= link_to "教師を新規登録", new_admin_teacher_path, class: "button" %>
+<% unless guest_session? %>  <%= link_to "教師を新規登録", new_admin_teacher_path, class: "button" %><% end %>
   <%= link_to "管理者トップに戻る", admin_root_path %>
 </nav>
 
@@ -11,7 +11,7 @@
   <thead><tr><th scope="col">教師ID</th><th scope="col">担当クラス</th><th scope="col">操作</th></tr></thead>
   <tbody>
     <% @teachers.each do |teacher| %>
-      <tr tabindex="0" aria-label="<%= teacher.user_id %>を編集" data-controller="row-navigation"
+      <tr tabindex="0" aria-label="<%= teacher.user_id %><%= "を編集" unless guest_session? %>" data-controller="<%= "row-navigation" unless guest_session? %>"
         data-action="click->row-navigation#open keydown->row-navigation#openWithKeyboard">
         <td data-label="教師ID"><%= teacher.user_id %></td>
         <td data-label="担当クラス">
@@ -19,8 +19,8 @@
           <%= classrooms.empty? ? "担当なし" : classrooms.map { |classroom| classroom_label(classroom) }.join("、") %>
         </td>
         <td data-label="操作"><div class="admin-teacher-row-actions">
-          <%= link_to "編集", edit_admin_teacher_path(teacher), class: "button button-secondary admin-teacher-edit-link", data: { row_navigation_target: "link" }, aria: { label: "#{teacher.user_id}を編集" } %>
-          <%= link_to "パスワード再設定", edit_admin_teacher_path(teacher, anchor: "password-reset"), class: "button button-secondary" %>
+<% unless guest_session? %>          <%= link_to "編集", edit_admin_teacher_path(teacher), class: "button button-secondary admin-teacher-edit-link", data: { row_navigation_target: "link" }, aria: { label: "#{teacher.user_id}を編集" } %><% end %>
+<% unless guest_session? %>          <%= link_to "パスワード再設定", edit_admin_teacher_path(teacher, anchor: "password-reset"), class: "button button-secondary" %><% end %>
         </div></td>
       </tr>
     <% end %>

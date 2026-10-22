@@ -11,7 +11,46 @@ class ApplicationController < ActionController::Base
   rescue_from AuthenticationThrottle::Limited, with: :authentication_limited
   rescue_from AuthenticationThrottle::Unavailable, with: :authentication_unavailable
 
+  helper_method :guest_session?
+  before_action :guard_guest_session
+  prepend_around_action :with_guest_read_snapshot
+
   private
+
+  def with_guest_read_snapshot
+    return yield unless guest_session? && request.get?
+
+    # Keep the manifest check and controller scopes on one PostgreSQL snapshot.
+    # RSpec's surrounding fixture transaction already supplies this boundary.
+    options = ApplicationRecord.connection.transaction_open? ? {} : { isolation: :repeatable_read }
+    ApplicationRecord.transaction(**options) { yield }
+  end
+
+  def guest_session?
+    session[:guest_role].present? || session[:guest_nonce].present?
+  end
+
+  def guard_guest_session
+    return unless guest_session?
+    response.headers["Cache-Control"] = "private, no-store"
+    if request.delete? && %w[sessions student_sessions admin/sessions].include?(controller_path) && action_name == "destroy"
+      Demo::Guest.revoke(session)
+      return
+    end
+    Demo::Guest.verify!
+    unless Demo::Guest.valid?(session)
+      Demo::Guest.revoke(session)
+      reset_session
+      return head :unauthorized
+    end
+    return if controller_path == "guest_sessions" && action_name == "create" && request.post?
+    allowed = Demo::Guest::READS.fetch(session[:guest_role]).fetch(controller_path, [])
+    head :forbidden unless request.get? && allowed.include?(action_name)
+  rescue Demo::Guest::Unavailable, ActiveRecord::RecordNotFound
+    Demo::Guest.revoke(session)
+    reset_session
+    head :service_unavailable
+  end
 
   def current_teacher
     return @current_teacher if defined?(@current_teacher)
