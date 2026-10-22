@@ -12,13 +12,13 @@ class QuestionGenerationJob < ApplicationJob
     return if request.state == "failed"
 
     initial_token = request.claim_token
-    generator = QuestionGenerator.new
     begin
+      generator = QuestionGenerator.new(model: request.model)
       questions = generator.call(assignment, material_blob_id: material_blob_id, request_id: request_id)
       return unless questions&.any?
     rescue StandardError => error
       Rails.logger.error("QuestionGenerationJob failed: #{error.class}")
-      fan_out(request, material_blob_id, generation, state: "failed", token: generator.claim_token) do |submission|
+      fan_out(request, material_blob_id, generation, state: "failed", token: generator&.claim_token) do |submission|
         submission.update!(status: :failed)
       end
       return

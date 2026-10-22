@@ -51,6 +51,49 @@ RSpec.describe "Durable question generation lifecycle" do
     expect(responses).not_to have_received(:create)
   end
 
+  [ "changed-model", "", "   " ].each do |current_model|
+    it "executes the captured request when the current model becomes #{current_model.inspect}" do
+      request = select_request(model: "captured-model")
+      original = ENV["OPENAI_QUESTION_GENERATION_MODEL"]
+      ENV["OPENAI_QUESTION_GENERATION_MODEL"] = current_model
+      allow(AiClient).to receive(:build).and_return(client)
+      expect { QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id) }.not_to raise_error
+      expect(request.reload.state).to eq("succeeded")
+      expect(responses).to have_received(:create).with(hash_including(model: "captured-model")).once
+    ensure
+      ENV["OPENAI_QUESTION_GENERATION_MODEL"] = original
+    end
+  end
+
+  it "records captured-request API failure and reads saved history even with a blank current model" do
+    request = select_request
+    original = ENV["OPENAI_QUESTION_GENERATION_MODEL"]
+    ENV["OPENAI_QUESTION_GENERATION_MODEL"] = ""
+    allow(AiClient).to receive(:build).and_return(client)
+    allow(responses).to receive(:create).and_raise("synthetic API failure")
+    expect { QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id) }.not_to raise_error
+    expect(request.reload.state).to eq("failed")
+    expect(request.failure_code).to eq("generation_failed")
+    expect(QuestionGenerator.new.failed?(assignment)).to be(true)
+    expect(QuestionGenerator.new.saved_questions(assignment)).to eq([])
+    AnswerGradingJob.perform_now(submission)
+    expect(submission.reload).to be_failed
+    expect(responses).to have_received(:create).once
+  ensure
+    ENV["OPENAI_QUESTION_GENERATION_MODEL"] = original
+  end
+
+  it "reads valid legacy questions with a blank current model without creating durable history" do
+    question = create_question
+    original = ENV["OPENAI_QUESTION_GENERATION_MODEL"]
+    ENV["OPENAI_QUESTION_GENERATION_MODEL"] = ""
+    expect(QuestionGenerator.new.saved_questions(assignment)).to eq([ question ])
+    expect(QuestionGenerationRequest.count).to eq(0)
+    expect(responses).not_to have_received(:create)
+  ensure
+    ENV["OPENAI_QUESTION_GENERATION_MODEL"] = original
+  end
+
   it "keeps a selected historical prompt failure visible to late submissions without executing that prompt" do
     request = QuestionGenerationRequest.create!(assignment: assignment, material_blob_id: assignment.material_file.blob.id,
       model: "historical-model", prompt_version: "previous-prompt", state: "failed", failure_code: "generation_failed")

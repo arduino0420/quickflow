@@ -1,7 +1,7 @@
 class QuestionGenerator
   PROMPT_VERSION = "question-generation-v1"
 
-  def initialize(client: nil, model: AiClient.model(:question_generation))
+  def initialize(client: nil, model: nil)
     @client = client
     @model = model
   end
