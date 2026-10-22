@@ -46,4 +46,4 @@ READMEの`quickflow_local_test`では、`student_handwritten_submission_concurre
 
 管理者ログイン説明の「admin_idだけ」も、実controllerに合わせて`admin_id`と`credential_proof`の設定へ訂正しました。画像・相対リンクは独立レビューでも確認済みで、再撮影はしていません。
 
-最終レビュー前にmain `5c1a4ad8599fced886465494032cf313bfec56b5`を通常mergeしました（#119の教師PDF保存失敗境界と回帰spec）。その差分を確認し、#47/#48全体の完了は宣言しません。全件RSpec/Systemはこの統合後の最終head CIで確認します。
+最終レビュー前にmain `5c1a4ad8599fced886465494032cf313bfec56b5`を通常mergeしました（#119の教師PDF保存失敗境界と回帰spec）。その差分を確認し、運用詳細の初回教材アップロードとロックの順序を現在の「先行Blob保存→配信確定」に訂正しました。#47/#48全体の完了は宣言しません。全件RSpec/Systemはこの統合後の最終head CIで確認します。
