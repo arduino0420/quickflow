@@ -1078,7 +1078,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         material_blob_id: assignment.material_file.blob.id))
       submission.update!(status: :grading, processing_generation: 1)
       allow_any_instance_of(Recovery::GradingRecovery).to receive(:queue_clear?).and_return(true)
-      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2, admission: kind_of(String)).and_return(true)
       login
       get detail_path
       expect(document.at_css("form[action='#{resume_path}'] button").text).to eq("採点を再開する")

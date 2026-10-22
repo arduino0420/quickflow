@@ -80,6 +80,7 @@ module Recovery
 
       state = {
         submission: [ submission.id, submission.assignment_id, submission.status, submission.processing_generation,
+          submission.processing_claim_stage, submission.processing_claim_token, submission.processing_claimed_at&.iso8601(6),
           submission.extracted_text, submission.updated_at&.iso8601(6) ],
         assignment: [ assignment.id, assignment.updated_at&.iso8601(6) ],
         answer_pdf: pdf_state(answer_attachment, answer_pdf),

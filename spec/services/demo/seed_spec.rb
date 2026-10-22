@@ -49,6 +49,39 @@ RSpec.describe Demo::Seed do
     expect(JSON.parse(path.read)).to eq(manifest)
   end
 
+  it "rejects manifests predating nullable processing claims without rebaselining" do
+    seed.call
+    path = @directory.join(".seed-manifest.json")
+    # Table snapshots are digests of all attributes, so emulate a pre-migration
+    # manifest by computing that digest with only the old attribute inventory.
+    original = seed.send(:snapshot)
+    old = nil
+    RSpec::Mocks.with_temporary_scope do
+      allow_any_instance_of(Submission).to receive(:attributes).and_wrap_original do |method|
+        method.call.except("processing_claim_stage", "processing_claim_token", "processing_claimed_at")
+      end
+      old = seed.send(:snapshot)
+    end
+    expect(old).not_to eq(original)
+    path.write(JSON.generate(old))
+    before = rows
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect { seed.verify_guest! }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect(rows).to eq(before)
+    expect(JSON.parse(path.read)).to eq(old)
+  end
+
+  it "keeps synthetic processing claims nil and rejects claim tampering without repair" do
+    seed.call
+    fields = %w[processing_claim_stage processing_claim_token processing_claimed_at]
+    expect(Submission.all.map { |row| row.attributes.values_at(*fields) }).to all(eq([ nil, nil, nil ]))
+    Submission.first.update!(processing_claim_stage: "ready")
+    before = rows
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect { seed.verify_guest! }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect(rows).to eq(before)
+  end
+
   it "refuses ledger tampering as business state, with no repair or authentication exemption" do
     seed.call
     assignment = Assignment.first
