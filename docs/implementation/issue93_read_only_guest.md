@@ -123,3 +123,19 @@ manifestの日時はISO8601の6桁小数秒に統一し、1マイクロ秒の改
   Chrome1構成の検証であり、すべてのbrowser/versionでのcache挙動を保証するものではありません。
 - 修正後関連RSpec46件・失敗0、RuboCop232ファイル指摘0、Brakeman警告0。
 - 初回head be3046eの全RSpec1736件・失敗0、CI #140全ジョブ成功。レビュー修正後headの全件/CIとは区別します。
+
+### fixture準備のbounded pre-lock
+
+- head75a9ee3の診断付きローカル全件は1742例・失敗0、CI #141も1742例・失敗0で全4ジョブ成功。
+  ただし同headの先行ローカル全件ではgrading_results、別の独立回帰ではattachmentsのseed準備lock拒否が発生。
+  元の保持backendは未記録であり、autovacuum/autoanalyze説を確定原因とは扱いません。
+  切断前processの残存や他タスクの54888利用は観測されず、詳細ログ/pg_locks/pg_stat_activityを保持しています。
+- アプリ本体とDemo::SeedのNOWAITは維持します。guest request/systemのbeforeだけが明示requireする
+  `spec/support/demo_seed_fixture.rb`で、外側fixture transactionを必須とし、同じ接続のsavepoint内で
+  Seedと同じ全表/順序のEXCLUSIVE lockを最大2秒だけ事前取得します。timeoutを元に戻し、lock保持中に元のSeedを呼びます。
+  retry/skipはありません。失敗時はsavepoint rollback後にPID/backend種別/transaction/lock/vacuum progressを記録してraiseします。
+- 既存のseed競合拒否specはこのhelperを使用しません。新しい4例で、別PG接続のShareUpdateExclusiveを
+  実際のblocking PID barrierで観測して解除後成功、100ms上限の失敗とtimeout復元、直接Seedの即時拒否、
+  外側fixture transactionなしの拒否を検証。保持者はこの制御例ではclient backendと実測できており、過去原因とは区別します。
+- helper追加後の関連50例・失敗0、RuboCop234ファイル指摘0、Brakeman警告0。
+  混合順序の限定回帰と新head全件CIの最終結果はPRに記録します。同じheadの重いローカル全体は再実行しません。

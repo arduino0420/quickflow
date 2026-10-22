@@ -1,9 +1,11 @@
 require "rails_helper"
+require_relative "../support/demo_seed_fixture"
 require "capybara/rspec"
 require "tmpdir"
 require "selenium-webdriver"
 
 RSpec.describe "Fictional guest browsing", type: :system do
+  include DemoSeedFixture
   around do |example|
     old = ENV["QUICKFLOW_GUEST_LOGIN"]
     ENV["QUICKFLOW_GUEST_LOGIN"] = "true"
@@ -23,7 +25,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
     allow_any_instance_of(Demo::Seed).to receive(:guard!) { |seed| seed.instance_variable_set(:@root, @root) }
     allow(ActiveStorage::Blob.services).to receive(:fetch).with("demo_seed")
       .and_return(ActiveStorage::Service::DiskService.new(root: @root.to_s, name: "demo_seed"))
-    Demo::Seed.new.call
+    prepare_demo_seed_fixture
   end
 
   it "offers Japanese role choices, scoped business links, switching and logout" do
