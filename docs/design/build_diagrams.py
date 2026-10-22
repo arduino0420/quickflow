@@ -109,8 +109,8 @@ def screens():
        ('管理トップ GET /admin',['自身の学校内のみ']),
        ('トップ ↔ 教師管理 /admin/teachers',['一覧 → new / create → 一覧','edit / update：担当クラス・PW変更','教師登録時にクラス指定・作成']),
        ('トップ ↔ 生徒管理 /admin/students',['一覧・絞込 → new / create','edit → POST confirm_update → PATCH','confirm_destroy → DELETE：1人を確認']),
-       ('生徒一覧 → PW再設定',['GET/PATCH …/:id/password_reset','対象確認・管理者再認証','教師PW変更・生徒削除も再認証条件あり']),
-       ('登録・認可の補足',['教師にも GET/POST /students の登録あり','担当クラス限定（公開登録ではない）','教師の配信登録は学校内クラスを選択'])])]
+       ('生徒一覧 → PW再設定',['GET …/:id/password_reset/edit', 'PATCH …/:id/password_reset','対象確認・管理者再認証','教師PW変更・生徒削除も再認証条件あり']),
+       ('登録・認可の補足',['教師にも GET /students/new の登録画面', 'POST /students で担当クラスの生徒を登録','担当クラス限定（公開登録ではない）','教師の配信登録は学校内クラスを選択'])])]
     for role,x,color,items in columns:
         c.text(x,245,role,26);y=295
         for index,(title,lines) in enumerate(items):
