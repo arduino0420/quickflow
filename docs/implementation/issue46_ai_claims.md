@@ -43,6 +43,13 @@ failure logging remain; no prompts, PDFs or response payloads enter logs.
 
 ## Future production cutover (not executed)
 
+The reading job keeps its positional arguments; the grading job also accepts
+its old positional arguments, with optional opaque admission/request fingerprints
+for new producers. This preserves argument deserialization, not permission to
+replay legacy work: NULL claims remain blocked, and generation jobs without a
+durable request ID remain closed. Old workers ignore the new fences, so argument
+compatibility does not make mixed worker versions safe.
+
 The additive migration requires a separately owner-approved coordinated web and
 worker deployment. Stop admitting work, drain old queued/running AI work and
 reconcile ambiguous legacy submissions and durable generation requests before
