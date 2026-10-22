@@ -8,6 +8,7 @@
 ## 接続と隔離
 
 新規独立clone内で、新規PostgreSQLクラスタを未使用の非5432ポートへ作成します。
+上のsubshellは任意の失敗で即停止します。失敗後に残った専用クラスタやファイルも自動削除せず調査します。
 既存の `~/workspace/quickflow`、既存クラスタ・DB・Storage・秘密設定は使用しません。
 既存サービスを止めず、空いていないポートなら別ポートを選びます。
 DB名だけで隔離は保証できません。新規クラスタの作成場所・起動引数・PIDと
@@ -18,27 +19,56 @@ DB名だけで隔離は保証できません。新規クラスタの作成場所
 `$PWD` が独立cloneであることを確認してください。ポートは例であり未使用確認が必要です。
 
 ```bash
+(
+set -euo pipefail
 export PATH="$HOME/.rbenv/versions/4.0.6/bin:/usr/local/bin:$PATH"
+test -f AGENTS.md && test -f db/schema.rb && test -f lib/tasks/demo.rake
+# 既存workspaceではなく、今回の独立cloneで実行すること。
 export RAILS_ENV=test
-export QUICKFLOW_DEMO_PORT=57429
+export QUICKFLOW_DEMO_PORT="${QUICKFLOW_DEMO_PORT:-57429}"
+ruby -rsocket -e '
+  port = Integer(ARGV.fetch(0), 10)
+  abort "Non-default unprivileged port required" unless (1024..65535).cover?(port) && port != 5432
+  server = TCPServer.new("127.0.0.1", port)
+  server.close
+' "$QUICKFLOW_DEMO_PORT"
 export QUICKFLOW_DEMO_DATABASE=quickflow_test
 export QUICKFLOW_DEMO_ISOLATION_ID="$(ruby -rsecurerandom -e 'print SecureRandom.hex(16)')"
-export DATABASE_URL="postgresql://127.0.0.1:${QUICKFLOW_DEMO_PORT}/quickflow_test"
-# 新規ディレクトリに限る。既存クラスタの再利用は禁止。
-initdb -D "$PWD/tmp/demo-pg-cluster" -A trust --no-locale -E UTF8
-pg_ctl -D "$PWD/tmp/demo-pg-cluster" -l "$PWD/tmp/demo-postgres.log" \
-  -o "-h 127.0.0.1 -p ${QUICKFLOW_DEMO_PORT} -k /tmp" start
-createdb -h 127.0.0.1 -p "$QUICKFLOW_DEMO_PORT" quickflow_test
-psql "$DATABASE_URL" -c 'SHOW data_directory' \
-  -c 'SELECT current_database(), inet_server_addr(), inet_server_port()'
-# 上記結果と新規クラスタの起動状態を照合してから次へ。
+# このsubshell内だけで接続先を固定。既存のサービス設定は変更しない。
+unset PGSERVICE PGSERVICEFILE PGOPTIONS PGPASSWORD PGHOSTADDR
+export PGPASSFILE=/dev/null PGCONNECT_TIMEOUT=5
+export PGHOST=127.0.0.1 PGPORT="$QUICKFLOW_DEMO_PORT" PGUSER="$(id -un)" PGSSLMODE=disable
+export DATABASE_URL="postgresql://127.0.0.1:${PGPORT}/quickflow_test"
+mkdir -p "$PWD/tmp"
+cluster_dir="$(mktemp -d "$PWD/tmp/demo-pg.XXXXXXXX")"
+cluster_dir="$(cd "$cluster_dir" && pwd -P)"
+test -z "$(ls -A "$cluster_dir")"
+initdb -D "$cluster_dir" -A trust --no-locale -E UTF8
+pg_ctl -D "$cluster_dir" -l "$cluster_dir/server.log" \
+  -o "-h 127.0.0.1 -p ${PGPORT} -k /tmp" -w start
+pg_ctl -D "$cluster_dir" status
+cluster_pid="$(head -n 1 "$cluster_dir/postmaster.pid")"
+test "$(ps -p "$cluster_pid" -o uid= | tr -d ' ')" = "$(id -u)"
+ruby -e 'abort "Wrong cluster owner" unless File.stat(ARGV.fetch(0)).uid == Process.uid' "$cluster_dir"
+maintenance_url="postgresql://127.0.0.1:${PGPORT}/postgres"
+# 全て読み取り専用。実接続先と起動した新規クラスタを機械的に照合する。
+test "$(psql -X "$maintenance_url" -v ON_ERROR_STOP=1 -Atc 'SHOW data_directory')" = "$cluster_dir"
+test "$(psql -X "$maintenance_url" -v ON_ERROR_STOP=1 -Atc "SELECT current_database() || '|' || host(inet_server_addr()) || '|' || inet_server_port() || '|' || session_user")" = "postgres|127.0.0.1|${PGPORT}|${PGUSER}"
+local_cluster_id="$(LC_ALL=C pg_controldata "$cluster_dir" | sed -n 's/^Database system identifier: *//p')"
+test -n "$local_cluster_id"
+test "$(psql -X "$maintenance_url" -v ON_ERROR_STOP=1 -Atc 'SELECT system_identifier FROM pg_control_system()')" = "$local_cluster_id"
+# ここまで成功した新規クラスタだけにDBを作成する。既存DBならcreatedbの失敗で即停止。
+createdb --maintenance-db="$maintenance_url" quickflow_test
+test "$(psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc 'SHOW data_directory')" = "$cluster_dir"
+test "$(psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT current_database() || '|' || host(inet_server_addr()) || '|' || inet_server_port()")" = "quickflow_test|127.0.0.1|${PGPORT}"
 bin/rails db:migrate
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -c "COMMENT ON DATABASE quickflow_test IS 'quickflow-demo:${QUICKFLOW_DEMO_ISOLATION_ID}'"
 mkdir "$PWD/tmp/demo-seed-${QUICKFLOW_DEMO_ISOLATION_ID}"
 printf '%s' "$QUICKFLOW_DEMO_ISOLATION_ID" > "$PWD/tmp/demo-seed-${QUICKFLOW_DEMO_ISOLATION_ID}/.demo-isolation"
 QUICKFLOW_DEMO_SEED=true bin/rails demo:seed
 QUICKFLOW_DEMO_SEED=true bin/rails demo:seed
+)
 ```
 
 実行時にも実DB名・アドレス・ポート・DBコメントをSQLで読み、明示設定および
@@ -91,7 +121,12 @@ DPro原文は「各テーブルそれぞれ5件以上」「各モデルCRUD Syst
 
 ## 再実行・失敗・並行実行
 
-初回は全業務表・添付/Blob/variant・認証試行が空であることを確認し、
+初回は全ユーザーschemaをカタログで列挙し、public以外のschema（空でも）や未知の表・viewを拒否します。
+PostgreSQLカタログ・toastなどの予約schemaと`information_schema`は対象外ですが、
+`pg_temp_N`内のユーザー一時表はshadowingも防ぐため拒否します。
+`schema_migrations`/`ar_internal_metadata`はpublic内にある正規Rails内部表としてのみ許可します。
+`search_path`外の表・foreign table・partitioned table・materialized viewも見逃さず、
+外部表のデータは読みません。全業務表・添付/Blob/variant・認証試行が空であることを確認し、
 既存モデル・正規関連・正規添付だけで一括トランザクション保存します。
 AI Controller/Job/外部APIは呼びません。PDFはxrefを含む1ページの実体を内部生成し、
 目立つ `FICTIONAL DEMO SAMPLE - NO AI / NO REAL STUDENT` 表示を入れます。
@@ -122,7 +157,7 @@ manifest書込み失敗時のDBはcommit済みの可能性があるため、成�
 ## ローカル検証記録（2026-10-22）
 
 - 全RSpec: 1,709件・失敗0件（追加途中のseed13件を含む）。
-- 最終seed関連RSpec: 23件・失敗0件。無効/環境/設定/実接続不一致、Storage不一致、symlink、
+- 当初の最終seed関連RSpec: 23件・失敗0件。無効/環境/設定/実接続不一致、Storage不一致、symlink、
   未知の表、既存非デモ、既存値変更、再実行、PDF破損、部分upload失敗、manifest失敗、
   flock競合、別PG接続の表ロック競合を確認。
 - RuboCop: 228ファイル・指摘0件。Brakeman: 79checks・警告0件。
@@ -141,3 +176,20 @@ manifest書込み失敗時のDBはcommit済みの可能性があるため、成�
   自分の該当テストプロセスだけを終了し、独立PG接続に修正して23件を再実行済み。
   既存サービス停止・DB削除・reset・purgeは行っていません。
 - 最終headの全RSpecはGitHub CIで別途確認します。上記のローカル全RSpecと混同しません。
+
+### 親レビュー後の追加確認
+
+- `connection.tables` のsearch_path制限を廃止。pg_namespace/pg_classから全ユーザーschemaと
+  schema-qualified関係を確認し、未知schema・表/view・ユーザー一時表を拒否します。
+  システムカタログやtoastの実データは走査しません。publicの正規Rails内部表だけを許可します。
+- 関連RSpecは最終26件・失敗0件。search_path外のschema内の既存行とユーザー一時表を保持して
+  停止するテスト、空の未知schemaを拒否するテストを含みます。
+- 上記Bash例をそのまま抜き出して`bash -n`成功。
+  実行中の今回専用57430を指定すると空きポート検査がEADDRINUSEでexit 1となり、
+  migration/COMMENTへ到達しません。既存デモの全行/ファイルdigest・manifest不変を再確認しました。
+- 未使用57431で同じBash例を実行し、新規空ディレクトリへのinitdb、起動PID/所有者、
+  maintenance接続の実endpoint/data_directory/pg_control_systemのsystem_identifier照合、
+  createdb後の接続先再照合、migration、専用Storage準備、seed2回まで成功しました。
+  実行した新規クラスタは`tmp/demo-pg.I7HL3FjN`です。
+- 先行head `762175f` のGitHub CI run #136は全job成功。今回のレビュー修正後headは
+  push後の新しいCIで確認するため、この成功を最終headの成功とは扱いません。

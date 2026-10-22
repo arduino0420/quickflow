@@ -21,8 +21,22 @@ module Demo
     def call
       guard!
       @manifest = nil
-      unexpected = connection.tables - TABLE_MODELS.map(&:table_name) - %w[schema_migrations ar_internal_metadata]
-      refuse!("Unexpected database tables") if unexpected.any?
+      expected_tables = TABLE_MODELS.map(&:table_name) + %w[schema_migrations ar_internal_metadata]
+      # connection.tables is search_path-limited. Inspect every user namespace,
+      # including empty ones, and reject hidden tables/views without reading data.
+      inventory = connection.select_rows(<<~SQL)
+        SELECT namespaces.nspname, relations.relname
+        FROM pg_namespace AS namespaces
+        LEFT JOIN pg_class AS relations ON relations.relnamespace = namespaces.oid
+          AND relations.relkind IN ('r', 'p', 'f', 'm', 'v')
+        WHERE namespaces.nspname <> 'information_schema'
+          AND (namespaces.nspname !~ '^pg_'
+            OR (namespaces.nspname ~ '^pg_temp_[0-9]+$' AND relations.oid IS NOT NULL))
+      SQL
+      unexpected = inventory.any? do |schema, table|
+        schema != "public" || (table.present? && !expected_tables.include?(table))
+      end
+      refuse!("Unexpected database schemas or tables") if unexpected
       refuse!("Storage contains symbolic links") if @root.glob("**/*", File::FNM_DOTMATCH).any?(&:symlink?)
       File.open(@root.join(".seed.lock"), File::RDWR | File::CREAT, 0o600) do |lock|
         refuse!("Seed already running") unless lock.flock(File::LOCK_EX | File::LOCK_NB)

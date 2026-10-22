@@ -53,9 +53,36 @@ RSpec.describe Demo::Seed do
   end
 
   it "refuses unexpected database tables before writing data" do
-    allow(ApplicationRecord.connection).to receive(:tables).and_return(
-      described_class::TABLE_MODELS.map(&:table_name) + [ "unrecognized_records" ])
-    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /Unexpected database tables/)
+    connection = ApplicationRecord.connection
+    allow(connection).to receive(:select_rows).and_call_original
+    allow(connection).to receive(:select_rows).with(/FROM pg_namespace AS namespaces/).and_return(
+      described_class::TABLE_MODELS.map { |model| [ "public", model.table_name ] } + [ [ "public", "unrecognized_records" ] ])
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /Unexpected database schemas or tables/)
+    expect(School.count).to eq(0)
+  end
+
+  it "rejects hidden user schemas and preserves their existing records" do
+    connection = ApplicationRecord.connection
+    connection.execute("CREATE SCHEMA seed_spec_archive")
+    connection.execute("CREATE TABLE seed_spec_archive.retained_records (note text NOT NULL)")
+    connection.execute("INSERT INTO seed_spec_archive.retained_records VALUES ('keep existing data')")
+    expect(connection.tables).not_to include("retained_records")
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /Unexpected database schemas or tables/)
+    expect(connection.select_value("SELECT note FROM seed_spec_archive.retained_records")).to eq("keep existing data")
+    expect(School.count).to eq(0)
+  end
+
+  it "rejects user temporary tables without confusing them with PostgreSQL catalogs" do
+    connection = ApplicationRecord.connection
+    connection.execute("CREATE TEMP TABLE seed_spec_temporary (note text NOT NULL)")
+    connection.execute("INSERT INTO seed_spec_temporary VALUES ('keep temporary data')")
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /Unexpected database schemas or tables/)
+    expect(connection.select_value("SELECT note FROM seed_spec_temporary")).to eq("keep temporary data")
+  end
+
+  it "rejects empty unexpected user schemas too" do
+    ApplicationRecord.connection.execute("CREATE SCHEMA seed_spec_empty")
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /Unexpected database schemas or tables/)
     expect(School.count).to eq(0)
   end
 
