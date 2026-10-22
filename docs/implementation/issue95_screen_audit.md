@@ -3,9 +3,8 @@
 ## 範囲と画面の数え方
 
 `bin/rails routes`、controllerのrender/redirect、実HTMLビューを照合した。
-HTML画面は23。アクセス前提で分類すると未ログイン5、教師5、生徒3、管理者10。
-事前の「未ログイン4・教師6・生徒3・管理者10」と区分に差があるため、
-以下のroute単位の一覧を正とする。管理者ログインは未ログイン側に数える。
+HTML画面は23。アクセス前提で分類すると未ログイン4、教師6、生徒3、管理者10。
+生徒登録は教師認証が必要な教師画面として数え、管理者ログインは未ログイン側に数える。
 `student/assignments#result`は詳細へ303 redirectするため独立画面ではない。
 教材/答案PDF、Excel、下書きJSON、health、POST/PATCH/DELETEのredirectは別HTML画面に数えない。
 ゲストは同じ画面の読み取り専用状態で、新しい画面ではない。
@@ -36,7 +35,7 @@ contextは判定更新paramsから独立し、失敗時の再表示にも残す�
 | 未ログイン | `/` | 通常 `home` | footer、教師loginへのキーボード遷移 |
 | 未ログイン | `/login` | 通常 `teacher-login` | authentication_ui、認証失敗/秘密値非表示 |
 | 未ログイン | `/student/login` | 通常 `student-login` | authentication_ui、1〜3年/1〜10組契約 |
-| 未ログイン | `/students/new` | 通常 `student-registration` | 登録/エラーの既存request |
+| 教師 | `/students/new` | 通常 `student-registration` | 担当クラスselectを確認、登録/エラーの既存request |
 | 未ログイン | `/admin/login` | 通常 `admin-login` | footer、認証切替 |
 | 教師 | `/assignments` | 通常/空 `teacher-list`,`teacher-empty` | footerの18件/4幅 |
 | 教師 | `/assignments/new` | 通常 `assignment-new` | Japanese error layoutの複数エラー/長文 |
@@ -98,3 +97,16 @@ host/port/dbと実SQLのhost/port/db/data_directory、Storage rootを照合し�
 - 表内スクロール・PDF描画完了待ちを加えた最終関連: 44例、失敗0。108枚を再生成し、一覧・長文答案・保存後空・描画済みPDFの画像を再確認。
 - main `09588f380a9b0ce6f09b0f8a22a7ba4d1a498f26`を通常mergeした統合headで、context request＋全画面Systemは16例、失敗0。
   main差分は#95の31ファイルのみ。#50 docsはmain由来で差分には含まれない。
+
+## 独立レビュー・初回CIでの訂正
+
+- 初回監査の`/students/new`は教師認証前に訪問したためloginへredirectされ、教師login画像を重複撮影していた。
+  初回の「全23画面確認済み」はこの1画面について不十分だった。生徒登録を教師認証後へ移し、
+  担当クラス1年1組のselectを確認した。全audit呼出しで期待するexact path/titleを必須にし、
+  現在のh1から期待titleを導出しない。修正後Systemは3例成功し、108枚とcontact sheetを再生成した。
+  画面分類も未ログイン4・教師6・生徒3・管理者10へ訂正した。
+- 初回CI run39743441923は1769例中12例失敗。全件が既存`teacher_grading_reviews_spec`の
+  条件なし答案URL期待値と、承認済みのclassroom_id/filter付きURLとの差だった。
+  一覧リンク用の期待値だけを分離して更新し、直接アクセス/保存のcontextなし既存期待は維持。
+  同spec全体＋context specは138例、失敗0。無条件のCI再試行は行わず、修正headでCIを実施する。
+- mainへ追加された#98の7ファイルはtests/docsのみで#95変更との重複なし。#98の内容は編集しない。

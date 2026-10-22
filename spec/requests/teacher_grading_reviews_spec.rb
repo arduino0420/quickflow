@@ -32,6 +32,10 @@ RSpec.describe "Teacher grading reviews", type: :request do
     assignment_submission_path(parent, item)
   end
 
+  def list_detail_path(item = submission, filter: "all")
+    assignment_submission_path(item.assignment, item, classroom_id: "all", filter: filter)
+  end
+
   def pdf_path(item = submission, parent = item.assignment)
     answer_assignment_submission_path(parent, item)
   end
@@ -59,7 +63,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(document.css("#grade-summary tbody tr").size).to eq(2)
       expect(grade_cells).to eq([ "1番", "5点" ])
       expect(grade_cells(unsubmitted)).to eq([ "2番", "" ])
-      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
       expect(document.css("#grade_student_#{unsubmitted.id} a")).to be_empty
       expect(Submission.count).to eq(original_count)
       expect(unsubmitted.submissions).to be_empty
@@ -75,7 +79,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(row["data-action"]).to eq("click->row-navigation#open")
       expect(row[:class]).to include("grade-needs-review")
       expect(row.css("a").size).to eq(1)
-      expect(row.at_css("a.grade-row-link")[:href]).to eq(detail_path)
+      expect(row.at_css("a.grade-row-link")[:href]).to eq(list_detail_path)
       expect(row.at_css("a")["tabindex"]).to be_nil
       expect(row.css("a a, a button, form, select")).to be_empty
       expect(row.element_children.map(&:name)).to all(eq("td"))
@@ -123,7 +127,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
         expect(summary_cells[2..4]).to eq([ label, "", "—" ])
         expect(grade_cells).to eq([ "1番", "" ])
-        expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+        expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
         get detail_path
         expect(document.at_css("#submission-score").text).to eq("現在の得点：—")
       end
@@ -259,7 +263,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
       expect(summary_cells[3..4]).to eq([ "0点（暫定）", "あり（1件）" ])
       expect(summary_cells(other_student)[3..4]).to eq([ "5点", "なし" ])
-      expect(document.at_css("#grade_student_#{other_student.id} a")[:href]).to eq(detail_path(other_submission))
+      expect(document.at_css("#grade_student_#{other_student.id} a")[:href]).to eq(list_detail_path(other_submission))
     end
 
     [ :other_school, :undistributed_classroom ].each do |kind|
@@ -297,7 +301,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       get assignment_path(assignment)
 
       expect(summary_cells[3]).to eq("5点")
-      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
     end
 
     it "calls score once per completed submission when preparing the summary" do
@@ -471,7 +475,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(document.at_css("#grade_student_#{student.id}")[:class]).to include("grade-needs-review")
     expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("あり（1件）")
     expect(document.at_css("#grade_student_#{other_student.id}")).to be_nil
-    expect(document.at_css("#grade-summary a")[:href]).to eq(detail_path)
+    expect(document.at_css("#grade-summary a")[:href]).to eq(list_detail_path(filter: "needs_review"))
     get assignment_path(assignment, filter: "unexpected")
     expect(document.css("#grade-summary tbody tr").size).to eq(2)
     expect(pending.reload.teacher_judgment).to be_nil
@@ -512,7 +516,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     get assignment_path(assignment, filter: "needs_review")
     expect(response.body).to include("要確認のある生徒はいません。", "未確認の要確認：0件")
     get assignment_path(assignment)
-    expect(document.at_css("#grade-summary a")[:href]).to eq(detail_path)
+    expect(document.at_css("#grade-summary a")[:href]).to eq(list_detail_path)
     expect(document.at_css(".grade-review").text.strip).to eq("—")
     get detail_path
     expect(response.body).to include("採点結果がありません。")
@@ -525,7 +529,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       [ assignment_path(assignment), assignment_path(assignment, filter: "all") ].each do |path|
         get path
         expect(response.body).to include(label)
-        expect(document.at_css("a[href='#{detail_path}']")).to be_present
+        expect(document.at_css("a[href='#{list_detail_path}']")).to be_present
       end
       get detail_path
       expect(response.body).to include(label, "採点結果は未完成です。", "暫定件数")
