@@ -151,12 +151,12 @@ class Student::SubmissionsController < ApplicationController
   end
 
   def enqueue_answer_reading
-    snapshot = SubmissionProcessingClaim.admission_snapshot(@submission.id, 0)
+    snapshot = SubmissionProcessingClaim.admission_snapshot(@submission.id, 0, stage: "reading")
     raise "Could not enqueue answer reading" unless AnswerReadingJob.perform_later(@submission)
 
     true
   rescue StandardError => error
-    SubmissionProcessingClaim.fail_ready(@submission.id, 0, snapshot: snapshot)
+    SubmissionProcessingClaim.fail_ready(@submission.id, 0, snapshot: snapshot, stage: "reading")
     @submission.reload
     Rails.logger.error("Answer reading enqueue failed: submission_id=#{@submission.id} #{error.class}")
     @submission.completed?

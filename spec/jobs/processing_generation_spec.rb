@@ -24,7 +24,7 @@ RSpec.describe "Submission processing generations", type: :job do
     submission.update!(processing_generation: 1, extracted_text: nil)
     reader = instance_double(AnswerReader, call: reading)
     allow(AnswerReader).to receive(:new).and_return(reader)
-    expect { AnswerReadingJob.perform_now(submission, 1) }.to have_enqueued_job(AnswerGradingJob).with(submission, 1)
+    expect { AnswerReadingJob.perform_now(submission, 1) }.to have_enqueued_job(AnswerGradingJob).with(submission, 1, admission: kind_of(String))
     expect(submission.reload.extracted_text).to eq(reading)
   end
 

@@ -113,8 +113,22 @@ RSpec.describe AnswerGradingJob, type: :job do
 
   it "rolls back all results when a later result cannot be saved" do
     second = create_question(position: 2, label: "1(2)")
-    allow(grader).to receive(:call).and_return([ result, result.merge(question: second, ai_model_name: nil) ])
+    allow(generator).to receive(:saved_questions).and_return([ question, second ])
+    allow(grader).to receive(:call).with(submission, [ question, second ])
+      .and_return([ result, result.merge(question: second, ai_model_name: nil) ])
+    first_inserted = false
+    allow_any_instance_of(GradingResult).to receive(:save!).and_wrap_original do |method, *arguments, **options|
+      row = method.receiver
+      if row.question_id == second.id
+        expect(first_inserted).to be(true)
+        expect(submission.grading_results.where(question_id: question.id)).to exist
+      end
+      saved = method.call(*arguments, **options)
+      first_inserted = true if row.question_id == question.id
+      saved
+    end
     described_class.perform_now(submission)
+    expect(first_inserted).to be(true)
     expect(submission.reload).to be_failed
     expect(submission.grading_results).to be_empty
   end

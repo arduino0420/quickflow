@@ -199,8 +199,8 @@ RSpec.describe "AI claim fencing", type: :job do
         end
       end
       worker = nil
-      allow(AnswerGradingJob).to receive(:perform_later) do
-        worker = run { AnswerGradingJob.perform_now(Submission.find(@id), source == :recovery ? 1 : 0) }
+      allow(AnswerGradingJob).to receive(:perform_later) do |_current, generation, **options|
+        worker = run { AnswerGradingJob.perform_now(Submission.find(@id), generation, **options) }
         Timeout.timeout(5) { @entered.pop }
         false
       end
@@ -248,6 +248,144 @@ RSpec.describe "AI claim fencing", type: :job do
     worker.value
     expect(Submission.find(@id).extracted_text).to be_present
     expect(Submission.find(@id)).to be_grading
+  end
+
+  [ :queued, :rejected ].each do |enqueue_outcome|
+    [ :pointer, :token, :owner, :material_blob, :questions ].each do |change|
+      it "fences generation #{enqueue_outcome} after #{change} changes between collection and enqueue" do
+        create_question
+        request = assignment.current_question_generation_request
+        request.update!(state: "succeeded", claim_token: SecureRandom.uuid)
+        expect(AnswerGrader).not_to receive(:new)
+        expect(AiClient).not_to receive(:build)
+        allow(AnswerGradingJob).to receive(:perform_later).and_return(false) if enqueue_outcome == :rejected
+        allow_any_instance_of(QuestionGenerationJob).to receive(:fan_out).and_wrap_original do |method, *arguments, **options, &block|
+          result = method.call(*arguments, **options, &block)
+          if options[:state] == "succeeded"
+            @entered << true
+            Timeout.timeout(10) { @release.pop }
+          end
+          result
+        end
+        worker = run do
+          QuestionGenerationJob.perform_now(Assignment.find(@assignment_id), request.material_blob_id, request_id: request.id)
+        end
+        Timeout.timeout(5) { @entered.pop }
+        if change == :token
+          request.update!(claim_token: SecureRandom.uuid)
+        else
+          mutate(change)
+        end
+        expected = submission.reload.attributes
+        @release << true
+        expect(worker.join(10)).to be_present
+        worker.value
+        perform_enqueued_jobs(only: AnswerGradingJob) if enqueue_outcome == :queued
+        expect(submission.reload.attributes).to eq(expected)
+        expect(submission.grading_results).to be_empty
+      end
+    end
+  end
+
+  it "keeps reader B's queued ready admission when reader A's delayed enqueue rejects" do
+    question = create_question
+    grader = instance_double(AnswerGrader, call: [ { question: question, student_answer: "5x", ai_judgment: "correct",
+      ai_model_name: "test", prompt_version: "v1", graded_at: Time.current } ])
+    allow(AnswerGrader).to receive(:new).and_return(grader)
+    expect(AnswerReader).not_to receive(:new)
+    first_admission = nil
+    allow_any_instance_of(AnswerReadingJob).to receive(:enqueue_grading).and_wrap_original do |method, id, generation, admission|
+      if Thread.current[:reader_a]
+        first_admission = admission
+        @entered << true
+        Timeout.timeout(10) { @release.pop }
+      end
+      method.call(id, generation, admission)
+    end
+    allow(AnswerGradingJob).to receive(:perform_later).and_wrap_original do |method, *arguments, **options|
+      options[:admission] == first_admission ? false : method.call(*arguments, **options)
+    end
+    worker = run do
+      Thread.current[:reader_a] = true
+      AnswerReadingJob.perform_now(Submission.find(@id))
+    end
+    Timeout.timeout(5) { @entered.pop }
+    AnswerReadingJob.perform_now(Submission.find(@id))
+    second = submission.reload.attributes
+    expect(submission.processing_claim_stage).to eq("ready")
+    expect(SubmissionProcessingClaim.admission_snapshot(@id, 0, stage: "grading")).not_to eq(first_admission)
+    expect(enqueued_jobs.count { |job| job[:job] == AnswerGradingJob }).to eq(1)
+    expect(enqueued_jobs.select { |job| job[:job] == AnswerGradingJob }.map { |job| job[:args] }.inspect)
+      .not_to include("5x", "3x+2x", "同類項")
+    @release << true
+    expect(worker.join(10)).to be_present
+    worker.value
+    expect(submission.reload.attributes).to eq(second)
+    perform_enqueued_jobs(only: AnswerGradingJob)
+    expect(submission.reload).to be_completed
+    expect(grader).to have_received(:call).once
+  end
+
+  [ :reading, :recovery ].each do |source|
+    [ :material_blob, :pointer, :questions ].each do |change|
+      it "ignores delayed #{source} grading enqueue error after #{change} changes" do
+        question = create_question
+        question.update!(grading_rule: JSON.generate(criteria: "同類項", requires_work: false,
+          material_blob_id: assignment.material_file.blob.id))
+        submission.update!(status: :failed) if source == :recovery
+        expect(AnswerReader).not_to receive(:new)
+        expect(AnswerGrader).not_to receive(:new)
+        allow(AnswerGradingJob).to receive(:perform_later) do
+          @entered << true
+          Timeout.timeout(10) { @release.pop }
+          false
+        end
+        worker = run do
+          if source == :reading
+            AnswerReadingJob.perform_now(Submission.find(@id))
+          else
+            Recovery::GradingRecovery.new.call(@id)
+          end
+        end
+        Timeout.timeout(5) { @entered.pop }
+        mutate(change)
+        expected = submission.reload.attributes
+        @release << true
+        expect(worker.join(10)).to be_present
+        worker.value
+        expect(submission.reload.attributes).to eq(expected)
+        expect(submission.grading_results).to be_empty
+      end
+    end
+  end
+
+  [ :success, :error ].each do |outcome|
+    it "fences a generation-authorized grader's late #{outcome} after its source request token changes" do
+      question = create_question
+      request = assignment.current_question_generation_request
+      request.update!(state: "succeeded", claim_token: SecureRandom.uuid)
+      authorization = SubmissionProcessingClaim.question_generation_authorization(assignment.reload, request)
+      admission = SubmissionProcessingClaim.admission_snapshot(@id, 0, stage: "grading")
+      grader = instance_double(AnswerGrader)
+      allow(AnswerGrader).to receive(:new).and_return(grader)
+      expect(grader).to receive(:call).once do
+        pause_api(outcome) do
+          [ { question: question, student_answer: "5x", ai_judgment: "correct",
+            ai_model_name: "test", prompt_version: "v1", graded_at: Time.current } ]
+        end
+      end
+      worker = run do
+        AnswerGradingJob.perform_now(Submission.find(@id), 0, admission: admission, question_generation: authorization)
+      end
+      Timeout.timeout(5) { @entered.pop }
+      request.update!(claim_token: SecureRandom.uuid)
+      expected = submission.reload.attributes
+      @release << true
+      expect(worker.join(10)).to be_present
+      worker.value
+      expect(submission.reload.attributes).to eq(expected)
+      expect(submission.grading_results).to be_empty
+    end
   end
 
   it "keeps unknown legacy and lost old claims closed without age takeover" do

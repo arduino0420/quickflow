@@ -22,7 +22,14 @@ Reading recovery is not introduced.
 A running token is never reclaimed based on elapsed time. A lost worker remains
 visible through its stage/token/claimed_at for operator diagnosis. Successful
 reading retains its token/time in ready state so an enqueue failure can identify
-that exact admission. A newer claim or transition fences delayed queue errors.
+that exact admission. A newer claim or transition fences delayed queue errors. Reading captures its
+post-reading admission inside the finalize transaction and never adopts a newer
+ready token. Queue arguments carry only an opaque fingerprint of the target
+stage's exact inputs: reading for initial submission; grading (including material,
+request pointer and Questions) for every grading producer. Generation fan-out also
+carries its selected durable request authorization; grading rechecks that request
+and token at claim and finalize. Thus a stale deferred enqueue cannot authorize
+new AI work even when Active Job registers it after transaction commit.
 Failure after a rolled-back final save uses a fresh transaction and the same
 ownership/input fence. Unrelated title, score configuration or timestamp changes
 do not invalidate AI inputs. Saved readings and valid saved Questions are reused.

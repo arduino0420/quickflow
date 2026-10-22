@@ -190,8 +190,8 @@ RSpec.describe "Concurrent AI processing", type: :job do
       Timeout.timeout(10) { release.pop }
       ai_response(results: [ judgment(question) ])
     end
-    allow(AnswerGradingJob).to receive(:perform_later) do
-      worker = Thread.new { ActiveRecord::Base.connection_pool.with_connection { AnswerGradingJob.perform_now(Submission.find(id)) } }
+    allow(AnswerGradingJob).to receive(:perform_later) do |_current, generation, **options|
+      worker = Thread.new { ActiveRecord::Base.connection_pool.with_connection { AnswerGradingJob.perform_now(Submission.find(id), generation, **options) } }
       Timeout.timeout(5) { entered.pop }
       false
     end

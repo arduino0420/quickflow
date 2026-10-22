@@ -17,7 +17,7 @@ RSpec.describe Recovery::GradingRecovery do
   end
 
   it "increments the generation and enqueues only once" do
-    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 1).and_return(true)
+    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 1, admission: kind_of(String)).and_return(true)
     expect(service.call(submission.id)).to eq(result: "enqueued", reason_codes: [])
     expect(submission.reload).to be_grading
     expect(submission.processing_generation).to eq(1)
@@ -76,7 +76,7 @@ RSpec.describe Recovery::GradingRecovery do
   it "advances a stranded generation when the queue is verifiably clear" do
     submission.update!(status: :grading, processing_generation: 1)
     allow(service).to receive(:queue_clear?).and_return(true)
-    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2, admission: kind_of(String)).and_return(true)
     expect(service.call(submission.id, interrupted_generation: 1)[:result]).to eq("enqueued")
     expect(submission.reload.processing_generation).to eq(2)
   end
@@ -84,7 +84,7 @@ RSpec.describe Recovery::GradingRecovery do
   it "restarts a grading answer only after checking the current generation" do
     submission.update!(status: :grading, processing_generation: 1)
     allow(service).to receive(:queue_clear?).and_return(true)
-    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2, admission: kind_of(String)).and_return(true)
     expect(service.call(submission.id, interrupted_generation: 1)[:result]).to eq("enqueued")
     expect(service.call(submission.id, interrupted_generation: 1)).to eq(
       result: "indeterminate", reason_codes: [ "generation_changed" ])
@@ -123,7 +123,7 @@ RSpec.describe Recovery::GradingRecovery do
     expect(submission.grading_results).to be_empty
 
     allow(service).to receive(:queue_clear?).and_return(true)
-    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+    expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2, admission: kind_of(String)).and_return(true)
     expect(service.call(submission.id, interrupted_generation: 1)[:result]).to eq("enqueued")
     expect(submission.reload.processing_generation).to eq(2)
   end

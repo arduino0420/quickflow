@@ -10,7 +10,7 @@ module Recovery
     end
 
     def call(submission_id, interrupted_generation: nil)
-      generation = nil
+      generation = snapshot = nil
       expected_status = interrupted_generation.nil? ? :failed : :grading
       report = GradingEligibility.new.call(submission_id, expected_status: expected_status) do |submission|
         if interrupted_generation && submission.processing_generation != interrupted_generation
@@ -20,14 +20,14 @@ module Recovery
         else
           generation = submission.processing_generation + 1
           submission.update!(**SubmissionProcessingClaim.ready_attributes, processing_generation: generation, status: :grading)
+          snapshot = SubmissionProcessingClaim.ready_admission(submission.assignment.reload, submission, stage: "grading")
           nil
         end
       end
       return report unless generation && report[:result] == "candidate"
 
-      snapshot = SubmissionProcessingClaim.admission_snapshot(submission_id, generation)
       begin
-        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(Submission.find(submission_id), generation)
+        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(Submission.find(submission_id), generation, admission: snapshot)
         { result: "enqueued", reason_codes: [] }
       rescue StandardError => error
         begin
@@ -46,7 +46,7 @@ module Recovery
       submission = Submission.find_by(id: submission_id)
       return unless submission
 
-      SubmissionProcessingClaim.fail_ready(submission_id, generation, snapshot: snapshot)
+      SubmissionProcessingClaim.fail_ready(submission_id, generation, snapshot: snapshot, stage: "grading")
     end
 
     # Treat an unreadable or unfamiliar queue entry as active. The second recovery

@@ -3,8 +3,9 @@ class AnswerGradingJob < ApplicationJob
 
   queue_as :default
 
-  def perform(submission, generation = 0)
-    claim = SubmissionProcessingClaim.new(submission, generation, "grading")
+  def perform(submission, generation = 0, admission: nil, question_generation: nil)
+    claim = SubmissionProcessingClaim.new(submission, generation, "grading",
+      admission: admission, question_generation: question_generation)
     return unless claim.claim
 
     results = AnswerGrader.new.call(claim.submission, claim.questions)

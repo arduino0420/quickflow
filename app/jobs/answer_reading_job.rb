@@ -18,12 +18,12 @@ class AnswerReadingJob < ApplicationJob
       end
       text = JSON.generate(data)
     end
-    ready = false
-    claim.finalize do |current|
+    admission = nil
+    claim.finalize(admission_stage: "grading") do |current, owner|
       current.update!(processing_claim_stage: "ready", extracted_text: text)
-      ready = true
+      admission = SubmissionProcessingClaim.ready_admission(owner, current, stage: "grading")
     end
-    enqueue_grading(submission.id, generation) if ready
+    enqueue_grading(submission.id, generation, admission) if admission
   rescue StandardError => error
     claim&.fail
     Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{error.class}")
@@ -31,16 +31,15 @@ class AnswerReadingJob < ApplicationJob
 
   private
 
-  def enqueue_grading(id, generation)
-    snapshot = SubmissionProcessingClaim.admission_snapshot(id, generation)
-    return unless snapshot
+  def enqueue_grading(id, generation, admission)
+    return unless admission
 
     current = Submission.find_by(id: id)
     return unless current
 
-    raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(current, generation)
+    raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(current, generation, admission: admission)
   rescue StandardError => error
-    SubmissionProcessingClaim.fail_ready(id, generation, snapshot: snapshot)
+    SubmissionProcessingClaim.fail_ready(id, generation, snapshot: admission, stage: "grading")
     Rails.logger.error("AnswerReadingJob grading enqueue failed: submission_id=#{id} #{error.class}")
   end
 

@@ -30,21 +30,19 @@ class QuestionGenerationJob < ApplicationJob
 
     success_token = generator.claim_token || initial_token
     targets = []
-    fan_out(request, material_blob_id, generation, owner_id: owner_id, state: "succeeded", token: success_token) do |submission|
-      targets << [ submission.id, SubmissionProcessingClaim.admission_snapshot(submission.id, generation) ]
+    fan_out(request, material_blob_id, generation, owner_id: owner_id, state: "succeeded", token: success_token) do |submission, owner|
+      targets << [ submission.id, SubmissionProcessingClaim.admission_snapshot(submission.id, generation, stage: "grading"),
+        SubmissionProcessingClaim.question_generation_authorization(owner, request) ]
     end
-    targets.each do |id, snapshot|
+    targets.each do |id, snapshot, authorization|
       begin
         submission = Submission.find_by(id: id)
         next unless submission
 
-        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
+        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation,
+          admission: snapshot, question_generation: authorization)
       rescue StandardError => error
-        request.with_selected_lock do |owner|
-          next unless owner.teacher_id == owner_id && request.state == "succeeded" && request.claim_token == success_token
-
-          SubmissionProcessingClaim.fail_ready(id, generation, snapshot: snapshot)
-        end
+        SubmissionProcessingClaim.fail_ready(id, generation, snapshot: snapshot, stage: "grading", question_generation: authorization)
         Rails.logger.error("QuestionGenerationJob grading enqueue failed: #{error.class}")
       end
     end
@@ -64,7 +62,7 @@ class QuestionGenerationJob < ApplicationJob
         submission.with_lock do
           next if submission.processing_claim_stage != "ready" || submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
 
-          yield submission
+          yield submission, assignment
         end
       end
     end
