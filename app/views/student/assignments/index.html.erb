@@ -1,0 +1,30 @@
+<% content_for :title, "配信された小テスト | QuickFlow" %>
+<% content_for :head do %>
+  <meta name="turbo-cache-control" content="no-cache">
+<% end %>
+<% content_for :header_actions do %>
+  <div class="student-header-actions">
+    <span class="student-header-identity"><%= "#{current_student.classroom.grade}年#{current_student.classroom.class_number}組#{current_student.attendance_number}番" %></span>
+    <%= button_to "ログアウト", student_logout_path, method: :delete, class: "teacher-logout-button" %>
+  </div>
+<% end %>
+<h1>配信された小テスト</h1>
+
+<% if @assignments.empty? %>
+  <p>配信された小テストはありません。</p>
+<% else %>
+  <ul class="assignment-list assignment-list--student">
+    <% @assignments.each do |assignment| %>
+      <% submission = @submissions_by_assignment_id[assignment.id] %>
+      <li id="assignment_<%= assignment.id %>" class="assignment-card<%= " assignment-card--submitted" if submission&.persisted? %>">
+        <%= link_to ((submission&.persisted? || guest_session?) ? student_assignment_path(assignment) : student_assignment_pdf_preview_path(assignment)), class: "assignment-card-link student-card-link" do %>
+          <span class="student-card-info">
+            <span class="assignment-list-title"><%= assignment.title %></span>
+          </span>
+          <% score = @scores_by_assignment_id[assignment.id] %>
+          <span class="student-card-score"><%= submission&.completed? && !score.nil? ? "#{score}点" : "" %></span>
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+<% end %>

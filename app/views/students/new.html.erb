@@ -1,0 +1,41 @@
+<% content_for :title, "生徒アカウント登録 | QuickFlow" %>
+<h1>生徒アカウント登録</h1>
+<%= link_to "小テスト一覧へ戻る", assignments_path %>
+<p>所属を確認した生徒を、担当クラスに登録してください。登録後も教師としてログインしたままです。</p>
+
+<% if flash[:notice].present? %><p role="status"><%= flash[:notice] %></p><% end %>
+<% if @student.errors.any? %>
+  <div role="alert">
+    <p>登録できませんでした。入力内容を確認してください。</p>
+    <ul>
+      <% I18n.with_locale(:ja) do %>
+        <% @student.errors.full_messages.each do |message| %><li><%= message %></li><% end %>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<% if @classrooms.empty? %>
+  <p class="grading-state-notice">登録できる担当クラスがありません。運用担当者に確認してください。</p>
+<% else %>
+  <%= form_with model: @student, class: "entry-form" do |form| %>
+    <div>
+      <%= form.label :classroom_id, "担当クラス" %>
+      <%= form.collection_select :classroom_id, @classrooms, :id, ->(classroom) { classroom_label(classroom) }, prompt: "選択してください" %>
+    </div>
+    <div>
+      <%= form.label :attendance_number, "出席番号" %>
+      <%= form.number_field :attendance_number, min: 1, max: 40, required: true, autocomplete: "off", inputmode: "numeric" %>
+    </div>
+    <div>
+      <%= form.label :password, "初期パスワード" %>
+      <%= form.password_field :password, required: true, autocomplete: "new-password", value: nil %>
+      <p>推測しにくい半角数字8桁を設定してください。</p>
+    </div>
+    <div>
+      <%= form.label :password_confirmation, "初期パスワード（確認）" %>
+      <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password", value: nil %>
+    </div>
+    <%= form.submit "登録" %>
+  <% end %>
+<% end %>

@@ -1,0 +1,22 @@
+<% if @score.nil? %>
+  <p id="student-score">現在の点数：—</p>
+  <p role="alert">採点結果を表示できません。先生に確認してください</p>
+<% else %>
+  <p id="student-score">現在の点数：<%= submission_score_label(@submission, @score, pending_review_count: @pending_review_count) %></p>
+  <% @grading_results.each do |result| %>
+    <% judgment = result.final_judgment %>
+    <article class="grading-result judgment-<%= judgment %>" id="question_<%= result.question_id %>" data-grading-presentation-card>
+      <h2>問題 <%= result.question.question_label %></h2>
+      <p class="final-judgment judgment-badge">最終判定：<%= judgment_label(judgment) %></p>
+      <% if judgment == "incorrect" %>
+        <dl>
+          <dt>AIが読み取ったあなたの回答</dt><dd><%= result.student_answer.presence || "読み取り結果がありません。先生に確認してください。" %></dd>
+          <dt>正答</dt><dd><%= result.question.correct_answer %></dd>
+          <dt>フィードバック</dt><dd><%= student_incorrect_feedback(result) %></dd>
+        </dl>
+      <% elsif judgment == "needs_review" %>
+        <p>教師による確認が必要です。先生に申告してください。</p>
+      <% end %>
+    </article>
+  <% end %>
+<% end %>

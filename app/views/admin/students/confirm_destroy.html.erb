@@ -1,0 +1,11 @@
+<% content_for :title, "生徒アカウントの削除確認 | QuickFlow" %>
+<h1>生徒アカウントの削除確認</h1>
+<%= render "admin/shared/student_identity" %>
+<p>この生徒1人のアカウントを物理削除します。元に戻せません。利用中の端末がないことを確認してください。</p>
+<p>提出・下書き・所属クラスへの配信課題がある場合は削除できません。学校・クラス・課題・答案・採点結果は削除しません。</p>
+<%= form_with url: admin_student_path(@student, **@return_filters), method: :delete do |form| %>
+  <%= hidden_field_tag :edit_token, @edit_token %>
+  <%= render "admin/shared/account_confirmation", always: true %>
+  <%= form.submit "この生徒1人を削除する" %>
+<% end %>
+<%= link_to "削除せず生徒一覧へ戻る", admin_students_path(**@return_filters) %>
