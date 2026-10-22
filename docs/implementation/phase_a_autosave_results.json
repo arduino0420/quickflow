@@ -1,0 +1,194 @@
+{
+  "baseline_commit": "a8816b66ecde35695b1a0661d0c6c492afda39be",
+  "synthetic": true,
+  "external_api_calls": 0,
+  "legacy": {
+    "mode": "sustained_legacy",
+    "configured_seconds": 180,
+    "elapsed_seconds": 476.5,
+    "students": 30,
+    "completed": 30,
+    "errors": [],
+    "saves": 1080,
+    "save_failures": 0,
+    "p50_ms": 10108.3,
+    "p95_ms": 22589.5,
+    "max_ms": 48588.7,
+    "submit_p95_ms": 11603.5,
+    "sent_bytes": 1008802674,
+    "received_bytes": 1008851304,
+    "max_rss_kb": 486720,
+    "max_db_connections": 5,
+    "max_lock_waiters": 2,
+    "expected_conflicts": 60,
+    "points_per_student": [
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450
+    ]
+  },
+  "append": {
+    "mode": "sustained_append",
+    "configured_seconds": 180,
+    "elapsed_seconds": 271.0,
+    "students": 30,
+    "completed": 30,
+    "errors": [],
+    "saves": 1080,
+    "save_failures": 0,
+    "p50_ms": 4770.7,
+    "p95_ms": 13045.0,
+    "max_ms": 16248.5,
+    "submit_p95_ms": 3806.4,
+    "sent_bytes": 54869404,
+    "received_bytes": 89370,
+    "max_rss_kb": 414164,
+    "max_db_connections": 5,
+    "max_lock_waiters": 3,
+    "expected_conflicts": 60,
+    "points_per_student": [
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450,
+      48450
+    ]
+  },
+  "legacy_integrity": {
+    "sustained_legacy": {
+      "drafts": 30,
+      "submissions": 30,
+      "exact_drafts": 30,
+      "distinct_pdfs": 30,
+      "reading_jobs": 30,
+      "grading_results": 0
+    }
+  },
+  "append_integrity": {
+    "sustained_append": {
+      "drafts": 30,
+      "submissions": 30,
+      "exact_drafts": 30,
+      "distinct_pdfs": 30,
+      "reading_jobs": 30,
+      "grading_results": 0
+    }
+  },
+  "storage_sample": {
+    "database_bytes": 124466879,
+    "draft_relation_bytes": 115130368,
+    "stored_draft_bytes": 22868584,
+    "fixture_pdf_bytes": 42518
+  },
+  "quality": {
+    "original": {
+      "jsonBytes": 191386,
+      "operations": 15,
+      "points": 7955
+    },
+    "results": [
+      {
+        "name": "deduplicate",
+        "points": 7955,
+        "pdf_changed_pixels": 0,
+        "adopted": false
+      },
+      {
+        "name": "proximity_0.02",
+        "points": 6663,
+        "pdf_changed_pixels": 123,
+        "adopted": false
+      },
+      {
+        "name": "rdp_0.02",
+        "points": 3156,
+        "pdf_changed_pixels": 827,
+        "adopted": false
+      }
+    ]
+  },
+  "request_reduction_percent": 94.56,
+  "response_reduction_percent": 99.991,
+  "limitations": [
+    "separate runs, not a controlled statistical benchmark",
+    "180 seconds is planned workload; actual completion overruns",
+    "HTTP PDFs are marked fixtures; Chrome tests independently verify actual ink PDFs",
+    "no iPad/Safari or WAN/30 browser PDF concurrency verification",
+    "closed-loop per-student HTTP requests: production of later rounds waits for prior saves; not 30 independent browser writers"
+  ],
+  "intermediate_ack_run": {
+    "status": "intentionally stopped after legacy mode completed and independently verified",
+    "entire_run_passed": false
+  },
+  "tests": {
+    "related_examples": 137,
+    "related_failures": 0,
+    "all_examples": 1534,
+    "all_failures": 0,
+    "browser_examples": 8,
+    "browser_failures": 0,
+    "rubocop_files": 192,
+    "rubocop_offenses": 0,
+    "perf_ruby_files": 4,
+    "perf_ruby_offenses": 0,
+    "brakeman_warnings": 0,
+    "brakeman_errors": 0
+  },
+  "measured_image_application_sha256": {
+    "app/controllers/student/answer_drafts_controller.rb": "761d92e3a9797f21897997d82a2a11b16a859c1844d69fba67623e6d69e23eea",
+    "app/javascript/pdf_draft.js": "0c803f2dfe00e3a40b707839d7c8633020fbfb134a696ba1b71fa3876f4f6f3b",
+    "config/initializers/filter_parameter_logging.rb": "0c99aee466fb825fd37cb0baf72b9dc9d8cfa2675ae1b75ea38778ece1a862a1"
+  }
+}

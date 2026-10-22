@@ -1,5 +1,8 @@
 class AssignmentsController < ApplicationController
+  MAX_MATERIAL_BYTES = 25 * 1024 * 1024
+
   before_action :require_teacher_login
+  before_action :prevent_caching
   before_action :set_classrooms, only: [ :new, :create ]
   before_action :set_assignment, only: [ :edit, :update ]
   before_action :set_assignment_and_classroom, only: [ :show, :export ]
@@ -69,14 +72,20 @@ class AssignmentsController < ApplicationController
     @selected_classroom_ids = []
     @assignment.valid?
     @assignment.errors.add(:material_file, "を選択してください") unless @assignment.material_file.attached?
+    validate_new_material
     selected_classrooms = selected_classrooms_for_creation
 
     return render_creation_errors if @assignment.errors.any?
 
+    # Store this request's new PDF before committing its assignment and distribution.
+    return render_material_upload_error unless upload_material_pdf
+
     AssignmentLifecycleLock.with_lock_scope do |acquire|
       Assignment.transaction do
+        @assignment.material_file = @uploaded_material_blob if @uploaded_material_blob
         @assignment.save!
         acquire.call(@assignment.id)
+        QuestionGenerationRequest.select_for_distribution!(@assignment)
         selected_classrooms.each do |classroom|
           @assignment.assignment_classrooms.create!(classroom: classroom)
         end
@@ -88,9 +97,40 @@ class AssignmentsController < ApplicationController
   rescue ActiveRecord::RecordInvalid => error
     @assignment.errors.add(:base, "配信先を保存できませんでした") unless error.record.equal?(@assignment)
     render_creation_errors
+  ensure
+    cleanup_unattached_material_upload
   end
 
   private
+
+  def upload_material_pdf
+    upload = params.dig(:assignment, :material_file)
+    return true unless upload.is_a?(ActionDispatch::Http::UploadedFile)
+
+    @uploaded_material_blob = ActiveStorage::Blob.build_after_unfurling(io: upload.tempfile,
+      filename: upload.original_filename, content_type: "application/pdf")
+    @uploaded_material_blob.save!
+    begin
+      @uploaded_material_blob.upload_without_unfurling(upload.tempfile)
+      true
+    rescue StandardError => error
+      Rails.logger.error("Material PDF upload failed: #{error.class}")
+      false
+    end
+  end
+
+  def cleanup_unattached_material_upload
+    return unless @uploaded_material_blob&.persisted?
+
+    @uploaded_material_blob.purge unless @uploaded_material_blob.attachments.exists?
+  rescue StandardError => error
+    Rails.logger.error("Material PDF upload cleanup failed: blob_id=#{@uploaded_material_blob.id} #{error.class}")
+  end
+
+  def render_material_upload_error
+    @assignment.errors.add(:base, "教材PDFを保存できませんでした。時間をおいて、もう一度配信してください。")
+    render_creation_errors(status: :service_unavailable)
+  end
 
   def set_assignment
     @assignment = distributed_assignments.find(params[:id])
@@ -132,11 +172,12 @@ class AssignmentsController < ApplicationController
   end
 
   def enqueue_question_generation
-    job = QuestionGenerationJob.perform_later(@assignment, @assignment.material_file.blob.id)
+    request = @assignment.current_question_generation_request
+    job = QuestionGenerationJob.perform_later(@assignment, request.material_blob_id, 0, request_id: request.id)
     raise "Could not enqueue question generation" unless job
   rescue StandardError => error
-    QuestionGenerator.new.record_failure(@assignment)
-    Rails.logger.error("Question generation enqueue failed: #{error.class}: #{error.message}")
+    request&.enqueue_failed!
+    Rails.logger.error("Question generation enqueue failed: assignment_id=#{@assignment.id} #{error.class}")
   end
 
   def distributed_assignments
@@ -171,17 +212,41 @@ class AssignmentsController < ApplicationController
     classrooms
   end
 
-  def render_creation_errors
+  def render_creation_errors(status: nil)
     failed_assignment = @assignment
     @assignment = current_teacher.assignments.build(
       title: failed_assignment.title,
       point_per_question: failed_assignment.point_per_question_before_type_cast
     )
     @assignment.errors.copy!(failed_assignment.errors)
-    render :new, status: :unprocessable_entity
+    render :new, status: status || (@material_too_large ? :content_too_large : :unprocessable_entity)
   end
 
   def assignment_params
     params.require(:assignment).permit(:title, :point_per_question, :material_file)
+  end
+
+  def prevent_caching
+    response.headers["Cache-Control"] = "private, no-store"
+  end
+
+  def validate_new_material
+    upload = params.dig(:assignment, :material_file)
+    return unless upload.is_a?(ActionDispatch::Http::UploadedFile)
+
+    if upload.size > MAX_MATERIAL_BYTES
+      @assignment.errors.add(:material_file, "は25MiB以下のPDFを選択してください")
+      @material_too_large = true
+      return
+    end
+
+    filename = upload.original_filename
+    safe_name = filename.is_a?(String) && filename.valid_encoding? && filename.bytesize <= 255 &&
+      !filename.match?(/[\\\/\x00-\x1f\x7f]/) && File.extname(filename).casecmp?(".pdf")
+    upload.tempfile.rewind
+    pdf = safe_name && Marcel::MimeType.for(upload.tempfile) == "application/pdf"
+    @assignment.errors.add(:material_file, "は有効なPDFファイルを選択してください") unless pdf
+  ensure
+    upload.tempfile.rewind if upload.is_a?(ActionDispatch::Http::UploadedFile)
   end
 end

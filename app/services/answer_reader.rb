@@ -8,11 +8,13 @@ class AnswerReader
     submission.answer_file.open do |file|
       uploaded_file = @client.files.create(
         file: Pathname.new(file.path),
-        purpose: "user_data"
+        purpose: "user_data",
+        expires_after: { anchor: "created_at", seconds: 3600 }
       )
 
       response = @client.responses.create(
         model: @model,
+        store: false,
         input: [
           {
             role: "user",
@@ -32,6 +34,8 @@ class AnswerReader
 
       validate_response!(response)
       response.output_text
+    ensure
+      AiFileCleanupJob.schedule(uploaded_file.id) if uploaded_file&.id
     end
   end
 

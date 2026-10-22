@@ -5,7 +5,7 @@ RSpec::Matchers.define_negated_matcher :not_change, :change
 RSpec.describe "Assignment creation", type: :request do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "student-password") }
   let(:attributes) { { title: "式の計算", point_per_question: "5",
     material_file: upload("material.pdf", "application/pdf"), classroom_ids: [ classroom.id.to_s ] } }
@@ -44,7 +44,7 @@ RSpec.describe "Assignment creation", type: :request do
     expect(points[:step]).to eq("1")
     file = document.at_css('input[name="assignment[material_file]"][type="file"]')
     expect(file).to be_present
-    expect(file[:accept]).to be_nil
+    expect(file[:accept]).to eq(".pdf,application/pdf")
     expect(file["data-direct-upload-url"]).to be_nil
     %w[teacher_id published_at].each do |field|
       expect(document.at_css("[name^='assignment[#{field}]']")).to be_nil
@@ -59,6 +59,7 @@ RSpec.describe "Assignment creation", type: :request do
       post assignments_path, params: { assignment: attributes }
     end.to change(Assignment, :count).by(1)
       .and change(AssignmentClassroom, :count).by(1)
+      .and change(QuestionGenerationRequest, :count).by(1)
 
     assignment = Assignment.last
     expect(assignment.teacher).to eq(teacher)
@@ -68,7 +69,14 @@ RSpec.describe "Assignment creation", type: :request do
     expect(assignment.published_at).to be_nil
     expect(assignment.classrooms).to contain_exactly(classroom)
     expect(assignment.questions).to be_empty
-    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).exactly(:once)
+    request = assignment.current_question_generation_request
+    expect(request.assignment_id).to eq(assignment.id)
+    expect(request.material_blob_id).to eq(assignment.material_file.blob.id)
+    expect(request.model).to eq(AiClient.model(:question_generation))
+    expect(request.prompt_version).to eq(QuestionGenerator::PROMPT_VERSION)
+    expect(request.state).to eq("pending")
+    expect(request.claim_token).to be_nil
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).exactly(:once)
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(new_assignment_path)
     follow_redirect!
@@ -94,7 +102,7 @@ RSpec.describe "Assignment creation", type: :request do
       it "keeps distribution successful and records a #{failure} enqueue failure" do
         teacher_login
         if failure == :exception
-          allow(QuestionGenerationJob).to receive(:perform_later).and_raise("Queue unavailable")
+          allow(QuestionGenerationJob).to receive(:perform_later).and_raise("PRIVATE API KEY AND ANSWER")
         else
           allow(QuestionGenerationJob).to receive(:perform_later).and_return(false)
         end
@@ -104,25 +112,84 @@ RSpec.describe "Assignment creation", type: :request do
         assignment = Assignment.last
         expect(assignment.classrooms).to contain_exactly(classroom)
         expect(QuestionGenerator.new.failed?(assignment)).to be(true)
+        request = assignment.current_question_generation_request
+        expect(request.state).to eq("failed")
+        expect(request.failure_code).to eq("enqueue_failed")
+        expect(request.finished_at).to be_present
+        expect(request.started_at).to be_nil
         expect(Rails.logger).to have_received(:error).with(/Question generation enqueue failed/).once
+        expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
       end
     end
   end
 
-  { "material.pdf" => "application/pdf", "material.txt" => "text/plain" }.each do |filename, content_type|
-    it "creates an assignment with #{filename}" do
-      teacher_login
+  it "creates an assignment with a valid PDF" do
+    teacher_login
 
-      expect do
-        post assignments_path, params: { assignment: attributes.merge(material_file: upload(filename, content_type)) }
-      end.to change(Assignment, :count).by(1)
+    expect do
+      post assignments_path, params: { assignment: attributes }
+    end.to change(Assignment, :count).by(1)
       .and change(AssignmentClassroom, :count).by(1)
 
-      expect(response).to have_http_status(:see_other)
-      assignment = Assignment.last
-      expect(assignment.material_file).to be_attached
-      expect(assignment.material_file.filename.to_s).to eq(filename)
-      expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files", filename)))
+    expect(response).to have_http_status(:see_other)
+    assignment = Assignment.last
+    expect(assignment.material_file).to be_attached
+    expect(assignment.material_file.filename.to_s).to eq("material.pdf")
+    expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+  end
+
+  [ "text/plain", "application/pdf" ].each do |declared_type|
+    it "rejects non-PDF content declared as #{declared_type} without creating records or jobs" do
+      teacher_login
+      counts = [ Assignment.count, AssignmentClassroom.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
+
+      post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.txt", declared_type)) }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.body).to include("教材PDFは有効なPDFファイルを選択してください")
+      expect([ Assignment.count, AssignmentClassroom.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]).to eq(counts)
+      expect(QuestionGenerationJob).not_to have_been_enqueued
+    end
+  end
+
+  it "accepts PDF content even when the declared MIME type differs" do
+    teacher_login
+    expect { post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.pdf", "text/plain")) } }
+      .to change(Assignment, :count).by(1)
+    expect(Assignment.last.material_file).to be_attached
+  end
+
+  it "does not persist a path-like upload filename" do
+    teacher_login
+    material = Rack::Test::UploadedFile.new(Rails.root.join("spec/fixtures/files/material.pdf"), "application/pdf",
+      original_filename: "../material.pdf")
+    expect { post assignments_path, params: { assignment: attributes.merge(material_file: material) } }
+      .to change(Assignment, :count).by(1)
+    expect(Assignment.last.material_file.filename.to_s).to eq("material.pdf")
+  end
+
+  [ 25 * 1024 * 1024, 25 * 1024 * 1024 + 1 ].each do |bytes|
+    it "applies the 25MiB material boundary at #{bytes} bytes" do
+      teacher_login
+      Tempfile.create([ "boundary", ".pdf" ]) do |file|
+        file.write("%PDF-1.4\n")
+        file.truncate(bytes)
+        file.rewind
+        material = Rack::Test::UploadedFile.new(file.path, "application/pdf", original_filename: "material.pdf")
+        counts = [ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
+
+        post assignments_path, params: { assignment: attributes.merge(material_file: material) }
+
+        if bytes == 25 * 1024 * 1024
+          expect(response).to have_http_status(:see_other)
+          expect(Assignment.count).to eq(counts.first + 1)
+        else
+          expect(response).to have_http_status(:content_too_large)
+          expect(response.body).to include("教材PDFは25MiB以下のPDFを選択してください")
+          expect([ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]).to eq(counts)
+          expect(QuestionGenerationJob).not_to have_been_enqueued
+        end
+      end
     end
   end
 
@@ -138,7 +205,13 @@ RSpec.describe "Assignment creation", type: :request do
         .and not_change(AssignmentClassroom, :count)
 
       expect(response).to have_http_status(422)
-      expect(document.at_css('[role="alert"] li')).to be_present
+      message = if invalid_attributes.key?(:title)
+        "小テスト名を入力してください"
+      else
+        { "" => "1問あたりの点数を入力してください", "0" => "1問あたりの点数は1以上で入力してください",
+          "1.5" => "1問あたりの点数は整数で入力してください", "abc" => "1問あたりの点数は数値で入力してください" }.fetch(invalid_attributes[:point_per_question])
+      end
+      expect(document.at_css('[role="alert"]').text).to include(message)
       expect(document.at_css('input[name="assignment[title]"]')[:value].to_s).to eq(submitted[:title])
       expect(document.at_css('input[name="assignment[point_per_question]"]')[:value].to_s).to eq(submitted[:point_per_question])
       expect(document.at_css('form[action="/assignments"]')).to be_present
@@ -162,6 +235,7 @@ RSpec.describe "Assignment creation", type: :request do
     post assignments_path, params: { assignment: attributes.except(:material_file) }
     expect(response).to have_http_status(422)
     expect(Assignment.count).to eq(0)
+    expect(response.body).to include("教材PDFを選択してください")
 
     post assignments_path, params: { assignment: attributes.merge(material_file: upload("material.pdf", "application/pdf")) }
     expect(response).to have_http_status(:see_other)
@@ -200,7 +274,7 @@ RSpec.describe "Assignment creation", type: :request do
       older = distributed
       older.update!(created_at: 2.days.ago)
       newer = Assignment.create!(teacher: teacher, title: "新しい小テスト", point_per_question: 5)
-      second_classroom = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+      second_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
       [ classroom, second_classroom ].each { |item| AssignmentClassroom.create!(assignment: newer, classroom: item) }
       undistributed = Assignment.create!(teacher: teacher, title: "未配信", point_per_question: 5)
       other_teacher = Teacher.create!(school: school, user_id: "teacher2", password: "password123")
@@ -237,8 +311,8 @@ RSpec.describe "Assignment creation", type: :request do
 
     it "shows exactly the approved fields and classes in grade and class order without modifying records" do
       item = distributed
-      second = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
-      third = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+      second = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
+      third = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
       [ third, second ].each { |target| AssignmentClassroom.create!(assignment: item, classroom: target) }
       item.material_file.attach(upload("material.pdf", "application/pdf"))
       before_attributes = item.reload.attributes
@@ -301,9 +375,9 @@ RSpec.describe "Assignment creation", type: :request do
 
   context "initial distribution" do
     let(:other_teacher) { Teacher.create!(school: school, user_id: "teacher2", password: "password123") }
-    let(:other_classroom) { Classroom.create!(school: school, teacher: other_teacher, grade: 2, class_number: 1) }
+    let(:other_classroom) { Classroom.create!(school: school, teachers: [ other_teacher ], grade: 2, class_number: 1) }
     let(:foreign_school) { School.create!(school_code: "OTHER1") }
-    let(:foreign_classroom) { Classroom.create!(school: foreign_school, teacher: other_teacher, grade: 1, class_number: 1) }
+    let(:foreign_classroom) { Classroom.create!(school: foreign_school, teachers: [ Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 1, class_number: 1) }
 
     before { teacher_login }
 
@@ -340,7 +414,7 @@ RSpec.describe "Assignment creation", type: :request do
         .and change(AssignmentClassroom, :count).by(2)
       expect(response).to have_http_status(:see_other)
       expect(Assignment.last.classrooms).to contain_exactly(classroom, other_classroom)
-      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id).exactly(:once)
+      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id, 0, request_id: Assignment.last.current_question_generation_request_id).exactly(:once)
     end
 
     it "requires material without changing model validations" do

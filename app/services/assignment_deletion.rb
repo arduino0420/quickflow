@@ -30,10 +30,14 @@ class AssignmentDeletion
             end
             submission_ids = submissions.map(&:id)
             question_ids = questions.map(&:id)
+            # Draft removal is restricted to this authorized, explicit deletion flow.
+            assignment.answer_drafts.order(:id).each(&:destroy!)
             GradingResult.where(submission_id: submission_ids).order(:id).each(&:destroy!)
             submissions.each(&:destroy!)
             questions.each(&:destroy!)
             assignment.assignment_classrooms.order(:id).each(&:destroy!)
+            assignment.update!(current_question_generation_request: nil)
+            assignment.question_generation_requests.order(:id).each(&:destroy!)
             assignment.destroy!
             deleted_here = true
           end

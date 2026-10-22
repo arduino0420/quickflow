@@ -24,7 +24,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
   end
 
   it "downloads the displayed class as a one-sheet xlsx with 40 data rows regardless of the judgment filter" do
-    second_classroom = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+    second_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
     assignment.assignment_classrooms.create!(classroom: second_classroom)
     second_student = Student.create!(classroom: second_classroom, attendance_number: 40, password: "password123")
     second_submission = Submission.create!(assignment: assignment, student: second_student, status: :completed, submitted_at: Time.current)
@@ -43,6 +43,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
       link = document.css("a").find { |node| node.text == "Excel出力" }
       expect(link[:href]).to eq(export_path(second_classroom))
       expect(link["data-turbo"]).to eq("false")
+      expect(link["class"].split).to contain_exactly("button", "button-excel-export")
       get link[:href], params: { filter: filter }
 
       expect(response).to have_http_status(:ok)
@@ -74,7 +75,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
     get export_path
     expect(xlsx_value(xlsx_worksheet(response.body), "C2")).to eq("0")
 
-    patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to have_http_status(:see_other)
     get export_path
     expect(xlsx_value(xlsx_worksheet(response.body), "C2")).to eq("5")
@@ -107,7 +108,7 @@ RSpec.describe "Assignment Excel exports", type: :request do
 
   it "allows a same-school destination belonging to another teacher" do
     other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-    classroom.update!(teacher: other_teacher)
+    classroom.update!(teachers: [ other_teacher ])
     login
     get export_path
     expect(response).to have_http_status(:ok)
@@ -144,8 +145,8 @@ RSpec.describe "Assignment Excel exports", type: :request do
   [ :other_school, :undistributed ].each do |kind|
     it "rejects a #{kind} classroom even when its ID is supplied directly" do
       target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-      target = Classroom.create!(school: target_school, teacher: teacher, grade: 3, class_number: 1)
-      assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+      target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 3, class_number: 1)
+      assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
       login
       expect(ClassroomGradeExporter).not_to receive(:new)
       get export_path(target)

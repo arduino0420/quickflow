@@ -3,6 +3,7 @@ require_relative "../support/ai_grading_context"
 
 RSpec.describe QuestionGenerator, type: :model do
   include_context "AI grading records"
+  let(:generation_model) { "configured-generator-model" }
 
   let(:generated_question) do
     { question_label: "1(1)", question_text: problem[:question_text], correct_answer: "5x",
@@ -30,8 +31,33 @@ RSpec.describe QuestionGenerator, type: :model do
     expect(question.position).to eq(1)
     expect(responses).to have_received(:create).once.with(hash_including(model: "configured-generator-model"))
     expect(generator.call(assignment).map(&:id)).to eq(questions.map(&:id))
-    expect(files).to have_received(:create).once
+    expect(files).to have_received(:create).once.with(hash_including(
+      purpose: "user_data", expires_after: { anchor: "created_at", seconds: 3600 }))
+    expect(responses).to have_received(:create).with(hash_including(store: false))
     expect(responses).to have_received(:create).once
+  end
+
+  it "schedules external file cleanup after successful generation" do
+    expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
+    expect(generator.call(assignment).size).to eq(1)
+    expect(assignment.material_file).to be_attached
+  end
+
+  it "schedules cleanup after a timed-out response and retains the material" do
+    allow(responses).to receive(:create).and_raise(Timeout::Error, "PRIVATE MATERIAL")
+    expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
+
+    expect { generator.call(assignment) }.to raise_error(Timeout::Error, "PRIVATE MATERIAL")
+    expect(assignment.material_file).to be_attached
+  end
+
+  it "keeps saved questions when cleanup enqueue is rejected" do
+    allow(AiFileCleanupJob).to receive(:perform_later).and_return(false)
+    allow(Rails.logger).to receive(:error)
+
+    expect(generator.call(assignment).size).to eq(1)
+    expect(Rails.logger).to have_received(:error).with(/AI file cleanup failed: file_id=file-material reason=enqueue_rejected/)
+    expect(assignment.questions.count).to eq(1)
   end
 
   it "reuses persisted questions without constructing a client or needing the PDF" do
@@ -100,6 +126,7 @@ RSpec.describe QuestionGenerator, type: :model do
 
     it "does not log output text when JSON parsing fails" do
       allow(response).to receive(:output_text).and_return("PRIVATE AI RESPONSE AND STUDENT ANSWER")
+      expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
       expect { generator.call(assignment) }.to raise_error(JSON::ParserError)
       expect(Rails.logger).to have_received(:error).with(/"status":"completed"/)
       expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
@@ -212,7 +239,7 @@ RSpec.describe QuestionGenerator, type: :model do
     expected_blob_id = assignment.material_file.blob.id
     assignment.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "replacement.pdf", content_type: "application/pdf")
-    expect { generator.call(assignment, material_blob_id: expected_blob_id) }.to raise_error(/Material PDF has changed/)
+    expect(generator.call(assignment, material_blob_id: expected_blob_id)).to be_nil
     expect(files).not_to have_received(:create)
     expect(responses).not_to have_received(:create)
   end
@@ -222,7 +249,7 @@ RSpec.describe QuestionGenerator, type: :model do
     assignment.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "replacement.pdf", content_type: "application/pdf")
     expect { generator.saved_questions(assignment) }.to raise_error(/Material PDF has changed/)
-    expect { generator.call(assignment) }.to raise_error(/Material PDF has changed/)
+    expect(generator.call(assignment)).to be_nil
     expect(files).to have_received(:create).once
     expect(responses).to have_received(:create).once
     expect(assignment.questions.count).to eq(1)
@@ -309,6 +336,7 @@ RSpec.describe QuestionGenerator, type: :model do
   end
 
   it "rolls back earlier questions if a later save fails" do
+    expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
     second = generated_question.merge(question_label: "1(2)")
     allow(responses).to receive(:create).and_return(ai_response(questions: [ generated_question, second ]))
     allow_any_instance_of(Question).to receive(:save!).and_wrap_original do |original, *args, **kwargs|
@@ -322,6 +350,7 @@ RSpec.describe QuestionGenerator, type: :model do
 
   it "rejects non-PDF material before calling the API" do
     assignment.material_file.attach(io: StringIO.new("text"), filename: "material.txt", content_type: "text/plain")
+    QuestionGenerationRequest.select_for_distribution!(assignment, model: generation_model)
     expect { generator.call(assignment) }.to raise_error("Material is not a PDF")
     expect(files).not_to have_received(:create)
     expect(responses).not_to have_received(:create)
@@ -357,6 +386,7 @@ RSpec.describe QuestionGenerator, type: :model do
         error = OpenAI::Errors::APITimeoutError.new(url: URI("https://example.invalid"), message: "Timed out")
         resource = stage == :upload ? files : responses
         allow(resource).to receive(:create).and_raise(error)
+        expect(AiFileCleanupJob).not_to receive(:schedule) if stage == :upload
         expect { generator.call(assignment) }.to raise_error(OpenAI::Errors::APITimeoutError)
         expect { generator.call(Assignment.find(assignment.id)) }.to raise_error(/automatic reattempt is disabled/)
         expect(files).to have_received(:create).once
@@ -373,6 +403,7 @@ RSpec.describe QuestionGenerator, type: :model do
       allow(responses).to receive(:create).and_raise(StandardError, "API failed")
       expect { generator.call(assignment) }.to raise_error("API failed")
       allow(responses).to receive(:create).and_return(response)
+      QuestionGenerationRequest.select_for_distribution!(assignment, model: "another-model")
       expect(described_class.new(client: client, model: "another-model").call(assignment).size).to eq(1)
       expect(responses).to have_received(:create).twice
     end

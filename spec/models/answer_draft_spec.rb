@@ -1,0 +1,154 @@
+require "rails_helper"
+
+RSpec.describe AnswerDraft, type: :model do
+  let(:school) { School.create!(school_code: "DRAFT") }
+  let(:teacher) { Teacher.create!(school: school, user_id: "draft-model", password: "password123") }
+  let(:classroom) { Classroom.create!(school: school, grade: 1, class_number: 1) }
+  let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
+  let(:assignment) { Assignment.create!(teacher: teacher, title: "下書き", point_per_question: 5) }
+  let(:stroke) { { "id" => 1, "tool" => "pen", "width" => 1.2, "color" => "#000000", "points" => [ [ 20, 30 ] ] } }
+  let(:draft) { described_class.new(student: student, assignment: assignment, material_fingerprint: "a" * 64, page_data: [ { "page_number" => 1, "operations" => [ stroke ] } ]) }
+
+  it "filters handwritten payloads from model inspection and SQL bind logging" do
+    expect(AnswerDraft.filter_attributes).to include(:page_data)
+    expect(draft.inspect).not_to include("points")
+    expect(ActiveRecord::Base.inspection_filter.filter_param("page_data", draft.page_data)).to eq("[FILTERED]")
+  end
+
+  it "persists versioned ordered operations and enforces student/assignment uniqueness in the DB" do
+    draft.save!
+    expect(draft.lock_version).to eq(0)
+    copy = draft.dup
+    expect(copy).not_to be_valid
+    expect(copy.errors.details[:student_id]).to include(error: :taken, value: student.id)
+    expect { copy.save!(validate: false) }.to raise_error(ActiveRecord::RecordNotUnique)
+  end
+
+  [ :student, :assignment ].each do |association|
+    it "requires #{association}" do
+      draft.public_send("#{association}=", nil)
+
+      expect(draft).not_to be_valid
+      expect(draft.errors.details[association]).to include(error: :blank)
+    end
+  end
+
+  [ nil, "", "a" * 63, "a" * 65, "A" * 64, "g" * 64 ].each do |fingerprint|
+    it "rejects invalid material fingerprint #{fingerprint.inspect}" do
+      draft.material_fingerprint = fingerprint
+
+      expect(draft).not_to be_valid
+      expect(draft.errors.details[:material_fingerprint]).to include(error: :invalid, value: fingerprint)
+    end
+  end
+
+  it "allows another student for the same assignment" do
+    draft.save!
+    other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
+
+    expect(draft.dup.tap { |copy| copy.student = other_student }.save).to be(true)
+  end
+
+  it "allows another assignment for the same student" do
+    draft.save!
+    other_assignment = Assignment.create!(teacher: teacher, title: "Other draft", point_per_question: 5)
+
+    expect(draft.dup.tap { |copy| copy.assignment = other_assignment }.save).to be(true)
+  end
+
+  it "detects stale saves with optimistic locking" do
+    draft.save!
+    stale = described_class.find(draft.id)
+    draft.update!(page_data: [ { "page_number" => 1, "operations" => [] } ])
+    expect { stale.update!(format_version: 1, updated_at: Time.current) }.to raise_error(ActiveRecord::StaleObjectError)
+  end
+
+  [ 4, 8, 12, 18 ].each do |width|
+    it "preserves eraser width #{width} and operation order on multiple pages" do
+      draft.page_data << { "page_number" => 2, "operations" => [ stroke.merge("tool" => "eraser", "width" => width) ] }
+      draft.save!
+      expect(draft.reload.page_data.last["operations"].first["width"]).to eq(width)
+    end
+  end
+
+  [ nil, {}, [], [ { "page_number" => 2, "operations" => [] } ] ].each do |data|
+    it "rejects malformed page data #{data.inspect}" do
+      draft.page_data = data
+      expect(draft).not_to be_valid
+    end
+  end
+
+  [ "bad", 1_000_001, Float::INFINITY ].each do |coordinate|
+    it "rejects invalid coordinates #{coordinate}" do
+      draft.page_data.first["operations"].first["points"] = [ [ coordinate, 0 ] ]
+      expect(draft).not_to be_valid
+    end
+  end
+
+  it "rejects duplicate IDs, unknown tools, invalid widths and format versions" do
+    draft.page_data.first["operations"] << stroke.deep_dup
+    expect(draft).not_to be_valid
+    draft.page_data.first["operations"] = [ stroke.merge("tool" => "whiteout") ]
+    expect(draft).not_to be_valid
+    draft.page_data.first["operations"] = [ stroke.merge("width" => 100) ]
+    expect(draft).not_to be_valid
+    draft.page_data.first["operations"] = [ stroke.deep_dup ]
+    expect(draft).to be_valid
+    draft.format_version = 2
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:format_version]).to include(error: :inclusion, value: 2)
+    expect(draft.errors[:page_data]).to be_empty
+  end
+
+  it "bounds point counts and payload bytes" do
+    draft.page_data.first["operations"].first["points"] = Array.new(described_class::MAX_POINTS + 1) { [ 0, 0 ] }
+    expect(draft).not_to be_valid
+    draft.page_data = [ { "page_number" => 1, "operations" => [ stroke.merge("color" => "x" * described_class::MAX_BYTES) ] } ]
+    expect(draft).not_to be_valid
+  end
+  it "accepts the point and operation limits exactly and reports the first exceeded limit" do
+    points = draft.page_data.first["operations"].first["points"] = Array.new(described_class::MAX_POINTS) { [ 0, 0 ] }
+    expect(draft).to be_valid
+    points << [ 0, 0 ]
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:points_limit)
+
+    operations = draft.page_data.first["operations"] = Array.new(described_class::MAX_OPERATIONS) { |index| stroke.merge("id" => index + 1) }
+    expect(draft).to be_valid
+    operations << stroke.merge("id" => described_class::MAX_OPERATIONS + 1)
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:operations_limit)
+  end
+
+  it "accepts exactly 4 MiB of valid JSON and distinguishes one extra byte from invalid geometry" do
+    points = draft.page_data.first["operations"].first["points"] = []
+    base_bytes = JSON.generate(draft.page_data).bytesize
+    dense_point = [ 0.12345678901234567, -0.12345678901234567 ]
+    points.concat(Array.new((described_class::MAX_BYTES - base_bytes - 100) / (JSON.generate(dense_point).bytesize + 1), dense_point))
+    remaining = described_class::MAX_BYTES - JSON.generate(draft.page_data).bytesize
+    sevens = (0..5).find { |count| remaining >= count * 7 && (remaining - count * 7) % 6 == 0 }
+    points.concat(Array.new((remaining - sevens * 7) / 6) { [ 0, 0 ] })
+    points.concat(Array.new(sevens) { [ 10, 0 ] })
+    expect(JSON.generate(draft.page_data).bytesize).to eq(described_class::MAX_BYTES)
+    expect(draft).to be_valid
+    points.find { |point| point == [ 0, 0 ] }[0] = 10
+    expect(JSON.generate(draft.page_data).bytesize).to eq(described_class::MAX_BYTES + 1)
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:bytes_limit)
+
+    draft.page_data = [ { "page_number" => 1, "operations" => [ stroke.merge("points" => [ [ "bad", 0 ] ]) ] } ]
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:invalid_data)
+  end
+
+  it "keeps the page limit and distinguishes it from an empty or incorrectly numbered draft" do
+    draft.page_data = Array.new(described_class::MAX_PAGES) { |index| { "page_number" => index + 1, "operations" => [] } }
+    expect(draft).to be_valid
+    draft.page_data << { "page_number" => described_class::MAX_PAGES + 1, "operations" => [] }
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:pages_limit)
+    draft.page_data = []
+    expect(draft).not_to be_valid
+    expect(draft.errors.details[:page_data].first[:error]).to eq(:invalid_data)
+  end
+end

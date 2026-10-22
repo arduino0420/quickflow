@@ -37,7 +37,7 @@ RSpec.describe Teacher, type: :model do
 
   it "returns its classrooms" do
     teacher = described_class.create!(attributes)
-    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1)
 
     expect(teacher.classrooms).to contain_exactly(classroom)
   end
@@ -68,8 +68,15 @@ RSpec.describe Teacher, type: :model do
   it "allows an update without supplying the password again" do
     teacher = described_class.create!(attributes).reload
 
-    expect(teacher.update(user_id: "teacher2")).to be(true)
+    expect(teacher.update(updated_at: teacher.updated_at + 1.second)).to be(true)
     expect(teacher.authenticate("password123")).to eq(teacher)
+  end
+
+  it "rejects changing a persisted teacher ID" do
+    teacher = described_class.create!(attributes)
+    expect(teacher.update(user_id: "teacher2")).to be(false)
+    expect(teacher.errors[:user_id]).to be_present
+    expect(teacher.reload.user_id).to eq("teacher1")
   end
 
   it "rejects a mismatched password confirmation" do
@@ -122,5 +129,24 @@ RSpec.describe Teacher, type: :model do
         teacher.save!(validate: false)
       end
     end.to raise_error(ActiveRecord::InvalidForeignKey)
+  end
+
+  it "preserves a legacy credential until a valid password change succeeds" do
+    teacher = described_class.create!(attributes.merge(password: "old-password")).reload
+    original_digest = teacher.password_digest
+
+    expect(teacher.update(updated_at: teacher.updated_at + 1.second)).to be(true)
+    expect(teacher.reload.password_digest).to eq(original_digest)
+    expect(teacher.authenticate("old-password")).to eq(teacher)
+
+    expect(teacher.update(password: "short")).to be(false)
+    expect(teacher.errors[:password]).to be_present
+    expect(teacher.reload.password_digest).to eq(original_digest)
+    expect(teacher.authenticate("old-password")).to eq(teacher)
+
+    expect(teacher.update(password: "Teacher8392")).to be(true)
+    expect(teacher.reload.password_digest).not_to eq(original_digest)
+    expect(teacher.authenticate("old-password")).to be(false)
+    expect(teacher.authenticate("Teacher8392")).to eq(teacher)
   end
 end

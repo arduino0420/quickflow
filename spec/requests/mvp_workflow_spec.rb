@@ -8,7 +8,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
   let(:school) { School.create!(school_code: "MVP#{SecureRandom.hex(4)}") }
   let(:teacher) { Teacher.create!(school: school, user_id: "mvp-#{SecureRandom.hex(4)}", password: "password123") }
   let(:classrooms) do
-    [ 1, 2 ].map { |number| Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: number) }
+    [ 1, 2 ].map { |number| Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: number) }
   end
   let(:students) do
     classrooms.map { |classroom| Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
@@ -87,7 +87,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
     expect(response).to have_http_status(:see_other)
     assignment = teacher.assignments.sole
     expect(assignment.classrooms).to match_array(classrooms)
-    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).once
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).once
     perform_enqueued_jobs(only: QuestionGenerationJob)
     expect(assignment.questions.count).to eq(3)
     question_ids = assignment.questions.order(:position).pluck(:id)
@@ -97,7 +97,13 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
       follow_redirect!
       row = document.at_css("#assignment_#{assignment.id}")
       expect(row.at_css("a")[:class]).to include("assignment-card-link")
+      expect(row.at_css("a")[:href]).to eq(student_assignment_pdf_preview_path(assignment))
       get row.at_css("a")[:href]
+      expect(document.at_css('[data-pdf-preview-target="submit"]').text).to eq("提出する")
+      expect(document.at_css("input[type='file']")).to be_nil
+      # Keep this workflow's legacy-upload regression coverage; handwritten
+      # PDF generation and submission are covered by the browser/system tests.
+      get student_assignment_path(assignment)
       expect(document.at_css("input[type='file']")).to be_present
       get material_student_assignment_path(assignment)
       expect(response.body.b).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
@@ -110,13 +116,13 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
       follow_redirect!
       expect(document.at_css("#grading-status").text).to include("採点待ち")
       perform_enqueued_jobs(only: AnswerReadingJob)
-      expect(AnswerGradingJob).to have_been_enqueued.with(item).once
+      expect(AnswerGradingJob).to have_been_enqueued.with(item, 0).once
       expect(item.reload).to be_grading
       perform_enqueued_jobs(only: AnswerGradingJob)
       expect(item.reload).to be_completed
       expect(item.extracted_text).to be_present
       expect(item.grading_results.count).to eq(3)
-      expect(AnswerGradingJob).to have_been_performed.with(item).once
+      expect(AnswerGradingJob).to have_been_performed.with(item, 0).once
       get student_assignments_path
       row = document.at_css("#assignment_#{assignment.id}")
       expect(row.css("a").size).to eq(1)
@@ -137,7 +143,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
     result = first_submission.grading_results.find_by!(question_id: question_ids[1])
     review = first_submission.grading_results.find_by!(question_id: question_ids[2])
     original_ai = [ result, review ].map { |item| item.attributes.except("teacher_judgment", "updated_at") }
-    patch assignment_submission_path(assignment, first_submission), params: { judgments: { result.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, first_submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to redirect_to(login_path)
     expect(result.reload.teacher_judgment).to be_nil
 

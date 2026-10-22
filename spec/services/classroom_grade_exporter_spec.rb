@@ -72,8 +72,8 @@ RSpec.describe ClassroomGradeExporter do
       if condition == :foreign_result
         foreign_assignment = Assignment.create!(teacher: teacher, title: "別の課題", point_per_question: 5)
         foreign_question = create_question(owner: foreign_assignment)
-        item.grading_results.create!(question: foreign_question, ai_judgment: :correct,
-          ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+        item.grading_results.build(question: foreign_question, ai_judgment: :correct,
+          ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current).save!(validate: false) # Historical cross-assignment result.
       end
 
       expect(item.score).to be_nil
@@ -87,23 +87,24 @@ RSpec.describe ClassroomGradeExporter do
     result = item.grading_results.order(:question_id).first
     expect(xlsx_value(xlsx_worksheet(exporter.call(assignment, classroom)), "C2")).to eq("0")
 
-    item.update_teacher_judgments!(result.id.to_s => "correct")
+    item.update_teacher_judgments!({ result.id.to_s => "correct" }, { result.id.to_s => result.reload.final_judgment })
     attributes = item.grading_results.order(:id).map(&:attributes)
     expect(xlsx_value(xlsx_worksheet(exporter.call(assignment, classroom)), "C2")).to eq("5")
     expect(item.grading_results.order(:id).map(&:attributes)).to eq(attributes)
     expect(result.reload.ai_judgment).to eq("incorrect")
 
-    item.update_teacher_judgments!(result.id.to_s => "")
+    item.update_teacher_judgments!({ result.id.to_s => "" }, { result.id.to_s => result.reload.final_judgment })
     expect(xlsx_value(xlsx_worksheet(exporter.call(assignment, classroom)), "C2")).to eq("0")
   end
 
   it "does not mix another classroom's students or another assignment's submissions into the export" do
     own = create_export_submission(1, judgments: [ :incorrect, :incorrect ])
-    other_classroom = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
+    other_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
     assignment.assignment_classrooms.create!(classroom: other_classroom)
     create_export_submission(1, target: other_classroom)
     create_export_submission(2, target: other_classroom)
     other_assignment = Assignment.create!(teacher: teacher, title: "別の課題", point_per_question: 100)
+    other_assignment.assignment_classrooms.create!(classroom: classroom)
     foreign = Submission.create!(assignment: other_assignment, student: own.student, status: :completed, submitted_at: Time.current)
     foreign.grading_results.create!(question: create_question(owner: other_assignment), ai_judgment: :correct,
       ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)

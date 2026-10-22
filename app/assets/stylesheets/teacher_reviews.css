@@ -69,7 +69,7 @@
 #grade-summary tr:focus-within { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 #grade-summary tr.grade-needs-review,
 #grade-summary tr.grade-needs-review:hover,
-#grade-summary tr.grade-needs-review:focus-within { background: #FEF3C7; }
+#grade-summary tr.grade-needs-review:focus-within { background: #FDE68A; }
 #grade-summary .grade-needs-review td { border-bottom-color: #FDE68A; }
 .grade-row-link { display: inline-flex; align-items: center; min-height: 2.75rem; font-weight: 400; }
 

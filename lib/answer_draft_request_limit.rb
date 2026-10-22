@@ -1,0 +1,36 @@
+# Run before request logging / Rails parameter parsing. Never log malformed ink.
+class AnswerDraftRequestLimit
+  MAX_BYTES = 4 * 1024 * 1024 + 16 * 1024
+  PATH = %r{\A/student/assignments/[^/.]+/answer_draft(?:\.[^/.]+)?\z}
+
+  def initialize(app)
+    @app = app
+  end
+
+  def call(env)
+    return @app.call(env) unless %w[PUT PATCH].include?(env["REQUEST_METHOD"])
+
+    path = ActionDispatch::Journey::Router::Utils.normalize_path(env["PATH_INFO"])
+    if PATH.match?(path)
+      return reject(415) unless env["CONTENT_TYPE"].to_s.split(";").first == "application/json"
+      return reject(413) if env["CONTENT_LENGTH"].to_i > MAX_BYTES
+
+      body = env["rack.input"].read(MAX_BYTES + 1)
+      return reject(413) if body.bytesize > MAX_BYTES
+
+      begin
+        return reject(400) unless JSON.parse(body).is_a?(Hash)
+      rescue JSON::ParserError
+        return reject(400)
+      end
+      env["rack.input"] = StringIO.new(body)
+    end
+    @app.call(env)
+  end
+
+  private
+
+  def reject(status)
+    [ status, { "content-type" => "application/json", "cache-control" => "private, no-store" }, [ JSON.generate(error: { 400 => "invalid_json", 413 => "request_too_large", 415 => "unsupported_content_type" }.fetch(status)) ] ]
+  end
+end

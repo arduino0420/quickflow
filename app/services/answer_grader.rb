@@ -91,7 +91,7 @@ class AnswerGrader
         correct_answer: question.correct_answer, grading_rule: rule.fetch("criteria"), requires_work: rule.fetch("requires_work"),
         student_answer: problem.fetch("student_answer") }
     end
-    response = @client.responses.create(model: @model, instructions: prompt, input: JSON.generate(problems: input))
+    response = @client.responses.create(model: @model, instructions: prompt, input: JSON.generate(problems: input), store: false)
     validate_response!(response)
     data = JSON.parse(response.output_text)
     judgments = data["results"] if data.is_a?(Hash)

@@ -5,11 +5,12 @@ RSpec.describe AnswerReadingJob, type: :job do
   include ActiveJob::TestHelper
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "student-password") }
   let(:assignment) { Assignment.create!(teacher: teacher, title: "式の計算", point_per_question: 5) }
 
   let(:submission) do
+    assignment.assignment_classrooms.create!(classroom: classroom)
     Submission.create!(
       student: student,
       assignment: assignment,
@@ -103,7 +104,7 @@ RSpec.describe AnswerReadingJob, type: :job do
   it "enqueues grading only after saving the reading result" do
     reader = instance_double(AnswerReader, call: valid_result)
     allow(AnswerReader).to receive(:new).and_return(reader)
-    expect { described_class.perform_now(submission) }.to have_enqueued_job(AnswerGradingJob).with(submission)
+    expect { described_class.perform_now(submission) }.to have_enqueued_job(AnswerGradingJob).with(submission, 0)
     expect(submission.reload.extracted_text).to be_present
     expect(submission).to be_grading
     expect(enqueued_jobs.count { |job| job[:job] == AnswerGradingJob }).to eq(1)
@@ -112,7 +113,7 @@ RSpec.describe AnswerReadingJob, type: :job do
   it "reuses saved readings without another reading API call" do
     submission.update!(status: :grading, extracted_text: valid_result)
     expect(AnswerReader).not_to receive(:new)
-    expect { described_class.perform_now(submission) }.to have_enqueued_job(AnswerGradingJob).with(submission)
+    expect { described_class.perform_now(submission) }.to have_enqueued_job(AnswerGradingJob).with(submission, 0)
     expect(submission.reload.extracted_text).to eq(valid_result)
   end
 
@@ -145,7 +146,7 @@ RSpec.describe AnswerReadingJob, type: :job do
       expect(submission.reload).to be_failed
       expect(submission.extracted_text).to eq(valid_result)
       expect(submission.grading_results).to be_empty
-      expect(AnswerGradingJob).to have_received(:perform_later).with(submission).once
+      expect(AnswerGradingJob).to have_received(:perform_later).with(submission, 0).once
       expect(Rails.logger).to have_received(:error).with(/AnswerReadingJob grading enqueue failed: submission_id=#{submission.id} (RuntimeError|StandardError)\z/).once
       expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
     end

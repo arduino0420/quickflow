@@ -1,3 +1,4 @@
+<% content_for :title, "生徒アカウント登録 | QuickFlow" %>
 <h1>生徒アカウント登録</h1>
 <%= link_to "小テスト一覧へ戻る", assignments_path %>
 <p>所属を確認した生徒を、担当クラスに登録してください。登録後も教師としてログインしたままです。</p>
@@ -29,6 +30,7 @@
     <div>
       <%= form.label :password, "初期パスワード" %>
       <%= form.password_field :password, required: true, autocomplete: "new-password", value: nil %>
+      <p>推測しにくい半角数字8桁を設定してください。</p>
     </div>
     <div>
       <%= form.label :password_confirmation, "初期パスワード（確認）" %>

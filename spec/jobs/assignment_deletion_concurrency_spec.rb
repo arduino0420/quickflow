@@ -4,6 +4,7 @@ require_relative "../support/ai_grading_context"
 
 RSpec.describe "Assignment deletion concurrency", type: :job do
   include_context "AI grading records"
+  let(:generation_model) { AiClient.model(:question_generation) }
   include ActiveJob::TestHelper
   include Rails.application.routes.url_helpers
   self.use_transactional_tests = false
@@ -37,6 +38,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
       @additional_students.each(&:destroy!)
       student.destroy!
+      TeacherClassroom.where(classroom_id: classroom.id).delete_all
       classroom.destroy!
       teacher.destroy!
       school.destroy!
@@ -81,12 +83,12 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     expect(GradingResult.joins(:submission).where(submissions: { assignment_id: @assignment_id })).to be_empty
   end
 
-  def deletion_behind_job(job_class, *args)
+  def deletion_behind_job(job_class, *args, **options)
     entered = Queue.new
     release = Queue.new
     pid = Queue.new
     yield(entered, release)
-    worker = run_thread { job_class.perform_now(*args) }
+    worker = run_thread { job_class.perform_now(*args, **options) }
     Timeout.timeout(5) { entered.pop }
     deletion = run_thread do |connection|
       pid << connection.select_value("SELECT pg_backend_pid()")
@@ -108,7 +110,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     allow(AiClient).to receive(:build).and_return(client)
     allow(files).to receive(:create).and_return(double(id: "stub-material"))
     blob_id = assignment.material_file.blob.id
-    deletion_behind_job(QuestionGenerationJob, Assignment.find(@assignment_id), blob_id) do |entered, release|
+    deletion_behind_job(QuestionGenerationJob, Assignment.find(@assignment_id), blob_id, request_id: assignment.current_question_generation_request_id) do |entered, release|
       expect(responses).to receive(:create).once do
         entered << true
         Timeout.timeout(8) { release.pop }
@@ -224,7 +226,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       Timeout.timeout(8) { releases[:reading].pop }
       JSON.generate(problems: [ problem ])
     end
-    generation = run_thread { QuestionGenerationJob.perform_now(Assignment.find(@assignment_id), assignment.material_file.blob.id) }
+    generation = run_thread { QuestionGenerationJob.perform_now(Assignment.find(@assignment_id), assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id) }
     grading = run_thread { AnswerGradingJob.perform_now(Submission.find(@submission_id)) }
     reading = run_thread { AnswerReadingJob.perform_now(Submission.find(reading_submission.id)) }
     entered.each_value { |queue| Timeout.timeout(5) { queue.pop } }
@@ -255,12 +257,11 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     [ generation, grading, reading, deletion ].compact.each { |thread| thread.join(10) }
   end
 
-  it "protects the initial material upload through the real teacher creation request's commit callback" do
+  it "keeps a teacher assignment invisible until its material upload succeeds, then permits deletion" do
     request_session = ActionDispatch::Integration::Session.new(Rails.application)
     request_session.post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
     entered = Queue.new
     release = Queue.new
-    pid = Queue.new
     title = "material-race-#{SecureRandom.hex(4)}"
     allow_any_instance_of(ActiveStorage::Service::DiskService).to receive(:upload).and_wrap_original do |method, *args, **options|
       entered << true
@@ -273,17 +274,17 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       request_session.response.status
     end
     Timeout.timeout(5) { entered.pop }
-    created = teacher.assignments.find_by!(title: title)
-    @additional_assignment_ids << created.id
-    blob = created.material_file.blob
-    deletion = run_thread do |connection|
-      pid << connection.select_value("SELECT pg_backend_pid()")
-      AssignmentDeletion.new.call(Assignment.find(created.id), teacher: teacher)
-    end
-    wait_until_blocked(Timeout.timeout(5) { pid.pop }, by: creator[:database_pid])
+    expect(teacher.assignments.exists?(title: title)).to be(false)
     release << true
     expect(creator.join(10)).to be_present
     expect(creator.value).to eq(303)
+    created = teacher.assignments.find_by!(title: title)
+    @additional_assignment_ids << created.id
+    blob = created.material_file.blob
+    expect(blob.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+    deletion = run_thread do
+      AssignmentDeletion.new.call(Assignment.find(created.id), teacher: teacher)
+    end
     expect(deletion.join(10)).to be_present
     expect(deletion.value).to eq(:deleted)
     perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
@@ -292,5 +293,8 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
   ensure
     release << true if release
     [ creator, deletion ].compact.each { |thread| thread.join(10) }
+    if title && (created_id = teacher.assignments.find_by(title: title)&.id)
+      @additional_assignment_ids << created_id
+    end
   end
 end

@@ -119,6 +119,20 @@ RSpec.describe AnswerGradingJob, type: :job do
     expect(submission.grading_results).to be_empty
   end
 
+  it "rolls back all results when the grader returns a question from another assignment" do
+    other = Assignment.create!(teacher: teacher, title: "Other quiz", point_per_question: 5)
+    foreign_question = create_question(owner: other)
+    allow(grader).to receive(:call).and_return([ result, result.merge(question: foreign_question) ])
+    original_reading = submission.extracted_text
+
+    described_class.perform_now(submission)
+
+    expect(submission.reload).to be_failed
+    expect(submission.grading_results).to be_empty
+    expect(submission.extracted_text).to eq(original_reading)
+    expect(assignment.questions).to contain_exactly(question)
+  end
+
   it "rolls back results if completion cannot be saved" do
     allow(submission).to receive(:update!).with(status: :grading).and_call_original
     allow(submission).to receive(:update!).with(status: :failed).and_call_original
@@ -131,6 +145,7 @@ end
 
 RSpec.describe "Shared questions after a grading API failure", type: :job do
   include_context "AI grading records"
+  let(:generation_model) { AiClient.model(:question_generation) }
 
   it "keeps generated questions and reuses them for another student without a new PDF request" do
     allow(AiClient).to receive(:build).and_return(client)
@@ -149,7 +164,7 @@ RSpec.describe "Shared questions after a grading API failure", type: :job do
       end
     end
 
-    QuestionGenerationJob.perform_now(assignment, assignment.material_file.blob.id)
+    QuestionGenerationJob.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     AnswerGradingJob.perform_now(submission)
     expect(submission.reload).to be_failed
     question_id = assignment.questions.sole.id

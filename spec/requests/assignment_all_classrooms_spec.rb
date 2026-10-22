@@ -6,8 +6,8 @@ RSpec.describe "All distributed classroom grades", type: :request do
   include_context "AI grading records"
   include XlsxInspection
 
-  let(:second_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
-  let(:third_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1) }
+  let(:second_classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2) }
+  let(:third_classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1) }
 
   before do
     [ third_classroom, second_classroom, classroom ].each do |target|
@@ -26,9 +26,10 @@ RSpec.describe "All distributed classroom grades", type: :request do
     Nokogiri::HTML(response.body)
   end
 
-  def create_result(target, number, judgment: :correct, status: :completed)
+  def create_result(target, number, judgment: :correct, status: :completed, historical: false)
     pupil = Student.create!(classroom: target, attendance_number: number, password: "password123")
-    item = Submission.create!(assignment: assignment, student: pupil, status: status, submitted_at: Time.current)
+    item = Submission.new(assignment: assignment, student: pupil, status: status, submitted_at: Time.current)
+    item.save!(validate: !historical) # Only out-of-scope fixtures bypass the new submission validation.
     question = assignment.questions.first || create_question
     item.grading_results.create!(question: question, ai_judgment: judgment, review_reason: "確認が必要",
       ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
@@ -63,7 +64,7 @@ RSpec.describe "All distributed classroom grades", type: :request do
     expect(grade_rows).to eq([ [ "1年2組", "1番", "0点（暫定）" ] ])
     expect(document.at_css("#classroom-selection input[name='filter']")[:value]).to eq("needs_review")
 
-    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     get assignment_path(assignment, classroom_id: "all")
     expect(grade_rows).to include([ "1年2組", "1番", "5点" ])
     expect(document.at_css("#pending-review-count").text).to include("0件")
@@ -105,17 +106,17 @@ RSpec.describe "All distributed classroom grades", type: :request do
       expect(workbook.xpath("/workbook/sheets/sheet").size).to eq(1)
     end
 
-    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" } }
+    patch assignment_submission_path(assignment, pending.submission), params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     get export_assignment_path(assignment, classroom_id: "all", filter: "all")
     expect(xlsx_value(xlsx_worksheet(response.body), "C42")).to eq("5")
   end
 
   it "excludes undistributed and foreign school data even with a foreign distribution link" do
-    undistributed = Classroom.create!(school: school, teacher: teacher, grade: 3, class_number: 14)
+    undistributed = Classroom.create!(school: school, teachers: [ teacher ], grade: 3, class_number: 14)
     foreign_school = School.create!(school_code: "FOREIGN")
-    foreign = Classroom.create!(school: foreign_school, teacher: teacher, grade: 3, class_number: 15)
-    assignment.assignment_classrooms.create!(classroom: foreign)
-    [ undistributed, foreign ].each { |target| create_result(target, 1) }
+    foreign = Classroom.create!(school: foreign_school, teachers: [ Teacher.create!(school: foreign_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 3, class_number: 15)
+    assignment.assignment_classrooms.build(classroom: foreign).tap { |link| link.save!(validate: false) } # Historical foreign distribution.
+    [ undistributed, foreign ].each { |target| create_result(target, 1, historical: true) }
     create_result(classroom, 1)
     login
     get assignment_path(assignment, classroom_id: "all", filter: "all")

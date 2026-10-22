@@ -4,6 +4,7 @@ require_relative "../support/ai_grading_context"
 RSpec.describe QuestionGenerationJob, type: :job do
   include ActiveJob::TestHelper
   include_context "AI grading records"
+  let(:generation_model) { AiClient.model(:question_generation) }
 
   let(:generated_question) do
     { question_label: "1(1)", question_text: problem[:question_text], correct_answer: "5x",
@@ -26,9 +27,9 @@ RSpec.describe QuestionGenerationJob, type: :job do
 
   it "prepares answers without any students and reuses them when the job runs again" do
     blob_id = assignment.material_file.blob.id
-    described_class.perform_now(assignment, blob_id)
+    described_class.perform_now(assignment, blob_id, request_id: assignment.current_question_generation_request_id)
     question_id = assignment.questions.sole.id
-    described_class.perform_now(Assignment.find(assignment.id), blob_id)
+    described_class.perform_now(Assignment.find(assignment.id), blob_id, request_id: assignment.current_question_generation_request_id)
     expect(assignment.questions.sole.id).to eq(question_id)
     expect(Submission.count).to eq(0)
     expect(files).to have_received(:create).once
@@ -38,7 +39,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
   it "reuses existing valid answers without building a client" do
     question = create_question
     expect(AiClient).not_to receive(:build)
-    described_class.perform_now(assignment, assignment.material_file.blob.id)
+    described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     expect(assignment.questions).to contain_exactly(question)
     expect(responses).not_to have_received(:create)
   end
@@ -58,7 +59,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
       end
     end
     perform_enqueued_jobs(only: AnswerGradingJob) do
-      described_class.perform_now(assignment, assignment.material_file.blob.id)
+      described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     end
     expect(submission.reload).to be_completed
     expect(submission.extracted_text).to eq(original_reading)
@@ -75,7 +76,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
     failed_student = Student.create!(classroom: classroom, attendance_number: 3, password: "password123")
     failed = Submission.create!(assignment: assignment, student: failed_student, submitted_at: Time.current,
       status: :failed, extracted_text: JSON.generate(problems: [ problem ]))
-    expect { described_class.perform_now(assignment, assignment.material_file.blob.id) }.not_to have_enqueued_job(AnswerGradingJob)
+    expect { described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id) }.not_to have_enqueued_job(AnswerGradingJob)
     expect(completed.reload).to be_completed
     expect(failed.reload).to be_failed
     expect(submission.reload.extracted_text).to be_nil
@@ -86,8 +87,8 @@ RSpec.describe QuestionGenerationJob, type: :job do
     error = OpenAI::Errors::APITimeoutError.new(url: URI("https://example.invalid"), message: "Timed out")
     allow(responses).to receive(:create).and_raise(error)
     allow(Rails.logger).to receive(:error)
-    described_class.perform_now(assignment, assignment.material_file.blob.id)
-    described_class.perform_now(Assignment.find(assignment.id), assignment.material_file.blob.id)
+    described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
+    described_class.perform_now(Assignment.find(assignment.id), assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     expect(submission.reload).to be_failed
     expect(submission.extracted_text).to eq(original_reading)
     expect(assignment.questions).to be_empty
@@ -99,7 +100,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
 
   it "stops later submissions after generation failure without trying generation again" do
     allow(responses).to receive(:create).and_raise("API failed")
-    described_class.perform_now(assignment, assignment.material_file.blob.id)
+    described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     AnswerGradingJob.perform_now(submission)
     expect(submission.reload).to be_failed
     expect(submission.extracted_text).to be_present
@@ -112,7 +113,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
     allow(invalid_response).to receive(:output_text).and_return("PRIVATE AI RESPONSE")
     allow(responses).to receive(:create).and_return(invalid_response)
     allow(Rails.logger).to receive(:error)
-    described_class.perform_now(assignment, assignment.material_file.blob.id)
+    described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     expect(Rails.logger).to have_received(:error).with("QuestionGenerationJob failed: JSON::ParserError")
     expect(Rails.logger).not_to have_received(:error).with(/PRIVATE AI RESPONSE/)
     expect(assignment.questions).to be_empty
@@ -122,7 +123,7 @@ RSpec.describe QuestionGenerationJob, type: :job do
   it "stops on invalid stored answers without regenerating them" do
     create_question.update_columns(grading_rule: "invalid")
     original_reading = submission.extracted_text
-    described_class.perform_now(assignment, assignment.material_file.blob.id)
+    described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
     expect(submission.reload).to be_failed
     expect(submission.extracted_text).to eq(original_reading)
     expect(assignment.questions.count).to eq(1)
@@ -135,8 +136,8 @@ RSpec.describe QuestionGenerationJob, type: :job do
     original_reading = submission.extracted_text
     assignment.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "replacement.pdf", content_type: "application/pdf")
-    described_class.perform_now(assignment, blob_id)
-    expect(submission.reload).to be_failed
+    described_class.perform_now(assignment, blob_id, request_id: assignment.current_question_generation_request_id)
+    expect(submission.reload).to be_submitted
     expect(submission.extracted_text).to eq(original_reading)
     expect(files).not_to have_received(:create)
     expect(responses).not_to have_received(:create)
@@ -146,17 +147,18 @@ RSpec.describe QuestionGenerationJob, type: :job do
     it "preserves prepared answers and readings after a #{failure} grading enqueue failure" do
       original_reading = submission.extracted_text
       if failure == :exception
-        allow(AnswerGradingJob).to receive(:perform_later).and_raise("Queue unavailable")
+        allow(AnswerGradingJob).to receive(:perform_later).and_raise("PRIVATE API KEY AND ANSWER")
       else
         allow(AnswerGradingJob).to receive(:perform_later).and_return(false)
       end
       allow(Rails.logger).to receive(:error)
-      described_class.perform_now(assignment, assignment.material_file.blob.id)
+      described_class.perform_now(assignment, assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id)
       expect(submission.reload).to be_failed
       expect(submission.extracted_text).to eq(original_reading)
       expect(assignment.questions.count).to eq(1)
       expect(QuestionGenerator.new.failed?(assignment)).to be_falsey
       expect(Rails.logger).to have_received(:error).with(/QuestionGenerationJob grading enqueue failed/).once
+      expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
       expect(responses).to have_received(:create).once
     end
   end
