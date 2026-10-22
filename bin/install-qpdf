@@ -1,0 +1,37 @@
+#!/usr/bin/env ruby
+require "digest"
+require "fileutils"
+require "rbconfig"
+require "tmpdir"
+
+# Official qpdf release bundles include their native runtime dependencies.
+version = "12.4.2"
+checksums = {
+  "linux-x86_64" => "db367d897829f22c4198ce1094143c9d467bd6ee7dfabc44ba6f02056b24f8b1",
+  "linux-aarch64" => "8fd9d009eb0838398180a603f2cf76531e5c68a4ecc8847598e0a1ccb1d3b600",
+  "macos-x86_64" => "dd3b01f4414d198529bb0f13bba59c2f016a328bb3506695087a96fb80fc1481",
+  "macos-arm64" => "62e46987a30ea167cbc530ccb22690aec3d8c812ed09979a941bcee92e504b79"
+}.freeze
+os = RUBY_PLATFORM.include?("darwin") ? "macos" : ("linux" if RUBY_PLATFORM.include?("linux"))
+cpu = RbConfig::CONFIG.fetch("host_cpu")
+cpu = os == "macos" ? "arm64" : "aarch64" if [ "aarch64", "arm64" ].include?(cpu)
+platform = "#{os}-#{cpu}"
+checksum = checksums.fetch(platform) { abort "Unsupported qpdf platform: #{platform}" }
+destination = File.expand_path("../vendor/qpdf", __dir__)
+marker = File.join(destination, ".release-sha256")
+if File.file?(marker) && File.read(marker).strip == checksum && File.executable?(File.join(destination, "bin/qpdf"))
+  exit
+end
+
+Dir.mktmpdir("quickflow-qpdf") do |directory|
+  archive = File.join(directory, "qpdf.zip")
+  url = "https://github.com/qpdf/qpdf/releases/download/v#{version}/qpdf-#{version}-bin-#{platform}.zip"
+  system("curl", "--fail", "--location", "--connect-timeout", "10", "--max-time", "120", "--output", archive, url, exception: true)
+  abort "qpdf checksum mismatch" unless Digest::SHA256.file(archive).hexdigest == checksum
+  unpacked = File.join(directory, "runtime")
+  system("unzip", "-q", archive, "-d", unpacked, exception: true)
+  FileUtils.mkdir_p(destination)
+  FileUtils.cp_r(Dir.glob(File.join(unpacked, "*")), destination, remove_destination: true)
+  system(File.join(destination, "bin/qpdf"), "--version", exception: true)
+  File.write(marker, "#{checksum}\n")
+end

@@ -1,8 +1,10 @@
 require "rails_helper"
+require_relative "../support/pdf_fixture_builder"
 
 RSpec::Matchers.define_negated_matcher :not_change, :change
 
 RSpec.describe "Assignment creation", type: :request do
+  include PdfFixtureBuilder
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
@@ -172,8 +174,7 @@ RSpec.describe "Assignment creation", type: :request do
     it "applies the 25MiB material boundary at #{bytes} bytes" do
       teacher_login
       Tempfile.create([ "boundary", ".pdf" ]) do |file|
-        file.write("%PDF-1.4\n")
-        file.truncate(bytes)
+        file.write(valid_pdf_bytes(size: bytes))
         file.rewind
         material = Rack::Test::UploadedFile.new(file.path, "application/pdf", original_filename: "material.pdf")
         counts = [ Assignment.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
