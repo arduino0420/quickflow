@@ -5,7 +5,12 @@ class AnswerReader
   end
 
   def call(submission)
-    submission.answer_file.open do |file|
+    # Resolve the captured attachment before opening; never reload the live owner
+    # after external work has started.
+    blob = submission.answer_file.blob
+    raise "Answer PDF is missing" unless blob
+
+    blob.open do |file|
       uploaded_file = @client.files.create(
         file: Pathname.new(file.path),
         purpose: "user_data",

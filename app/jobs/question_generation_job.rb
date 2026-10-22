@@ -7,6 +7,8 @@ class QuestionGenerationJob < ApplicationJob
     # Old queued jobs have no immutable identity. They must never infer fresh intent.
     return unless request_id
 
+    assignment.reload
+    owner_id = assignment.teacher_id
     request = assignment.question_generation_requests.find_by(id: request_id)
     return unless request && request.material_blob_id == material_blob_id && request.selected_input?(assignment)
     return if request.state == "failed"
@@ -18,40 +20,49 @@ class QuestionGenerationJob < ApplicationJob
       return unless questions&.any?
     rescue StandardError => error
       Rails.logger.error("QuestionGenerationJob failed: #{error.class}")
-      fan_out(request, material_blob_id, generation, state: "failed", token: generator&.claim_token) do |submission|
+      return unless generator&.failure_recorded
+
+      fan_out(request, material_blob_id, generation, owner_id: owner_id, state: "failed", token: generator.claim_token) do |submission|
         submission.update!(status: :failed)
       end
       return
     end
 
     success_token = generator.claim_token || initial_token
-    fan_out(request, material_blob_id, generation, state: "succeeded", token: success_token) do |submission|
+    targets = []
+    fan_out(request, material_blob_id, generation, owner_id: owner_id, state: "succeeded", token: success_token) do |submission|
+      targets << [ submission.id, SubmissionProcessingClaim.admission_snapshot(submission.id, generation) ]
+    end
+    targets.each do |id, snapshot|
       begin
+        submission = Submission.find_by(id: id)
+        next unless submission
+
         raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
       rescue StandardError => error
-        submission.reload
-        request.reload
-        owner = request.assignment.reload
-        if request.selected_input?(owner) && request.state == "succeeded" && request.claim_token == success_token &&
-            submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
-          submission.update!(status: :failed)
+        request.with_selected_lock do |owner|
+          next unless owner.teacher_id == owner_id && request.state == "succeeded" && request.claim_token == success_token
+
+          SubmissionProcessingClaim.fail_ready(id, generation, snapshot: snapshot)
         end
         Rails.logger.error("QuestionGenerationJob grading enqueue failed: #{error.class}")
       end
     end
+  rescue ActiveRecord::RecordNotFound
+    nil
   end
 
   private
 
-  def fan_out(request, blob_id, generation, state:, token:)
+  def fan_out(request, blob_id, generation, owner_id:, state:, token:)
     return unless token.present?
 
     request.with_selected_lock do |assignment|
-      next unless request.state == state && request.claim_token == token && request.material_blob_id == blob_id
+      next unless assignment.teacher_id == owner_id && request.state == state && request.claim_token == token && request.material_blob_id == blob_id
 
       assignment.submissions.where(status: [ :submitted, :grading ]).where.not(extracted_text: [ nil, "" ]).find_each do |submission|
         submission.with_lock do
-          next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
+          next if submission.processing_claim_stage != "ready" || submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
 
           yield submission
         end

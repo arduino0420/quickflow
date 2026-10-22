@@ -43,6 +43,7 @@ class Student::SubmissionsController < ApplicationController
         return head :conflict if handwritten? && !valid_draft?
         return redirect_already_submitted if existing_submission
 
+        @submission.assign_attributes(SubmissionProcessingClaim.ready_attributes)
         @submission.save!
       end
 
@@ -150,13 +151,13 @@ class Student::SubmissionsController < ApplicationController
   end
 
   def enqueue_answer_reading
+    snapshot = SubmissionProcessingClaim.admission_snapshot(@submission.id, 0)
     raise "Could not enqueue answer reading" unless AnswerReadingJob.perform_later(@submission)
 
     true
   rescue StandardError => error
-    @submission.with_lock do
-      @submission.update!(status: :failed) unless @submission.completed? || @submission.failed?
-    end
+    SubmissionProcessingClaim.fail_ready(@submission.id, 0, snapshot: snapshot)
+    @submission.reload
     Rails.logger.error("Answer reading enqueue failed: submission_id=#{@submission.id} #{error.class}")
     @submission.completed?
   end

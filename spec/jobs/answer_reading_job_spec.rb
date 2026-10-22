@@ -12,6 +12,7 @@ RSpec.describe AnswerReadingJob, type: :job do
   let(:submission) do
     assignment.assignment_classrooms.create!(classroom: classroom)
     Submission.create!(
+      processing_claim_stage: "ready",
       student: student,
       assignment: assignment,
       status: :submitted,

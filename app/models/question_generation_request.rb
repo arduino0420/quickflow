@@ -24,7 +24,7 @@ class QuestionGenerationRequest < ApplicationRecord
 
   def with_selected_lock
     assignment.with_lock("FOR NO KEY UPDATE") do
-      reload
+      reload(lock: true)
       yield assignment if selected_input?(assignment)
     end
   end

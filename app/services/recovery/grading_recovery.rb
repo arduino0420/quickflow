@@ -19,18 +19,19 @@ module Recovery
           { result: "indeterminate", reason_codes: [ "grading_job_present_or_unknown" ] }
         else
           generation = submission.processing_generation + 1
-          submission.update!(processing_generation: generation, status: :grading)
+          submission.update!(**SubmissionProcessingClaim.ready_attributes, processing_generation: generation, status: :grading)
           nil
         end
       end
       return report unless generation && report[:result] == "candidate"
 
+      snapshot = SubmissionProcessingClaim.admission_snapshot(submission_id, generation)
       begin
         raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(Submission.find(submission_id), generation)
         { result: "enqueued", reason_codes: [] }
       rescue StandardError => error
         begin
-          restore_failed(submission_id, generation)
+          restore_failed(submission_id, generation, snapshot)
         rescue StandardError => restore_error
           Rails.logger.error("Grading recovery state restore failed: submission_id=#{submission_id} generation=#{generation} #{restore_error.class}")
         end
@@ -41,13 +42,11 @@ module Recovery
 
     private
 
-    def restore_failed(submission_id, generation)
+    def restore_failed(submission_id, generation, snapshot)
       submission = Submission.find_by(id: submission_id)
-      submission&.with_lock do
-        if submission.processing_generation == generation && submission.grading? && !submission.grading_results.exists?
-          submission.update!(status: :failed)
-        end
-      end
+      return unless submission
+
+      SubmissionProcessingClaim.fail_ready(submission_id, generation, snapshot: snapshot)
     end
 
     # Treat an unreadable or unfamiliar queue entry as active. The second recovery

@@ -4,40 +4,20 @@ class AnswerGradingJob < ApplicationJob
   queue_as :default
 
   def perform(submission, generation = 0)
-    submission.reload
-    return if submission.processing_generation != generation || submission.completed? || submission.failed?
+    claim = SubmissionProcessingClaim.new(submission, generation, "grading")
+    return unless claim.claim
 
-    AnswerGrader.reading_problems(submission.extracted_text)
-    generator = QuestionGenerator.new
-    questions = generator.saved_questions(submission.assignment)
-    if questions.empty?
-      raise "Question generation failed; grading is stopped" if generator.failed?(submission.assignment)
-
-      # The generation job resumes readable submissions after it saves shared questions.
-      submission.with_lock do
-        submission.update!(status: :grading) if submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
-      end
-      return
+    results = AnswerGrader.new.call(claim.submission, claim.questions)
+    unless results.is_a?(Array) && results.map { |attributes| attributes[:question]&.id || attributes[:question_id] }.sort == claim.questions.map(&:id).sort
+      raise "Incomplete grading results"
     end
-    submission.with_lock do
-      next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
 
-      begin
-        submission.update!(status: :grading)
-        results = AnswerGrader.new.call(submission, questions)
-        Submission.transaction(requires_new: true) do
-          results.each { |attributes| submission.grading_results.create!(attributes) }
-          submission.update!(status: :completed)
-        end
-      rescue StandardError => error
-        submission.reload.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
-        Rails.logger.error("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}")
-      end
+    claim.finalize do |current|
+      results.each { |attributes| current.grading_results.create!(attributes) }
+      current.update!(status: :completed)
     end
   rescue StandardError => error
-    submission.with_lock do
-      submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
-    end
+    claim&.fail
     Rails.logger.error("AnswerGradingJob failed: submission_id=#{submission.id} #{error.class}")
   end
 end

@@ -17,7 +17,7 @@ RSpec.shared_context "AI grading records" do
   end
   let(:submission) do
     assignment.assignment_classrooms.find_or_create_by!(classroom: classroom)
-    Submission.create!(assignment: assignment, student: student, submitted_at: Time.current,
+    Submission.create!(processing_claim_stage: "ready", assignment: assignment, student: student, submitted_at: Time.current,
       extracted_text: JSON.generate(problems: [ problem ]))
   end
   let(:files) { instance_double(OpenAI::Resources::Files) }

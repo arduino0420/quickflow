@@ -85,21 +85,10 @@ RSpec.describe "Concurrent AI processing", type: :job do
   def overlap(first, second, entered, release)
     threads = [ Thread.new { ActiveRecord::Base.connection_pool.with_connection { first.call } } ]
     Timeout.timeout(10) { entered.pop }
-    backend = Queue.new
-    threads << Thread.new do
-      ActiveRecord::Base.connection_pool.with_connection do |connection|
-        backend << connection.select_value("SELECT pg_backend_pid()")
-        second.call
-      end
-    end
-    Timeout.timeout(10) do
-      pid = Integer(backend.pop)
-      loop do
-        break if ActiveRecord::Base.connection.select_value("SELECT cardinality(pg_blocking_pids(#{pid}))").positive?
-
-        sleep 0.01
-      end
-    end
+    threads << Thread.new { ActiveRecord::Base.connection_pool.with_connection { second.call } }
+    # The duplicate must return while the first request remains paused.
+    raise "Duplicate blocked behind external work" unless threads.last.join(5)
+    threads.last.value
     release << true
     threads.each { |thread| raise "Concurrent job did not finish" unless thread.join(10) }
     threads.map(&:value)
@@ -189,22 +178,32 @@ RSpec.describe "Concurrent AI processing", type: :job do
     expect(submission).to be_grading
   end
 
-  it "does not repeat a rejected grading registration for concurrent reading jobs" do
-    submission_id = submission.id
-    original_reading = submission.extracted_text
+  it "does not let a delayed grading enqueue error fail an already claimed grading worker" do
+    question = create_question
+    id = submission.id
     entered = Queue.new
     release = Queue.new
-    expect(AnswerReader).not_to receive(:new)
-    expect(AnswerGradingJob).to receive(:perform_later).once do
+    worker = nil
+    allow(AiClient).to receive(:build).and_return(client)
+    allow(responses).to receive(:create) do
       entered << true
       Timeout.timeout(10) { release.pop }
+      ai_response(results: [ judgment(question) ])
+    end
+    allow(AnswerGradingJob).to receive(:perform_later) do
+      worker = Thread.new { ActiveRecord::Base.connection_pool.with_connection { AnswerGradingJob.perform_now(Submission.find(id)) } }
+      Timeout.timeout(5) { entered.pop }
       false
     end
-    overlap(
-      -> { AnswerReadingJob.perform_now(Submission.find(submission_id)) },
-      -> { AnswerReadingJob.perform_now(Submission.find(submission_id)) }, entered, release)
-    expect(submission.reload).to be_failed
-    expect(submission.extracted_text).to eq(original_reading)
-    expect(submission.grading_results).to be_empty
+    AnswerReadingJob.perform_now(submission)
+    expect(submission.reload).to be_grading
+    expect(submission.processing_claim_stage).to eq("grading")
+    release << true
+    expect(worker.join(10)).to be_present
+    worker.value
+    expect(submission.reload).to be_completed
+  ensure
+    release << true if release
+    worker&.join(10)
   end
 end
