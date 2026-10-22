@@ -1,4 +1,8 @@
 Rails.application.routes.draw do
+  if ENV["QUICKFLOW_GUEST_LOGIN"] == "true" && Rails.env.test?
+    post "/guest/:role", to: "guest_sessions#create", as: :guest_login
+  end
+
   namespace :admin do
     get "login", to: "sessions#new", as: :login
     post "login", to: "sessions#create"

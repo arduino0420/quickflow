@@ -52,6 +52,26 @@ RSpec.describe Demo::Seed do
     expect(@directory.join(".seed-manifest.json").read).to eq(manifest)
   end
 
+  it "detects timestamp changes smaller than one second" do
+    seed.call
+    assignment = Assignment.first
+    original = assignment.updated_at
+    assignment.update_columns(updated_at: original + Rational(1, 1_000_000))
+    expect { seed.call }.to raise_error(described_class::UnsafeTarget, /changed/)
+    expect(assignment.reload.updated_at).not_to eq(original)
+  end
+
+  it "flushes attachment parent touches before capturing the manifest" do
+    captured = nil
+    allow(seed).to receive(:snapshot).and_wrap_original do |method|
+      captured = rows
+      method.call
+    end
+    seed.call
+    expect(rows).to eq(captured)
+    expect(seed.verify_guest!).to be(true)
+  end
+
   it "refuses unexpected database tables before writing data" do
     connection = ApplicationRecord.connection
     allow(connection).to receive(:select_rows).and_call_original

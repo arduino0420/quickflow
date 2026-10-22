@@ -46,7 +46,7 @@
       <%= render "grading_status" %>
     </section>
   </div>
-<% else %>
+<% elsif !guest_session? %>
   <% if @assignment.material_file.attached? %>
     <%= link_to "PDFに解答する", student_assignment_pdf_preview_path(@assignment) %>
   <% end %>
