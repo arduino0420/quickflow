@@ -14,6 +14,30 @@ RSpec.describe Assignment, type: :model do
     expect(assignment.published_at).to be_nil
   end
 
+  describe ".distributed_to_school" do
+    it "includes target-school distributions once and excludes other-school and undistributed quizzes" do
+      target = described_class.create!(attributes)
+      [ 1, 2 ].each do |number|
+        classroom = Classroom.create!(school: school, grade: 1, class_number: number)
+        target.assignment_classrooms.create!(classroom: classroom)
+      end
+      other_school = School.create!(school_code: "OTHERSCOPE")
+      other_teacher = Teacher.create!(school: other_school, user_id: "other-scope", password: "password123")
+      other = described_class.create!(attributes.merge(teacher: other_teacher))
+      other.assignment_classrooms.create!(classroom: Classroom.create!(school: other_school, grade: 1, class_number: 1))
+      described_class.create!(attributes)
+
+      expect(described_class.distributed_to_school(school.id)).to contain_exactly(target)
+      expect(described_class.distributed_to_school(other_school.id)).to contain_exactly(other)
+    end
+
+    it "returns an empty relation when the school has no distributions" do
+      described_class.create!(attributes)
+
+      expect(described_class.distributed_to_school(school.id)).to be_empty
+    end
+  end
+
   it "returns its questions" do
     assignment = described_class.create!(attributes)
     question = Question.create!(assignment: assignment, question_label: "1", position: 1,
@@ -25,8 +49,9 @@ RSpec.describe Assignment, type: :model do
 
   it "returns its submissions" do
     assignment = described_class.create!(attributes)
-    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1)
     student = Student.create!(classroom: classroom, attendance_number: 1, password: "password123")
+    assignment.assignment_classrooms.create!(classroom: classroom)
     submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
 
     expect(assignment.submissions).to contain_exactly(submission)
@@ -79,7 +104,7 @@ RSpec.describe Assignment, type: :model do
   it "returns multiple distribution records and classrooms" do
     assignment = described_class.create!(attributes)
     classrooms = [ 1, 2 ].map do |number|
-      Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: number)
+      Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: number)
     end
     distributions = classrooms.map do |classroom|
       AssignmentClassroom.create!(assignment: assignment, classroom: classroom)

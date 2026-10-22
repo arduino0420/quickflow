@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe GradingResult, type: :model do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
   let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5) }
   let(:submission) { Submission.create!(assignment: assignment, student: student, submitted_at: Time.current) }
@@ -16,6 +16,27 @@ RSpec.describe GradingResult, type: :model do
   let(:attributes) do
     { submission: submission, question: question, ai_judgment: :correct,
       ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.zone.local(2026, 10, 2, 10) }
+  end
+
+  before { assignment.assignment_classrooms.create!(classroom: classroom) }
+
+  [ :correct, :incorrect, :needs_review ].product([ nil, :correct, :incorrect ]).each do |ai, teacher|
+    it "derives the final judgment from AI #{ai} and teacher #{teacher.inspect}" do
+      result = described_class.new(attributes.merge(ai_judgment: ai, teacher_judgment: teacher))
+      expect(result.final_judgment).to eq((teacher || ai).to_s)
+      expect(result.ai_judgment).to eq(ai.to_s)
+    end
+  end
+
+  it "selects only needs_review results with no teacher judgment" do
+    pending = described_class.create!(attributes.merge(ai_judgment: :needs_review))
+    expect(described_class.pending_review).to include(pending)
+    pending.update!(teacher_judgment: :incorrect)
+    expect(described_class.pending_review).not_to include(pending)
+    pending.update!(teacher_judgment: nil, ai_judgment: :correct)
+    expect(described_class.pending_review).not_to include(pending)
+    pending.update!(ai_judgment: :incorrect)
+    expect(described_class.pending_review).not_to include(pending)
   end
 
   it "persists its associations and traceability information" do

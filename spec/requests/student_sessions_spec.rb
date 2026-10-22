@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Student sessions", type: :request do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "teacher-password") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 3, password: "student-password") }
   let(:credentials) do
     { school_code: school.school_code, grade: classroom.grade, class_number: classroom.class_number,
@@ -18,7 +18,7 @@ RSpec.describe "Student sessions", type: :request do
     document = Nokogiri::HTML(response.body)
     expect(document.at_css('form[action="/student/login"][method="post"]')).to be_present
     %w[school_code grade class_number attendance_number password].each do |field|
-      expect(document.at_css("input[name='student_session[#{field}]']")).to be_present
+      expect(document.at_css("[name='student_session[#{field}]']")).to be_present
     end
     expect(document.at_css('input[name="student_session[password]"][type="password"]')).to be_present
     expect(document.at_css('form[action="/student/logout"]')).to be_nil
@@ -86,7 +86,8 @@ RSpec.describe "Student sessions", type: :request do
       { school: school, grade: 2, class_number: 2 },
       { school: school, grade: 1, class_number: 3 }
     ].each do |attributes|
-      other_classroom = Classroom.create!(attributes.merge(teacher: teacher))
+      owner = attributes[:school] == school ? teacher : Teacher.create!(school: other_school, user_id: "foreign", password: "password123")
+      other_classroom = Classroom.create!(attributes.merge(teachers: [ owner ]))
       Student.create!(classroom: other_classroom, attendance_number: 3, password: "student-password")
     end
 
@@ -100,7 +101,7 @@ RSpec.describe "Student sessions", type: :request do
 
   it "uses the classroom's school rather than the teacher's school" do
     other_school = School.create!(school_code: "OTHER1")
-    classroom.update!(school: other_school)
+    classroom.update_columns(school_id: other_school.id) # Historical school mismatch for login filtering.
     login_credentials = credentials.merge(school_code: other_school.school_code)
 
     post student_login_path, params: { student_session: login_credentials }
@@ -114,7 +115,11 @@ RSpec.describe "Student sessions", type: :request do
 
   it "logs out and clears authentication for subsequent requests" do
     login
-    delete student_logout_path
+    follow_redirect!
+    form = Nokogiri::HTML(response.body).at_css("header .app-header-actions form[action='/student/logout'][method='post']")
+    expect(form.at_css("button").text).to eq("ログアウト")
+    expect(form.at_css("input[name='_method']")[:value]).to eq("delete")
+    delete form[:action]
 
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(student_login_path)
@@ -122,6 +127,32 @@ RSpec.describe "Student sessions", type: :request do
     expect_login_form
     get student_login_path
     expect_login_form
+    [ student_assignments_path, student_assignment_path(123), answer_student_assignment_path(123), result_student_assignment_path(123) ].each do |path|
+      get path
+      expect(response).to redirect_to(student_login_path)
+    end
+  end
+
+  it "protects list logout with a CSRF token" do
+    original_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    get student_login_path
+    token = Nokogiri::HTML(response.body).at_css("input[name='authenticity_token']")[:value]
+    post student_login_path, params: { authenticity_token: token, student_session: credentials }
+    follow_redirect!
+    form = Nokogiri::HTML(response.body).at_css("form[action='/student/logout']")
+    logout_token = form.at_css("input[name='authenticity_token']")[:value]
+    expect(logout_token).to be_present
+    delete student_logout_path
+    expect(response).to have_http_status(422)
+    get student_assignments_path
+    expect(response).to have_http_status(:ok)
+    delete student_logout_path, params: { authenticity_token: logout_token }
+    expect(response).to redirect_to(student_login_path)
+    get student_assignments_path
+    expect(response).to redirect_to(student_login_path)
+  ensure
+    ActionController::Base.allow_forgery_protection = original_protection
   end
 
   it "allows logout without a logged-in student" do
@@ -175,5 +206,42 @@ RSpec.describe "Student sessions", type: :request do
 
     get login_path
     expect(response.body).not_to include("ログイン中のユーザーID:")
+  end
+  it "shows the approved dropdown choices with an empty prompt" do
+    get student_login_path
+    document = Nokogiri::HTML(response.body)
+    { grade: [ 3, "年" ], class_number: [ 10, "組" ], attendance_number: [ 40, "番" ] }.each do |field, (maximum, suffix)|
+      select = document.at_css("select[name='student_session[#{field}]']")
+      expect(select.css("option").map { |option| [ option[:value], option.text ] }).to eq(
+        [ [ "", "選択してください" ] ] + (1..maximum).map { |n| [ n.to_s, "#{n}#{suffix}" ] }
+      )
+      expect(select.at_css("option")[:value]).to eq("")
+    end
+    expect(document.css("input[type='number']")).to be_empty
+  end
+
+  [ [ 1, 1, 1 ], [ 6, 15, 40 ] ].each do |grade, class_number, attendance|
+    it "logs in with boundary values #{[ grade, class_number, attendance ]}" do
+      target = Classroom.create!(school: school, teachers: [ teacher ], grade: grade, class_number: class_number)
+      pupil = Student.create!(classroom: target, attendance_number: attendance, password: "student-password")
+      post student_login_path, params: { student_session: credentials.merge(grade: grade,
+        class_number: class_number, attendance_number: attendance) }
+      expect(response).to redirect_to(student_assignments_path)
+      expect(request.session[:student_id]).to eq(pupil.id)
+    end
+  end
+
+  { grade: [ 0, 7, "1abc", "1.5", [ "1" ] ], class_number: [ 0, 16, "2abc", "2.5" ],
+    attendance_number: [ 0, 41, "3abc", "3.5" ] }.each do |field, invalid_values|
+    invalid_values.each do |value|
+      it "rejects tampered #{field}=#{value.inspect} before looking up accounts" do
+        submitted = credentials.merge(field => value)
+        expect(School).not_to receive(:find_by)
+        post student_login_path, params: { student_session: submitted }
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.body).to include("ログイン情報またはパスワードが正しくありません。")
+        expect(request.session[:student_id]).to be_nil
+      end
+    end
   end
 end

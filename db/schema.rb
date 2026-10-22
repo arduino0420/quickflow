@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_065742) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_21_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -42,6 +42,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_065742) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "admins", force: :cascade do |t|
+    t.bigint "school_id", null: false
+    t.string "user_id", null: false
+    t.string "password_digest", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["school_id"], name: "index_admins_on_school_id"
+    t.index ["user_id"], name: "index_admins_on_user_id", unique: true
+  end
+
+  create_table "answer_drafts", force: :cascade do |t|
+    t.bigint "student_id", null: false
+    t.bigint "assignment_id", null: false
+    t.string "material_fingerprint", limit: 64, null: false
+    t.integer "format_version", default: 1, null: false
+    t.jsonb "page_data", default: [], null: false
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id"], name: "index_answer_drafts_on_assignment_id"
+    t.index ["student_id", "assignment_id"], name: "index_answer_drafts_on_student_id_and_assignment_id", unique: true
+    t.index ["student_id"], name: "index_answer_drafts_on_student_id"
+  end
+
   create_table "assignment_classrooms", force: :cascade do |t|
     t.bigint "assignment_id", null: false
     t.bigint "classroom_id", null: false
@@ -62,9 +86,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_065742) do
     t.index ["teacher_id"], name: "index_assignments_on_teacher_id"
   end
 
+  create_table "authentication_attempt_buckets", primary_key: "key_digest", id: { type: :string, limit: 64 }, force: :cascade do |t|
+    t.integer "attempts", null: false
+    t.datetime "expires_at", null: false
+    t.index ["expires_at"], name: "index_authentication_attempt_buckets_on_expires_at"
+  end
+
   create_table "classrooms", force: :cascade do |t|
     t.bigint "school_id", null: false
-    t.bigint "teacher_id", null: false
+    t.bigint "teacher_id"
     t.integer "grade", null: false
     t.integer "class_number", null: false
     t.datetime "created_at", null: false
@@ -134,8 +164,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_065742) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.text "extracted_text"
+    t.integer "processing_generation", default: 0, null: false
     t.index ["assignment_id", "student_id"], name: "index_submissions_on_assignment_id_and_student_id", unique: true
     t.index ["student_id"], name: "index_submissions_on_student_id"
+  end
+
+  create_table "teacher_classrooms", force: :cascade do |t|
+    t.bigint "teacher_id", null: false
+    t.bigint "classroom_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["classroom_id"], name: "index_teacher_classrooms_on_classroom_id"
+    t.index ["teacher_id", "classroom_id"], name: "index_teacher_classrooms_on_teacher_id_and_classroom_id", unique: true
   end
 
   create_table "teachers", force: :cascade do |t|
@@ -150,6 +190,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_065742) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "admins", "schools"
+  add_foreign_key "answer_drafts", "assignments"
+  add_foreign_key "answer_drafts", "students"
   add_foreign_key "assignment_classrooms", "assignments"
   add_foreign_key "assignment_classrooms", "classrooms"
   add_foreign_key "assignments", "teachers"
@@ -161,5 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_065742) do
   add_foreign_key "students", "classrooms"
   add_foreign_key "submissions", "assignments"
   add_foreign_key "submissions", "students"
+  add_foreign_key "teacher_classrooms", "classrooms"
+  add_foreign_key "teacher_classrooms", "teachers"
   add_foreign_key "teachers", "schools"
 end

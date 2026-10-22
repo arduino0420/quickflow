@@ -1,15 +1,27 @@
+<% content_for :title, "配信済み小テスト | QuickFlow" %>
+<% content_for :header_actions do %>
+  <div class="teacher-header-actions">
+    <span class="teacher-header-identity"><%= current_teacher.user_id %></span>
+    <%= button_to "ログアウト", logout_path, method: :delete, class: "teacher-logout-button" %>
+  </div>
+<% end %>
 <h1>配信済み小テスト</h1>
+<% if notice.present? %><p role="status"><%= notice %></p><% end %>
+<% if alert.present? %><p role="alert"><%= alert %></p><% end %>
 
-<%= link_to "小テスト配信", new_assignment_path %>
+<nav class="assignment-list-actions" aria-label="教師メニュー">
+<% unless guest_session? %>  <%= link_to "小テスト配信", new_assignment_path, class: "button button-primary" %><% end %>
+</nav>
 
 <% if @assignments.empty? %>
   <p>配信済みの小テストはありません。</p>
 <% else %>
-  <ul>
+  <ul class="assignment-list">
     <% @assignments.each do |assignment| %>
-      <li>
-        <%= assignment.title %>
-        <%= link_to "詳細", assignment_path(assignment) %>
+      <li class="assignment-card">
+        <%= link_to assignment_path(assignment), class: "assignment-card-link" do %>
+          <span class="assignment-list-title"><%= assignment.title %></span>
+        <% end %>
       </li>
     <% end %>
   </ul>

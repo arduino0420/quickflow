@@ -1,0 +1,42 @@
+ja:
+  activerecord:
+    attributes:
+      assignment:
+        title: 小テスト名
+        point_per_question: 1問あたりの点数
+        material_file: 教材PDF
+      submission:
+        assignment: 小テスト
+        student: 生徒
+        student_id: 生徒
+        status: 提出状態
+        submitted_at: 提出日時
+        answer_file: 答案PDF
+      admin:
+        school: 学校
+        user_id: 管理者ID
+        password: パスワード
+        password_confirmation: パスワード（確認）
+      student:
+        classroom: クラス
+        attendance_number: 出席番号
+        password: パスワード
+        password_confirmation: パスワード（確認）
+      teacher:
+        school: 学校
+        user_id: ユーザーID
+        password: パスワード
+        password_confirmation: パスワード（確認）
+  errors:
+    format: "%{attribute}%{message}"
+    messages:
+      blank: を入力してください
+      required: を選択してください
+      taken: はすでに登録されています
+      invalid: が正しくありません
+      not_a_number: は数値で入力してください
+      not_an_integer: は整数で入力してください
+      greater_than_or_equal_to: は%{count}以上で入力してください
+      less_than_or_equal_to: は%{count}以下で入力してください
+      confirmation: が%{attribute}と一致しません
+      password_too_long: は72バイト以下で入力してください

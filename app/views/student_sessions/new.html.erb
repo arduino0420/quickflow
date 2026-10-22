@@ -1,4 +1,5 @@
-<h1>生徒ログイン</h1>
+<% content_for :title, "生徒ログイン | QuickFlow" %>
+<h1 class="auth-heading">生徒ログイン</h1>
 
 <% if flash[:alert].present? %>
   <p role="alert"><%= flash[:alert] %></p>
@@ -11,19 +12,19 @@
   <%= form_with scope: :student_session, url: student_login_path do |form| %>
     <div>
       <%= form.label :school_code, "学校コード" %>
-      <%= form.text_field :school_code %>
+      <%= form.text_field :school_code, autocomplete: "off", spellcheck: false %>
     </div>
     <div>
       <%= form.label :grade, "学年" %>
-      <%= form.number_field :grade %>
+      <%= form.select :grade, (1..3).map { |n| [ "#{n}年", n ] }, prompt: "選択してください" %>
     </div>
     <div>
       <%= form.label :class_number, "クラス番号" %>
-      <%= form.number_field :class_number %>
+      <%= form.select :class_number, (1..10).map { |n| [ "#{n}組", n ] }, prompt: "選択してください" %>
     </div>
     <div>
       <%= form.label :attendance_number, "出席番号" %>
-      <%= form.number_field :attendance_number %>
+      <%= form.select :attendance_number, (1..40).map { |n| [ "#{n}番", n ] }, prompt: "選択してください" %>
     </div>
     <div>
       <%= form.label :password, "パスワード" %>

@@ -4,7 +4,7 @@ RSpec.describe AssignmentClassroom, type: :model do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
   let(:assignment) { Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5) }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:attributes) { { assignment: assignment, classroom: classroom } }
 
   it "persists its assignment and classroom" do
@@ -33,7 +33,7 @@ RSpec.describe AssignmentClassroom, type: :model do
 
   it "allows the same assignment in another classroom" do
     described_class.create!(attributes)
-    other_classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
+    other_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
 
     expect(described_class.create!(attributes.merge(classroom: other_classroom))).to be_persisted
   end
@@ -45,12 +45,14 @@ RSpec.describe AssignmentClassroom, type: :model do
     expect(described_class.create!(attributes.merge(assignment: other_assignment))).to be_persisted
   end
 
-  it "allows a classroom belonging to another teacher and school" do
+  it "rejects a classroom belonging to another school" do
     other_school = School.create!(school_code: "OTHER1")
     other_teacher = Teacher.create!(school: other_school, user_id: "teacher2", password: "password123")
-    other_classroom = Classroom.create!(school: other_school, teacher: other_teacher, grade: 1, class_number: 1)
+    other_classroom = Classroom.create!(school: other_school, teachers: [ other_teacher ], grade: 1, class_number: 1)
 
-    expect(described_class.create!(attributes.merge(classroom: other_classroom))).to be_persisted
+    distribution = described_class.new(attributes.merge(classroom: other_classroom))
+    expect(distribution.save).to be(false)
+    expect(distribution.errors[:classroom]).to be_present
   end
 
   it "enforces assignment and classroom uniqueness in the database" do

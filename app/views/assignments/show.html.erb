@@ -1,15 +1,21 @@
+<% content_for :title, "小テスト詳細 | QuickFlow" %>
+<% content_for :head do %><meta name="turbo-cache-control" content="no-cache"><% end %>
 <h1>小テスト詳細</h1>
 
 <%= link_to "配信済み小テスト", assignments_path %>
 
-<dl>
+<% if flash[:notice].present? %>
+  <p role="status"><%= flash[:notice] %></p>
+<% end %>
+
+<dl class="assignment-metadata">
   <dt>タイトル</dt>
-  <dd><%= @assignment.title %></dd>
+  <dd class="assignment-title"><span><%= @assignment.title %></span><%= link_to "名前を編集", edit_assignment_path(@assignment), class: "assignment-edit-link" if @classrooms.any? && !guest_session? %></dd>
   <dt>1問あたりの点数</dt>
   <dd><%= @assignment.point_per_question %></dd>
   <dt>配信先クラス</dt>
   <dd>
-    <ul>
+    <ul class="distributed-classrooms">
       <% @classrooms.each do |classroom| %>
         <li><%= "#{classroom.grade}年#{classroom.class_number}組" %></li>
       <% end %>
@@ -18,3 +24,72 @@
   <dt>教材ファイル名</dt>
   <dd><%= @assignment.material_file.filename if @assignment.material_file.attached? %></dd>
 </dl>
+
+<%= form_with url: assignment_path(@assignment), method: :get, id: "classroom-selection", data: { controller: "classroom-selection" } do |form| %>
+  <%= form.label :classroom_id, "表示するクラス" %>
+  <%= form.select :classroom_id, [[ "配信したすべてのクラス", "all" ]] + @classrooms.map { |classroom| [ classroom_label(classroom), classroom.id ] }, { selected: @classroom_selection }, data: { action: "change->classroom-selection#submit" } %>
+  <%= hidden_field_tag :filter, "needs_review" if @review_only %>
+<% end %>
+
+<section aria-labelledby="grade-summary-heading">
+  <h2 id="grade-summary-heading">成績一覧（<%= @selected_classroom ? classroom_label(@selected_classroom) : "配信したすべてのクラス" %>）</h2>
+  <p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
+  <nav class="review-filters" aria-label="成績一覧の表示切り替え">
+    <%= link_to "すべての生徒", assignment_path(@assignment, classroom_id: @classroom_selection, filter: "all"), aria: { current: @review_only ? nil : "page" } %>
+    <%= link_to "要確認のある生徒", assignment_path(@assignment, classroom_id: @classroom_selection, filter: "needs_review"), aria: { current: @review_only ? "page" : nil } %>
+  </nav>
+  <% if @students.empty? %>
+    <p><%= @review_only ? "要確認のある生徒はいません。" : "選択したクラスに生徒がいません。" %></p>
+  <% else %>
+    <div class="review-table-container" tabindex="0" role="region" aria-label="成績一覧">
+      <table class="review-table" id="grade-summary">
+        <thead>
+          <tr>
+            <% unless @selected_classroom %><th scope="col">クラス</th><% end %>
+            <th scope="col">出席番号</th>
+            <th scope="col">提出状況</th>
+            <th scope="col">得点</th>
+            <th scope="col">要確認</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @students.each do |student| %>
+            <% submission = @submissions_by_student_id[student.id] %>
+            <% score = @scores_by_submission_id[submission&.id] %>
+            <% pending_review_count = @pending_review_counts.fetch(submission&.id, 0) %>
+            <tr id="grade_student_<%= student.id %>" class="<%= "grade-needs-review" if pending_review_count.positive? %>" <%= tag.attributes(data: { controller: "row-navigation", action: "click->row-navigation#open" }) if submission %>>
+              <% unless @selected_classroom %><td><%= classroom_label(student.classroom) %></td><% end %>
+              <td class="grade-attendance">
+                <% if submission %>
+                  <%= link_to "#{student.attendance_number}番", assignment_submission_path(@assignment, submission, classroom_id: @classroom_selection, filter: @review_only ? "needs_review" : "all"), class: "grade-row-link", aria: { label: "#{classroom_label(student.classroom)} 出席番号#{student.attendance_number}の答案確認" } %>
+                <% else %>
+                  <%= student.attendance_number %>番
+                <% end %>
+              </td>
+              <td class="grade-status"><span><%= submission_status_label(submission) %></span></td>
+              <td class="grade-score"><%= submission_score_label(submission, score, pending_review_count: pending_review_count) if submission&.completed? %></td>
+              <td class="grade-review">
+                <% if pending_review_count.positive? %>
+                  <strong>あり（<%= pending_review_count %>件）</strong><%= "（暫定）" unless submission&.completed? && !score.nil? %>
+                <% else %>
+                  <%= submission&.completed? && !score.nil? ? "なし" : "—" %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</section>
+<% if @classrooms.any? && !guest_session? %>
+<div class="grade-export-actions">
+  <%= link_to "Excel出力", export_assignment_path(@assignment, classroom_id: @classroom_selection), class: "button button-excel-export", data: { turbo: false } %>
+</div>
+<% end %>
+<div class="assignment-delete-actions">
+  <% unless guest_session? %>
+  <%= button_to "この小テストを削除する", assignment_path(@assignment), method: :delete,
+    form: { data: { turbo_confirm: "「#{@assignment.title}」を削除します。提出答案・採点結果・成績も削除され、元に戻せません。削除してよろしいですか？" } }, class: "button button-danger" %>
+  <% end %>
+</div>
