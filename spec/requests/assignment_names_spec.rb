@@ -59,7 +59,7 @@ RSpec.describe "Assignment name editing", type: :request do
       patch assignment_path(assignment), params: { assignment: { title: title } }
 
       expect(response).to have_http_status(422)
-      expect(document.at_css("[role='alert']").text).to include("小テスト名を保存できませんでした")
+      expect(document.at_css("[role='alert']").text).to include("小テスト名を保存できませんでした", "小テスト名を入力してください")
       expect(document.at_css("input[name='assignment[title]']")[:value]).to eq(title)
       expect(assignment.reload.attributes).to eq(original)
     end

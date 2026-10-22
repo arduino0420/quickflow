@@ -10,6 +10,7 @@ module Quickflow
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.1
+    config.i18n.default_locale = :ja
 
     # Serve private materials only through the authenticated student controller.
     config.active_storage.draw_routes = false

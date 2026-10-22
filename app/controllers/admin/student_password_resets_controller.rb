@@ -1,5 +1,5 @@
 class Admin::StudentPasswordResetsController < Admin::BaseController
-  rescue_from ActiveRecord::RecordNotFound, with: -> { head :not_found }
+  rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   before_action :set_account
 
   def edit
@@ -23,6 +23,12 @@ class Admin::StudentPasswordResetsController < Admin::BaseController
   end
 
   private
+
+  def render_not_found
+    return head :not_found unless request.format.html?
+
+    render file: Rails.public_path.join("404.html"), layout: false, status: :not_found
+  end
 
   def set_account
     @school = current_admin.school

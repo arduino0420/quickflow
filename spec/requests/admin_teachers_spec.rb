@@ -125,6 +125,7 @@ RSpec.describe "Admin teacher management", type: :request do
       expect(response).to have_http_status(422)
       expect(counts).to eq(original)
       expect(document.at_css("[role='alert']")).to be_present
+      expect(response.body).to include("パスワード（確認）がパスワードと一致しません") if change[:password_confirmation] == "different"
       expect(document.css("input[type='password']").map { |field| field[:value] }).to all(be_blank)
       expect(response.body).not_to include("synthetic-teacher-password", "different")
     end
@@ -138,6 +139,7 @@ RSpec.describe "Admin teacher management", type: :request do
     post admin_teachers_path, params: { teacher: attributes.merge(user_id: teacher.user_id) }
 
     expect(response).to have_http_status(422)
+    expect(response.body).to include("ユーザーIDはすでに登録されています")
     expect(counts).to eq(before_counts)
     expect(teacher.reload.attributes).to eq(original)
   end

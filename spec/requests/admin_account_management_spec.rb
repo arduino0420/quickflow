@@ -40,6 +40,36 @@ RSpec.describe "Admin account management", type: :request do
       student: { grade: "1", class_number: "1", attendance_number: "2", **attributes } }
   end
 
+  it "keeps password confirmation errors Japanese before prepare converts them to base messages" do
+    login
+    form_token = password_form
+    original = student.attributes
+    patch admin_student_password_reset_path(student), params: { edit_token: form_token, confirmed: "1", admin_password: "admin-secret",
+      student: { password: "58392047", password_confirmation: "65820473" } }
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(document.at_css('[role="alert"]').text).to include("パスワード（確認）がパスワードと一致しません")
+    expect(student.reload.attributes).to eq(original)
+    expect(response.body).not_to include("58392047", "65820473", "admin-secret", student.password_digest)
+  end
+
+  it "returns the same static HTML 404 for foreign and missing students while keeping non-HTML bodies empty" do
+    login
+    [ foreign_student.id, 999_999_999 ].each do |id|
+      [ edit_admin_student_path(id), confirm_destroy_admin_student_path(id), edit_admin_student_password_reset_path(id) ].each do |path|
+        get path
+        expect(response).to have_http_status(:not_found)
+        expect(response.body).to eq(Rails.public_path.join("404.html").read)
+        expect(response.body).not_to include("FOREIGNMANAGE", foreign_student.password_digest)
+        get path, as: :json
+        expect(response).to have_http_status(:not_found)
+        expect(response.body).to be_empty
+        head path
+        expect(response).to have_http_status(:not_found)
+        expect(response.body).to be_empty
+      end
+    end
+  end
+
   it "shows target identifiers, three operations and empty secret inputs" do
     login
     student
@@ -47,7 +77,8 @@ RSpec.describe "Admin account management", type: :request do
     row = document.at_css("[data-student-id='#{student.id}']")
     expect(row.css('td[data-label="操作"] a').map(&:text)).to eq([ "編集", "削除", "パスワード再設定" ])
     password_form
-    expect(response.body).to include("MANAGE", "1年", "1組", "1番")
+    expect(response.body).to include("MANAGE", "1年", "1組", "1番", "パスワードは半角数字8桁で設定してください。")
+    expect(response.body).not_to include("英字や記号も使用できます")
     expect(document.css('input[type="password"]').map { |field| field["value"] }).to all(be_blank)
     expect(response.headers["Cache-Control"]).to include("no-store")
     expect(response.body).not_to include(student.password_digest, "original-secret")
