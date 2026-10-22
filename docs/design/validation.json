@@ -1,0 +1,15 @@
+{
+  "result": "passed",
+  "baseline_commit": "9bed9d2b6e35e89e51b8d76d1aa76df3e9f01b41",
+  "tables": 17,
+  "foreign_keys": 21,
+  "unique_indexes": 15,
+  "artifact_sha256": {
+    "docs/er_diagram.png": "063cffe525234df35094b4ea24cbeb270508e6125eb43e54aeca7e23dcd26d39",
+    "docs/screen_transition.png": "c552f656fcd837be9421c6778e8a9d8d589a9259e78d49aa37c69b58b22fa908",
+    "docs/design/er_diagram.svg": "f585e783ab16784ed45f96f515b5ef85eca4fb808aad69f8470917ad54f3dfd8",
+    "docs/design/screen_transition.svg": "d803876572d8e4e50bed1f5a6bec994d1bfdd8916e5853a9c1d4c687ced16e01",
+    "docs/design/constraints.json": "5a54204b62c1eefede47dd7d2e12ebb72d03979a10f7641a28e1c9528dce2d6c",
+    "docs/design/schema_reference.md": "6acb9e8d1da6909795a13a1eac9ca495c4baf6e332878cbafac96e74771f93c6"
+  }
+}
