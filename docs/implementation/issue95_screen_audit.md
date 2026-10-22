@@ -46,7 +46,7 @@ contextは判定更新paramsから独立し、失敗時の再表示にも残す�
 | 生徒 | `/student/assignments/:id` | 提出前長文/採点済み `student-unsubmitted`,`student-graded` | 提出・採点status/MVP request |
 | 生徒 | `/student/assignments/:id/pdf_preview` | 長い課題名・描画完了 `student-pdf` | PDF座標保存/復元、4幅提出ボタン、viewport zoom、実worker |
 | 管理者 | `/admin` | 通常 `admin-dashboard` | admin account management |
-| 管理者 | `/admin/teachers` | 通常/空 `admin-teachers`,`admin-teachers-empty` | teacher list layoutの長ID/多数担当・4幅 |
+| 管理者 | `/admin/teachers` | 通常/空 `admin-teachers`,`admin-teachers-empty` | teacher list layoutの短いID・操作ボタン3幅（390/768/1280）、footerの19件・4幅 |
 | 管理者 | `/admin/teachers/new` | 通常 `admin-teacher-new` | Japanese error layoutの長文/複数入力エラー |
 | 管理者 | `/admin/teachers/:id/edit` | 通常 `admin-teacher-edit` | 更新/再設定の既存request |
 | 管理者 | `/admin/students` | 通常 `admin-students` | 多数件/ページングの既存spec |
@@ -71,10 +71,11 @@ contextは判定更新paramsから独立し、失敗時の再表示にも残す�
 入力の意味を変える文言や新しい登録/管理者案内は追加せず、認証前logoは非リンクを維持。
 管理者編集の1〜6年/1〜15組と生徒ログイン1〜3年/1〜10組の差は既存要件確認事項。
 今回のUI監査で選択肢・validation・業務ルールを変更しない。
-ワイヤーフレームにはtitleと戻り条件の差分があるため、設計資料更新Issueへ引継ぐ。
+ワイヤーフレームにはtitleと戻り条件の差分があるため、設計資料更新Issue #101/#102 へ引継ぐ。
 
 ## 未確認・制限
 
+- 教師一覧の長いID・多数担当クラスを組み合わせた状態は未確認。既存teacher list layoutは短いID・3幅のみ。
 - タブレット実機と実際の教師/生徒によるユーザビリティ試験は未実施。Chromeの実viewportで代替した。
 - エラー全種類と全画面の直積を4幅で総当たりしたものではない。#94のエラーと既存仕様検証を再利用。
 - AI/AWS/本番アクセスはしていない。AI処理は既存RSpec stubと合成fixtureで検証。
@@ -93,7 +94,7 @@ host/port/dbと実SQLのhost/port/db/data_directory、Storage rootを照合し�
 - 新規全画面System: 3例、失敗0（実23画面・27状態・4幅）。
 - RuboCop: 237ファイル、指摘0。Brakeman: 警告0。
 - 既存PDF/footer/エラー/ゲスト/成績/Excel/MVP回帰と統合後検証は下記に追記。
-- 既存回帰: 57例、失敗0。PDFの保存/復元・実worker/描画・4幅/ズーム、footer、管理者長ID/多数担当、Japanese error layout、ゲスト、全クラス成績、Excel、MVPを含む。
+- 既存回帰: 57例、失敗0。PDFの保存/復元・実worker/描画・4幅/ズーム、footer、教師一覧の短いID・操作ボタン3幅/19件footer4幅、Japanese error layout、ゲスト、全クラス成績、Excel、MVPを含む。
 - 表内スクロール・PDF描画完了待ちを加えた最終関連: 44例、失敗0。108枚を再生成し、一覧・長文答案・保存後空・描画済みPDFの画像を再確認。
 - main `09588f380a9b0ce6f09b0f8a22a7ba4d1a498f26`を通常mergeした統合headで、context request＋全画面Systemは16例、失敗0。
   main差分は#95の31ファイルのみ。#50 docsはmain由来で差分には含まれない。
