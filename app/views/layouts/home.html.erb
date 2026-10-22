@@ -8,9 +8,10 @@
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
-  <body>
+  <body class="app-shell">
     <main class="app-main app-main--compact home-page">
       <%= yield %>
     </main>
+    <%= render "shared/footer" %>
   </body>
 </html>

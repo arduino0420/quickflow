@@ -23,7 +23,7 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
+  <body class="<%= "app-shell" unless content_for?(:hide_footer) %>">
     <header class="app-header <%= "app-header--auth" if [ "sessions", "student_sessions" ].include?(controller_name) %> <%= "app-header--with-actions" if content_for?(:header_actions) %>">
       <div class="app-header-inner">
         <% if current_teacher && !current_student %>
@@ -43,5 +43,6 @@
         <%= yield %>
       </div>
     </main>
+    <%= render "shared/footer" unless content_for?(:hide_footer) %>
   </body>
 </html>
