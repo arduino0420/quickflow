@@ -3,42 +3,57 @@ class QuestionGenerationJob < ApplicationJob
 
   queue_as :default
 
-  def perform(assignment, material_blob_id, generation = 0)
+  def perform(assignment, material_blob_id, generation = 0, request_id: nil)
+    # Old queued jobs have no immutable identity. They must never infer fresh intent.
+    return unless request_id
+
+    request = assignment.question_generation_requests.find_by(id: request_id)
+    return unless request
+    return if request.state == "failed"
+
     generator = QuestionGenerator.new
     begin
-      generator.call(assignment, material_blob_id: material_blob_id)
+      questions = generator.call(assignment, material_blob_id: material_blob_id, request_id: request_id)
+      return unless questions&.any?
     rescue StandardError => error
-      assignment.with_lock("FOR NO KEY UPDATE") do
-        generator.record_failure(assignment)
-        # Parser errors can include AI output; log only diagnostic metadata.
-        Rails.logger.error("QuestionGenerationJob failed: #{error.class}")
-        readable_submissions(assignment).find_each do |submission|
-          submission.with_lock do
-            submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
-          end
-        end
+      Rails.logger.error("QuestionGenerationJob failed: #{error.class}")
+      fan_out(request, material_blob_id, generation, state: "failed", token: generator.claim_token) do |submission|
+        submission.update!(status: :failed)
       end
       return
     end
 
-    readable_submissions(assignment).find_each { |submission| enqueue_grading(submission, generation) }
+    fan_out(request, material_blob_id, generation, state: "succeeded", token: request.reload.claim_token) do |submission|
+      begin
+        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
+      rescue StandardError => error
+        submission.reload
+        request.reload
+        owner = request.assignment.reload
+        if request.selected_input?(owner) && request.state == "succeeded" &&
+            submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
+          submission.update!(status: :failed)
+        end
+        Rails.logger.error("QuestionGenerationJob grading enqueue failed: #{error.class}")
+      end
+    end
   end
 
   private
 
-  def enqueue_grading(submission, generation)
-    submission.reload
-    return if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
+  def fan_out(request, blob_id, generation, state:, token:)
+    return unless token.present?
 
-    raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
-  rescue StandardError => error
-    submission.with_lock do
-      submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
+    request.with_selected_lock do |assignment|
+      next unless request.state == state && request.claim_token == token && request.material_blob_id == blob_id
+
+      assignment.submissions.where(status: [ :submitted, :grading ]).where.not(extracted_text: [ nil, "" ]).find_each do |submission|
+        submission.with_lock do
+          next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
+
+          yield submission
+        end
+      end
     end
-    Rails.logger.error("QuestionGenerationJob grading enqueue failed: #{error.class}")
-  end
-
-  def readable_submissions(assignment)
-    assignment.submissions.where(status: [ :submitted, :grading ]).where.not(extracted_text: [ nil, "" ])
   end
 end

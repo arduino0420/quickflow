@@ -68,7 +68,7 @@ RSpec.describe "Assignment creation", type: :request do
     expect(assignment.published_at).to be_nil
     expect(assignment.classrooms).to contain_exactly(classroom)
     expect(assignment.questions).to be_empty
-    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).exactly(:once)
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).exactly(:once)
     expect(response).to have_http_status(:see_other)
     expect(response).to redirect_to(new_assignment_path)
     follow_redirect!
@@ -401,7 +401,7 @@ RSpec.describe "Assignment creation", type: :request do
         .and change(AssignmentClassroom, :count).by(2)
       expect(response).to have_http_status(:see_other)
       expect(Assignment.last.classrooms).to contain_exactly(classroom, other_classroom)
-      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id).exactly(:once)
+      expect(QuestionGenerationJob).to have_been_enqueued.with(Assignment.last, Assignment.last.material_file.blob.id, 0, request_id: Assignment.last.current_question_generation_request_id).exactly(:once)
     end
 
     it "requires material without changing model validations" do

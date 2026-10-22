@@ -3,10 +3,12 @@ RSpec.shared_context "AI grading records" do
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher-#{SecureRandom.hex(4)}", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
+  let(:generation_model) { nil }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "式の計算", point_per_question: 5)
     item.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "material.pdf", content_type: "application/pdf")
+    QuestionGenerationRequest.select_for_distribution!(item, model: generation_model) if generation_model
     item
   end
   let(:problem) do

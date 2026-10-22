@@ -36,6 +36,8 @@ class AssignmentDeletion
             submissions.each(&:destroy!)
             questions.each(&:destroy!)
             assignment.assignment_classrooms.order(:id).each(&:destroy!)
+            assignment.update!(current_question_generation_request: nil)
+            assignment.question_generation_requests.order(:id).each(&:destroy!)
             assignment.destroy!
             deleted_here = true
           end

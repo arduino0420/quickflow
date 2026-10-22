@@ -4,6 +4,7 @@ require_relative "../support/ai_grading_context"
 
 RSpec.describe "Assignment deletion concurrency", type: :job do
   include_context "AI grading records"
+  let(:generation_model) { AiClient.model(:question_generation) }
   include ActiveJob::TestHelper
   include Rails.application.routes.url_helpers
   self.use_transactional_tests = false
@@ -82,12 +83,12 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     expect(GradingResult.joins(:submission).where(submissions: { assignment_id: @assignment_id })).to be_empty
   end
 
-  def deletion_behind_job(job_class, *args)
+  def deletion_behind_job(job_class, *args, **options)
     entered = Queue.new
     release = Queue.new
     pid = Queue.new
     yield(entered, release)
-    worker = run_thread { job_class.perform_now(*args) }
+    worker = run_thread { job_class.perform_now(*args, **options) }
     Timeout.timeout(5) { entered.pop }
     deletion = run_thread do |connection|
       pid << connection.select_value("SELECT pg_backend_pid()")
@@ -109,7 +110,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
     allow(AiClient).to receive(:build).and_return(client)
     allow(files).to receive(:create).and_return(double(id: "stub-material"))
     blob_id = assignment.material_file.blob.id
-    deletion_behind_job(QuestionGenerationJob, Assignment.find(@assignment_id), blob_id) do |entered, release|
+    deletion_behind_job(QuestionGenerationJob, Assignment.find(@assignment_id), blob_id, request_id: assignment.current_question_generation_request_id) do |entered, release|
       expect(responses).to receive(:create).once do
         entered << true
         Timeout.timeout(8) { release.pop }
@@ -225,7 +226,7 @@ RSpec.describe "Assignment deletion concurrency", type: :job do
       Timeout.timeout(8) { releases[:reading].pop }
       JSON.generate(problems: [ problem ])
     end
-    generation = run_thread { QuestionGenerationJob.perform_now(Assignment.find(@assignment_id), assignment.material_file.blob.id) }
+    generation = run_thread { QuestionGenerationJob.perform_now(Assignment.find(@assignment_id), assignment.material_file.blob.id, request_id: assignment.current_question_generation_request_id) }
     grading = run_thread { AnswerGradingJob.perform_now(Submission.find(@submission_id)) }
     reading = run_thread { AnswerReadingJob.perform_now(Submission.find(reading_submission.id)) }
     entered.each_value { |queue| Timeout.timeout(5) { queue.pop } }

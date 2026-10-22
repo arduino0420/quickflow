@@ -116,7 +116,6 @@ RSpec.describe "Submission processing generations", type: :job do
     generator = instance_double(QuestionGenerator)
     allow(QuestionGenerator).to receive(:new).and_return(generator)
     allow(generator).to receive(:call).and_raise(StandardError, "generation failed")
-    allow(generator).to receive(:record_failure)
     QuestionGenerationJob.perform_now(assignment, 0)
     expect(submission.reload).to be_grading
     expect(submission.grading_results).to be_empty
@@ -132,13 +131,15 @@ RSpec.describe "Submission processing generations", type: :job do
 
   it "does not let an old question enqueue failure mark a newer submission failed" do
     submission.update!(status: :grading)
+    request = QuestionGenerationRequest.select_for_distribution!(assignment)
+    request.update!(state: "succeeded", claim_token: "token")
     generator = instance_double(QuestionGenerator, call: [ create_question ])
     allow(QuestionGenerator).to receive(:new).and_return(generator)
     allow(AnswerGradingJob).to receive(:perform_later) do
       submission.update!(processing_generation: 1)
       false
     end
-    QuestionGenerationJob.perform_now(assignment, 0)
+    QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id)
     expect(submission.reload).to be_grading
     expect(submission.processing_generation).to eq(1)
   end
