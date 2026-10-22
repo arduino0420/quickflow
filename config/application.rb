@@ -1,4 +1,6 @@
 require_relative "boot"
+require_relative "../lib/demo/profile"
+Demo::Profile.validate_boot!
 
 require "rails/all"
 

@@ -4,3 +4,10 @@ namespace :demo do
     puts JSON.generate(Demo::Seed.new.call)
   end
 end
+
+namespace :demo do
+  desc "Provision a new explicitly declared production-mode synthetic demo"
+  task provision: :environment do
+    puts JSON.generate(Demo::Provisioner.new.call)
+  end
+end

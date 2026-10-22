@@ -122,20 +122,24 @@ DPro原文は「各テーブルそれぞれ5件以上」「各モデルCRUD Syst
 |answer_drafts|5|未提出生徒。実教材fingerprint、1ページの有効な黒線|
 |active_storage_blobs|10|正規PDF添付から作成。教材5・答案5|
 |active_storage_attachments|10|正規has_one_attachedを使用|
-|authentication_attempt_buckets|0|正規の認証試行なら記録できるが期限付きHMAC制限情報。件数目的で失敗ログインや制限状態を作らない。メンターに適用範囲を確認|
-|active_storage_variant_records|0|PDFのプレビュー/変換が必要な実フローでのみ作成。件数目的の変換・偽variationを作らない。適用範囲確認が必要|
-|solid_cache_entries|作成しない|別cache DB。実cache利用からのみ。保持期間と件数要件の適用範囲確認|
-|solid_cable_messages|作成しない|別cable DB。実broadcastからのみ。架空メッセージを直接INSERTしない。適用範囲確認|
-|solid_queue_jobs|作成しない|別queue DB。正規enqueueからのみ。実AI起動禁止との整合を確認|
+|authentication_attempt_buckets|0|期限付きHMAC制限情報。正規の認証試行から生まれる運用状態であり、件数目的で失敗ログインや制限状態を作らない|
+|active_storage_variant_records|0|PDFのプレビュー/変換が必要な実フローでのみ作成。件数目的の変換・偽variationを作らない|
+|solid_cache_entries|作成しない|別cache DB。実cache利用から生まれる運用状態|
+|solid_cable_messages|作成しない|別cable DB。実broadcastから生まれる運用状態。架空メッセージを直接INSERTしない|
+|solid_queue_jobs|作成しない|別queue DB。正規enqueueから生まれる運用状態。初期データ投入で実AIを起動しない|
 |solid_queue_ready_executions / scheduled_executions / claimed_executions / blocked_executions / failed_executions（各solid_queue_接頭辞）|作成しない|正規Job生命周期のみ。失敗・実行中・待機状態を偽造しない|
 |solid_queue_processes / pauses / semaphores（各solid_queue_接頭辞）|作成しない|実ワーカー・制限・運用状態のみ。件数目的の状態は危険|
 |solid_queue_recurring_tasks / recurring_executions（各solid_queue_接頭辞）|作成しない|正規定期実行の実態が必要。定期AI実行は追加しない|
 |solid_queue_batches / batch_executions（各solid_queue_接頭辞）|作成しない|実batchの生命周期が必要。件数目的で追加しない|
-|schema_migrations / ar_internal_metadata|Rails管理|schema.rb外の基盤表。migration履歴・環境識別を捏造しない。要件適用範囲確認|
+|schema_migrations / ar_internal_metadata|Rails管理|schema.rb外の基盤表。正規migration履歴・環境識別を捏造しない|
 
 全schemaは `db/schema.rb`・`queue_schema.rb`・`cache_schema.rb`・`cable_schema.rb` を確認しました。
 内部表のCRUD画面・削除操作を追加しません。今回のRSpecはseedの整合性・拒否・再実行性の検証であり、
-「各モデルCRUD System Spec」を充足したとは主張しません。メンターへの対象範囲確認が残ります。
+「各モデルCRUD System Spec」を充足したとは主張しません。その要件は既存の業務機能とSystem Specを別途照合します。
+テキストの初期データ要件に対し、業務12表と正規添付は上記の件数を実証しています。
+内部表を運用状態として扱い、件数のために制限・実行中Job・履歴を捏造しないことは実装上の適用判断です。
+原文にない公式免除や、追加のメンター確認を必須条件とする意味ではありません。
+`demo:seed`という明示コマンドの選択も、通常DBへの誤投入を防ぐ実装上の安全策であり、初期データ要件そのものと区別します。
 
 ## 再実行・失敗・並行実行
 

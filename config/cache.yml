@@ -12,5 +12,7 @@ test:
   <<: *default
 
 production:
+<% unless ENV["QUICKFLOW_DEMO_PROFILE"] == "production" %>
   database: cache
+<% end %>
   <<: *default
