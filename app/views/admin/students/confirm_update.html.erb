@@ -1,3 +1,4 @@
+<% content_for :title, "生徒の変更内容を確認 | QuickFlow" %>
 <h1>生徒の変更内容を確認</h1>
 <%= render "admin/shared/student_identity" %>
 <p>変更後: <strong><%= @changes.fetch("grade") %>年 <%= @changes.fetch("class_number") %>組 <%= @changes.fetch("attendance_number") %>番</strong></p>
