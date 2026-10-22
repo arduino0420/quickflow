@@ -29,6 +29,8 @@ curlの標準CA/hostname検証を有効にし、connect timeout 5秒、全体15�
 
 HTTPS応答は `via: 1.1 Caddy`。3ログイン応答は `_quickflow_session` に Path=/、HttpOnly、SameSite=Laxを返したが **Secureなし**、Domainなし。Cookie値は保存・掲載しない。ログイン3画面と/upにはnosniff、SAMEORIGIN、strict-origin-when-cross-origin、X-XSS-Protection:0。今回の全HTTPS応答にHSTSはなかった。教師/生徒はprivate, must-revalidate、管理者はprivate, no-store。証明書issuer/期限/chain詳細は採取しておらず、TLS検証成功と区別する。version識別情報は採取していない。404やCookieの原因を特定したとは扱わない。この結果は新mainの主要機能・実ユーザーフローを検証しない。
 
+別code-only taskが通常productionのSecure Cookie修正を準備中（PR/source identityはまだ本監査で未確認）。現在のCookie key・development・分離demoの挙動を保持する予定で、force_ssl/HSTS/Host/proxyの変更とは別。merge/配備/公開応答でのSecure再検証が済むまでは**live未解決**。この文書はコード修正済み・live改善済みと扱わない。
+
 ## 現行コード監査
 
 リンクは上記SHAの各相対パスを照合する。実サーバーの有効設定とは別。
@@ -83,18 +85,47 @@ SQL
 2. 承認された保守窓で新規書込/Job登録を止め、実行中jobをdrainし、PDF upload/purge/cleanupを含む全writer停止を確認する。稼働中のコピーを「整合backup」と称さない。状態不明なら停止して調査しqueue purgeしない。
 3. 停止した同じ整合時点で各DBをcustom dumpしPDF volumeをsnapshot/archiveする。例は承認後、既存の安全なlibpq serviceとアクセス制限された空のbackup先で実施する:
 
-   ```sh
-   umask 077
-   pg_dump --dbname=service=qf_primary_backup --format=custom --file="$QF_BACKUP_DIR/primary.dump"
-   pg_dump --dbname=service=qf_queue_backup --format=custom --file="$QF_BACKUP_DIR/queue.dump"
-   pg_dump --dbname=service=qf_cache_backup --format=custom --file="$QF_BACKUP_DIR/cache.dump"
-   pg_dump --dbname=service=qf_cable_backup --format=custom --file="$QF_BACKUP_DIR/cable.dump"
-   tar -C "$QF_VERIFIED_STORAGE_ROOT" -cpf "$QF_BACKUP_DIR/storage.tar" .
-   pg_restore --list "$QF_BACKUP_DIR/primary.dump" > "$QF_BACKUP_DIR/primary.contents"
-   shasum -a 256 "$QF_BACKUP_DIR/"*.dump "$QF_BACKUP_DIR/storage.tar"
+   ```bash
+   # 未実行。承認済み保守窓で、照合済みinventoryから4変数を設定してから実行。
+   (
+     set -euo pipefail
+     umask 077
+     : "${QF_BACKUP_DIR:?absolute empty backup directory required}"
+     : "${QF_VERIFIED_STORAGE_ROOT:?absolute storage directory required}"
+     : "${QF_APPROVED_BACKUP_DIR:?independently verified canonical backup path required}"
+     : "${QF_APPROVED_STORAGE_ROOT:?independently verified canonical storage path required}"
+     for qf_path in "$QF_BACKUP_DIR" "$QF_VERIFIED_STORAGE_ROOT" \
+                    "$QF_APPROVED_BACKUP_DIR" "$QF_APPROVED_STORAGE_ROOT"; do
+       case "$qf_path" in /*) ;; *) echo "Absolute paths required" >&2; exit 1 ;; esac
+       test "$qf_path" != / || exit 1
+       test -d "$qf_path" || exit 1
+     done
+     qf_backup=$(cd -- "$QF_BACKUP_DIR" && pwd -P)
+     qf_storage=$(cd -- "$QF_VERIFIED_STORAGE_ROOT" && pwd -P)
+     test "$qf_backup" = "$QF_APPROVED_BACKUP_DIR" || exit 1
+     test "$qf_storage" = "$QF_APPROVED_STORAGE_ROOT" || exit 1
+     case "$qf_backup/" in "$qf_storage/"*) echo "Backup inside storage rejected" >&2; exit 1 ;; esac
+     case "$qf_storage/" in "$qf_backup/"*) echo "Storage inside backup rejected" >&2; exit 1 ;; esac
+     test -w "$qf_backup" && test -r "$qf_storage" || exit 1
+     qf_existing=$(find "$qf_backup" -mindepth 1 -maxdepth 1 -print -quit)
+     test -z "$qf_existing" || { echo "Backup directory must be empty" >&2; exit 1; }
+     # 4 serviceすべてのhost/port/DB/roleは事前に照合。credentialは表示しない。
+     for qf_db in primary queue cache cable; do
+       pg_dump --dbname="service=qf_${qf_db}_backup" --format=custom \
+         --file="$qf_backup/$qf_db.dump"
+       test -s "$qf_backup/$qf_db.dump" || exit 1
+       pg_restore --list "$qf_backup/$qf_db.dump" > "$qf_backup/$qf_db.contents"
+       test -s "$qf_backup/$qf_db.contents" || exit 1
+       shasum -a 256 "$qf_backup/$qf_db.dump"
+     done
+     tar -C "$qf_storage" -cpf "$qf_backup/storage.tar" .
+     test -s "$qf_backup/storage.tar" || exit 1
+     tar -tf "$qf_backup/storage.tar" > /dev/null
+     shasum -a 256 "$qf_backup/storage.tar"
+   )
    ```
 
-   全変数は絶対パス・接続先・容量を人間が照合する。実接続のDB数/サービス名は現地で確定し、存在しないDBを推測しない。manifestに時刻、source commit/image、migration versions、DB/schema別件数（個人情報なし）、PDF件数/byte、checksum、PG/tool versions、整合停止範囲を記録する。`pg_restore --list`とchecksumだけで復元可能とは主張しない。off-host暗号化copyと復号/読戻し検証を行う。
+   `QF_APPROVED_*`は別途レビューしたinventoryのcanonical絶対パスとし、未確認の入力から機械的にコピーして検証を省略しない。4接続先・容量・全writer停止を人間が照合する。失敗時は以後を中断し、不完全backupを成功扱いせず、別の空ディレクトリで原因解決後に再計画する。実接続のDB数/サービス名は現地で確定し、存在しないDBを推測しない。manifestに時刻、source commit/image、migration versions、DB/schema別件数（個人情報なし）、PDF件数/byte、checksum、PG/tool versions、整合停止範囲を記録する。`pg_restore --list`とchecksumだけで復元可能とは主張しない。off-host暗号化copyと復号/読戻し検証を行う。
 4. 復元はまず**新規隔離cluster/空DB/空storage**だけ。production credential、外向きAI通信、jobs、メールを無効化し、通常entrypointを実行しない。`pg_restore --exit-on-error --no-owner --no-privileges --dbname=service=qf_restore_primary primary.dump`、対応するqueue/cache/cableを同じ時点から復元し、archiveを空storageに展開する。所有権/grants/sequenceは対象環境用に検証。live DBへの上書き、`--clean`、seed/prepareは行わない。
 5. 同一sourceでschema/FK/row count、Blob/AttachmentとPDF実体の対応、checksum、PDF表示、教師判定/点数/Excel、台帳/pointerとqueueの対応を照合。queue復元で実Jobを起動しない。live災害復旧へのcutoverは、この結果と失われる書込範囲をownerが承認後に別計画で行う。
 
