@@ -8,7 +8,7 @@
 
 ## 現在の実装と検証範囲
 
-機能の照合基準は [main@cd97d361](https://github.com/arduino0420/quickflow/commit/cd97d361eb18b74b85275730e36c300ee47f17d9)（2026-10-22）。[main CI 39756657910](https://github.com/arduino0420/quickflow/actions/runs/39756657910)はtest・lint・scan_ruby・scan_jsが成功、RSpec 1,839件・失敗0件です。これは提出時点の公開動作や卒業合格を保証するものではありません。最終レビュー前にmain `aa52ab591f5b39c0dbc923a44ac419c9aff102c0`（#39のthruster lock更新のみ）を通常mergeで統合しました。本ドキュメントPRの最終head CIはPRのChecksで別途確認します。
+機能の照合基準は [main@cd97d361](https://github.com/arduino0420/quickflow/commit/cd97d361eb18b74b85275730e36c300ee47f17d9)（2026-10-22）。[main CI 39756657910](https://github.com/arduino0420/quickflow/actions/runs/39756657910)はtest・lint・scan_ruby・scan_jsが成功、RSpec 1,839件・失敗0件です。これは提出時点の公開動作や卒業合格を保証するものではありません。最終レビュー前にmain `5c1a4ad8599fced886465494032cf313bfec56b5`（#39のthruster lock更新と#119の教師PDF保存失敗処理）を通常mergeで統合しました。本ドキュメントPRの最終head CIはPRのChecksで別途確認します。
 
 ゲストの技術実装は完了していますが、**外部公開は未実施**です。既存AWS環境の配備コミット・URL・現在の健康状態はこの作業では確認していません。EC2/Caddyによる既存環境と、未配備のmain・独立デモprofileを同一視しません。[本番確認 #99](https://github.com/arduino0420/quickflow/issues/99)・[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)で提出用URL、HTTPS、`/up`、ログイン画面、DB/PDFのバックアップと復元、ワーカー監視の実証が必要です。`/up`はRails起動確認であり、AI・DB・キュー全体の健全性を保証しません。
 
@@ -58,21 +58,54 @@ bin/rails server -b 127.0.0.1
 
 通常の開発で実AIを利用する場合のみ、運用者から自分の環境用の秘密値を安全に受け取り、`bin/rails credentials:edit`で`openai.api_key`へ保存します。復号には対応する`RAILS_MASTER_KEY`または非公開のmaster keyが必要です。値をREADME・Issue・ログに貼らないでください。`OPENAI_MODEL`、`OPENAI_ANSWER_READING_MODEL`、`OPENAI_QUESTION_GENERATION_MODEL`、`OPENAI_ANSWER_GRADING_MODEL`と`OPENAI_TIMEOUT_SECONDS`が任意設定です。既定モデル名はソース上`gpt-6-astra`、待ち時間120秒で、利用可否・料金の保証ではありません。実送信・課金を伴う確認は別途承認が必要です。通常productionの`QUICKFLOW_DATABASE_PASSWORD`やdemo専用秘密値は[profile手順](docs/implementation/issue93_production_demo.md)に従って管理し、開発/テストへ持ち込みません。
 
-テストは破棄可能な専用DBを使います。開発DBと同じURLを使わないでください。
+全件/requestsテストにはDB名`quickflow_test`を要求する安全ガードがあります。名前を変えたりガードを外したりせず、**毎回新しい専用PostgreSQLクラスタ**を作り、既存の`quickflow_test`とは物理的に隔離します。PostgreSQL 18の`pg_config`・`initdb`・`pg_ctl`・`createdb`がPATHから使えることを確認し、demo/load専用環境変数や本番秘密値を引き継がない専用ターミナルで、次のブロック全体を実行します。通常の開発サーバーとテストを同じcloneで同時に動かさないでください。
 
 ```bash
+(
+set -eu
 export RAILS_ENV=test
-export DATABASE_URL=postgresql://127.0.0.1:5432/quickflow_local_test
-bin/rails db:create
-# 上のrunnerと同じ方法で実接続が専用test DBであることを確認
-bin/rails runner 'c = ActiveRecord::Base.connection; puts [Rails.env, c.select_value("SELECT current_database()"), c.select_value("SELECT inet_server_addr()"), c.select_value("SELECT inet_server_port()")].inspect'
+unset QUICKFLOW_DEMO_PROFILE QUICKFLOW_GUEST_LOGIN QUICKFLOW_HTTP_LOAD_RUN_ID SOLID_QUEUE_IN_PUMA
+QF_PG_BIN="$(pg_config --bindir)"
+export QF_TEST_ROOT="$(mktemp -d /tmp/qf-test.XXXXXX)"
+export QF_TEST_PORT=57519
+mkdir "$QF_TEST_ROOT/socket"
+# 失敗時も今回作ったクラスタだけを停止。失敗後にschema準備へ進まない
+trap 'if test -f "$QF_TEST_ROOT/data/postmaster.pid"; then "$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -m fast -w stop; fi' EXIT
+"$QF_PG_BIN/initdb" -D "$QF_TEST_ROOT/data" -U qf_test_owner --locale=C --encoding=UTF8 --auth-local=trust --auth-host=trust
+# ポート使用中なら起動は失敗する。既存サービスを停止せず、別の未使用ポートで新規クラスタを作る
+"$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -l "$QF_TEST_ROOT/postgres.log" \
+  -o "-h 127.0.0.1 -p $QF_TEST_PORT -k $QF_TEST_ROOT/socket" -w start
+unset PGHOSTADDR PGSERVICE PGSERVICEFILE PGOPTIONS PGPASSWORD
+export PGHOST=127.0.0.1 PGPORT="$QF_TEST_PORT" PGUSER=qf_test_owner
+export DATABASE_URL="postgresql://qf_test_owner@127.0.0.1:$QF_TEST_PORT/quickflow_test"
+export PRIMARY_DATABASE_URL="$DATABASE_URL"
+"$QF_PG_BIN/createdb" quickflow_test
+# schema準備前にRailsの設定と実SQL接続、クラスタの実ディレクトリを照合。不一致なら終了する
+bin/rails runner '
+  c = ActiveRecord::Base.connection
+  cfg = ActiveRecord::Base.connection_db_config.configuration_hash
+  actual = [c.select_value("SELECT current_database()"), c.select_value("SELECT inet_server_addr()"),
+    c.select_value("SELECT inet_server_port()").to_i, File.realpath(c.select_value("SHOW data_directory"))]
+  expected = ["quickflow_test", "127.0.0.1", Integer(ENV.fetch("QF_TEST_PORT")), File.realpath(File.join(ENV.fetch("QF_TEST_ROOT"), "data"))]
+  abort "Wrong test target" unless Rails.env.test? && cfg[:database] == expected[0] &&
+    cfg[:host] == expected[1] && cfg[:port].to_i == expected[2] && actual == expected
+  puts actual.inspect
+'
+# 上の照合が成功した場合だけ続行。この新規専用DBのschemaを準備する
 bin/rails db:test:prepare
 bundle exec rspec
+# requests/modelsだけを確認する場合も同じ隔離環境で実行する
+# bundle exec rspec spec/models spec/requests
 bin/rubocop
 bin/brakeman --no-pager
 bin/bundler-audit
 bin/importmap audit
+# 完了後はこのターミナルで作った専用クラスタだけを停止する
+"$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -m fast -w stop
+)
 ```
+
+コマンドが失敗したらその先を実行せず、接続先を再確認してください。上のtrust認証は架空データだけの一時的なloopback/専用ソケット用です。実データを入れたり公開アドレスへbindしたりしません。`db:test:prepare`やRSpecは対象DBを書き換えます。`db:drop`/`db:reset`/`demo:seed`で既存DBを掃除・再利用する手順ではありません。クラスタの停止先は記録した`QF_TEST_ROOT/data`だけとし、既存サービスや他タスクのクラスタを停止しないでください。
 
 RSpecでは実OpenAIクライアントを禁止し、stubを使用します。実APIキーは不要です。demo/load専用の`QUICKFLOW_DEMO_*`、`QUICKFLOW_GUEST_LOGIN`、`QUICKFLOW_HTTP_LOAD_RUN_ID`等を通常テストに引き継がないでください。CIの実行コマンドとOS依存パッケージは[workflow](.github/workflows/ci.yml)が基準です。モデル/リクエストだけなら`bundle exec rspec spec/models spec/requests`でも実行できます。
 

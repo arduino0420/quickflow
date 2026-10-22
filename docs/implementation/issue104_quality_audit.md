@@ -23,11 +23,11 @@
 
 ## 検証と対象外
 
-- Ruby 4.0.6で`bundle check`成功。`bin/rails routes`成功。`RAILS_ENV=test`と未使用の専用loopback DB URLを指定し、DB接続・schema読込・seedは行っていません。
+- Ruby 4.0.6で`bundle check`成功。`bin/rails routes`成功。`RAILS_ENV=test`と未使用の専用loopback DB URLを指定し、初回監査ではDB接続・schema読込・seedは行っていません。後述の手順訂正検証だけ新規専用クラスタを使用しました。
 - RuboCop: 255 files、指摘0。初回はホーム外cache書込みで停止し、`RUBOCOP_CACHE_ROOT=tmp/rubocop`で専用clone内へ変更して成功。
 - Brakeman 8.1.0: Errors 0 / Security Warnings 0。
 - 既存main CI39756657910の全4job成功をAPIで確認。RSpec 1,839/0は#117のmain検証記録。最終PR headのRSpec/System・lint・Brakeman/bundler-audit・importmap auditはPR Checksで別途確認する。文書のみなのでローカル全RSpecは実行しない。
-- 変更文書の相対リンク/画像実在・画像形式/寸法の読取・差分の空白・秘密値高確度パターンを検査。画像は既存#95の実Chrome/合成fixture証跡を再利用し、新たなDB・ブラウザサーバーは作らない。
+- 変更文書の相対リンク/画像実在・画像形式/寸法の読取・差分の空白・秘密値高確度パターンを検査。画像は既存#95の実Chrome/合成fixture証跡を再利用し、画像目的の新たなDB・ブラウザサーバーは作らない。
 - 本番/AI/AWS/公開ポート/元`~/workspace/quickflow`/既存DB/他タスクのチェックアウトは変更・利用していない。原作業の14項目の未コミット変更にも触れていない。
 
 ## Issue #100の残り
@@ -37,3 +37,13 @@
 未達/保留は、提出対象の本番URL・現在の健康確認・実本番主要フロー、バックアップ/復元運用の実証、外部設計資料/ER/画面遷移の最終schema同期（#101/#102）です。外部URLはリンク先への到達性と、閲覧権限/図の内容の正しさを分けて扱います。外部ワークブック/Whimsicalの編集・DPro提出・Issue closure・mergeは行いません。
 
 外部リンク到達確認: Google SheetsはHTTP 200（認証後の各tab内容は未確認）、WhimsicalはHTTP 403で表示確認未達。ローカル画像3点はsipsで形式/寸法を読取、利用画面JPEGは実画像を目視確認。設計図が現行schemaと一致する保証は#101/#102へ残します。
+
+## 親の独立レビューによる手順訂正
+
+READMEの`quickflow_local_test`では、`student_handwritten_submission_concurrency_spec`・`thirty_student_submissions_spec`・`student_pdf_upload_safety_spec`の既存安全ガードを満たせませんでした。DB名を`quickflow_test`に揃え、毎回新しい専用PostgreSQL 18クラスタ・127.0.0.1の専用ポート・専用ソケットを作る手順へ訂正しました。`PRIMARY_DATABASE_URL`も同じ接続先に固定し、Rails設定と実SQLのDB/host/port/data_directoryをschema準備前に照合、失敗時に続行しないsubshellと専用クラスタだけを停止するtrapを記載しています。ガードやアプリの変更はありません。
+
+記載ブロックから全件RSpecを上記3 specに限定した検証を実行しました。新規`/tmp/qf-test.qlnsUr/data`（実パス`/private/tmp/qf-test.qlnsUr/data`）、127.0.0.1:57519、`quickflow_test`の実接続をschema準備前に確認し、**12 examples / 0 failures**。終了時にそのクラスタだけを停止しました。初回はOS locale不正、次はmacOSの/tmp正規化差でschema準備前に停止し、locale/encoding明示と実パス比較に修正して新しいクラスタで成功しています。既存クラスタ・データの再利用やreset/drop/seedはありません。clone内Storageを使用しました。
+
+管理者ログイン説明の「admin_idだけ」も、実controllerに合わせて`admin_id`と`credential_proof`の設定へ訂正しました。画像・相対リンクは独立レビューでも確認済みで、再撮影はしていません。
+
+最終レビュー前にmain `5c1a4ad8599fced886465494032cf313bfec56b5`を通常mergeしました（#119の教師PDF保存失敗境界と回帰spec）。その差分を確認し、#47/#48全体の完了は宣言しません。全件RSpec/Systemはこの統合後の最終head CIで確認します。
