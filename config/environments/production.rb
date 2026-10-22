@@ -87,4 +87,21 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  if Demo::Profile.identity?
+    require Rails.root.join("lib/demo/reject_jobs_adapter")
+    require Rails.root.join("lib/demo/transport_boundary")
+    config.middleware.insert_before 0, Demo::TransportBoundary
+    config.secret_key_base = ENV.fetch("QUICKFLOW_DEMO_SESSION_SECRET")
+    config.cache_store = :null_store
+    config.active_job.queue_adapter = Demo::RejectJobsAdapter.new
+    config.solid_queue.connects_to = nil
+    config.action_cable.mount_path = nil
+    config.active_storage.service = :production_demo
+    config.force_ssl = true
+    config.assume_ssl = false
+    config.action_dispatch.trusted_proxies = []
+    config.hosts = [ Demo::Profile.settings.fetch("allowed_host") ]
+    config.session_store :cookie_store, key: "__Host-qfd-#{Demo::Profile.settings.fetch('isolation_id').first(16)}",
+      secure: true, httponly: true, same_site: :strict, domain: nil, path: "/"
+  end
 end

@@ -146,10 +146,14 @@ module Demo
       end
     end
 
+    def storage_service_name
+      "demo_seed"
+    end
+
     def attach!(record, name, filename, text)
       bytes = pdf(text)
       blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new(bytes), filename: filename,
-        content_type: "application/pdf", service_name: "demo_seed", identify: false,
+        content_type: "application/pdf", service_name: storage_service_name, identify: false,
         metadata: { identified: true, analyzed: true, demo_sample: true })
       record.public_send(name).attach(blob)
       # Active Storage schedules a deferred parent touch. Persist it before the
@@ -192,7 +196,7 @@ module Demo
         refuse!("Draft context mismatch") unless draft.material_fingerprint == AnswerDraftContext.fingerprint(draft.assignment) && !Submission.exists?(student: draft.student, assignment: draft.assignment)
       end
       ActiveStorage::Blob.find_each do |blob|
-        refuse!("Unexpected storage service") unless blob.service_name == "demo_seed"
+        refuse!("Unexpected storage service") unless blob.service_name == storage_service_name
         blob.open do |file|
           refuse!("Invalid sample PDF") unless Marcel::MimeType.for(file) == "application/pdf" && file.read.start_with?("%PDF-1.4")
         end

@@ -84,6 +84,13 @@ test:
 # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
 # for a full overview on how database connection configuration can be specified.
 #
+<% if ENV["QUICKFLOW_DEMO_PROFILE"] == "production" %>
+production:
+  primary:
+    <<: *default
+    url: <%= ENV.fetch("QUICKFLOW_DEMO_DATABASE_URL").inspect %>
+    schema_search_path: public
+<% else %>
 production:
   primary: &primary_production
     <<: *default
@@ -102,3 +109,5 @@ production:
     <<: *primary_production
     database: quickflow_production_cable
     migrations_paths: db/cable_migrate
+
+<% end %>
