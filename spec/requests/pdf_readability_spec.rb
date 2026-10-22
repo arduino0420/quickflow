@@ -19,7 +19,8 @@ RSpec.describe "PDF readability at upload boundaries", type: :request do
   end
 
   def counts
-    [ Assignment.count, AssignmentClassroom.count, Submission.count, ActiveStorage::Blob.count, ActiveStorage::Attachment.count ]
+    [ Assignment.count, AssignmentClassroom.count, Submission.count, ActiveStorage::Blob.count,
+      ActiveStorage::Attachment.count, QuestionGenerationRequest.count ]
   end
 
   def teacher_post(file)

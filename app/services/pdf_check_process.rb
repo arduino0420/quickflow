@@ -13,12 +13,13 @@ class PdfCheckProcess
     if RUBY_PLATFORM.include?("linux")
       limits[:rlimit_as] = [ @memory_bytes, @memory_bytes ]
     elsif RUBY_PLATFORM.include?("darwin")
-      memory_reader = MacProcessMemory
+      memory_reader = MacProcessMemory.prepare
     else
       raise Unavailable, "unsupported_platform"
     end
     deadline = monotonic_time + @wall_seconds
     pid = Process.spawn(*command, in: File::NULL, out: writer, err: writer, pgroup: true, **limits)
+    process_group = pid
     writer.close
     output = +"".b
     loop do
@@ -38,12 +39,15 @@ class PdfCheckProcess
   rescue SystemCallError, IOError, LoadError => error
     raise Unavailable, "parser_runtime_#{error.class.name}"
   ensure
-    if pid
+    # Reaping the leader does not mean its task-owned group is empty.
+    if process_group
       begin
-        Process.kill("KILL", -pid)
+        Process.kill("KILL", -process_group)
       rescue Errno::ESRCH
         nil
       end
+    end
+    if pid
       begin
         Process.waitpid(pid)
       rescue Errno::ECHILD
