@@ -125,6 +125,7 @@ RSpec.describe QuestionGenerator, type: :model do
 
     it "does not log output text when JSON parsing fails" do
       allow(response).to receive(:output_text).and_return("PRIVATE AI RESPONSE AND STUDENT ANSWER")
+      expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
       expect { generator.call(assignment) }.to raise_error(JSON::ParserError)
       expect(Rails.logger).to have_received(:error).with(/"status":"completed"/)
       expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
@@ -334,6 +335,7 @@ RSpec.describe QuestionGenerator, type: :model do
   end
 
   it "rolls back earlier questions if a later save fails" do
+    expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
     second = generated_question.merge(question_label: "1(2)")
     allow(responses).to receive(:create).and_return(ai_response(questions: [ generated_question, second ]))
     allow_any_instance_of(Question).to receive(:save!).and_wrap_original do |original, *args, **kwargs|
@@ -382,6 +384,7 @@ RSpec.describe QuestionGenerator, type: :model do
         error = OpenAI::Errors::APITimeoutError.new(url: URI("https://example.invalid"), message: "Timed out")
         resource = stage == :upload ? files : responses
         allow(resource).to receive(:create).and_raise(error)
+        expect(AiFileCleanupJob).not_to receive(:schedule) if stage == :upload
         expect { generator.call(assignment) }.to raise_error(OpenAI::Errors::APITimeoutError)
         expect { generator.call(Assignment.find(assignment.id)) }.to raise_error(/automatic reattempt is disabled/)
         expect(files).to have_received(:create).once

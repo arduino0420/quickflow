@@ -74,4 +74,38 @@ RSpec.describe AiFileCleanupJob, type: :job do
     expect(Rails.logger).to have_received(:error).with(/file_id=file-test reason=enqueue_error/)
     expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
   end
+  [ 1.minute, 3.minutes, 10.minutes, 20.minutes ].each_with_index do |delay, index|
+    it "retries attempt #{index + 1} with the same ID after #{delay} seconds" do
+      allow(files).to receive(:delete).with("file-test").and_raise(Timeout::Error)
+      expect(described_class).to receive(:set).with(wait: delay).and_call_original
+
+      expect { described_class.perform_now("file-test", index + 1) }
+        .to have_enqueued_job(described_class).with("file-test", index + 2)
+    end
+  end
+
+  it "stops when deletion succeeds after a retry" do
+    allow(files).to receive(:delete).with("file-test").and_return(double(deleted: false), double(deleted: true))
+    described_class.perform_now("file-test")
+
+    expect { described_class.perform_now("file-test", 2) }.not_to have_enqueued_job(described_class)
+    expect(files).to have_received(:delete).with("file-test").twice
+    expect(Rails.logger).not_to have_received(:error)
+  end
+
+  it "records an unconfirmed final deletion without another retry" do
+    allow(files).to receive(:delete).and_return(double(deleted: false))
+
+    expect { described_class.perform_now("file-test", 5) }.not_to have_enqueued_job(described_class)
+    expect(Rails.logger).to have_received(:error).with(/file_id=file-test reason=final_delete_not_confirmed/)
+  end
+
+  it "records a retry registration exception without exposing its message" do
+    allow(files).to receive(:delete).and_raise(Timeout::Error)
+    allow(described_class).to receive(:set).and_raise("PRIVATE ANSWER")
+
+    expect { described_class.perform_now("file-test") }.not_to raise_error
+    expect(Rails.logger).to have_received(:error).with(/file_id=file-test reason=retry_enqueue_error error_class=RuntimeError/)
+    expect(Rails.logger).not_to have_received(:error).with(/PRIVATE/)
+  end
 end
