@@ -22,7 +22,9 @@ DB名だけで隔離は保証できません。新規クラスタの作成場所
 (
 set -euo pipefail
 export PATH="$HOME/.rbenv/versions/4.0.6/bin:/usr/local/bin:$PATH"
-test -f AGENTS.md && test -f db/schema.rb && test -f lib/tasks/demo.rake
+test -f AGENTS.md
+test -f db/schema.rb
+test -f lib/tasks/demo.rake
 # 既存workspaceではなく、今回の独立cloneで実行すること。
 export RAILS_ENV=test
 export QUICKFLOW_DEMO_PORT="${QUICKFLOW_DEMO_PORT:-57429}"
@@ -39,6 +41,8 @@ unset PGSERVICE PGSERVICEFILE PGOPTIONS PGPASSWORD PGHOSTADDR
 export PGPASSFILE=/dev/null PGCONNECT_TIMEOUT=5
 export PGHOST=127.0.0.1 PGPORT="$QUICKFLOW_DEMO_PORT" PGUSER="$(id -un)" PGSSLMODE=disable
 export DATABASE_URL="postgresql://127.0.0.1:${PGPORT}/quickflow_test"
+# Rails 8.1のprimary専用URLが通常URLより優先されるため、継承値を必ず上書きする。
+export PRIMARY_DATABASE_URL="$DATABASE_URL"
 mkdir -p "$PWD/tmp"
 cluster_dir="$(mktemp -d "$PWD/tmp/demo-pg.XXXXXXXX")"
 cluster_dir="$(cd "$cluster_dir" && pwd -P)"
@@ -61,6 +65,20 @@ test "$(psql -X "$maintenance_url" -v ON_ERROR_STOP=1 -Atc 'SELECT system_identi
 createdb --maintenance-db="$maintenance_url" quickflow_test
 test "$(psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc 'SHOW data_directory')" = "$cluster_dir"
 test "$(psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT current_database() || '|' || host(inet_server_addr()) || '|' || inet_server_port()")" = "quickflow_test|127.0.0.1|${PGPORT}"
+# psqlだけでなく、migrationが使うRailsの実接続も書込み前に照合する。
+export QUICKFLOW_DEMO_CLUSTER_DIR="$cluster_dir" QUICKFLOW_DEMO_CLUSTER_ID="$local_cluster_id"
+bin/rails runner - <<'RUBY'
+connection = ActiveRecord::Base.connection
+actual = connection.select_rows(<<~SQL).first
+  SELECT current_database(), host(inet_server_addr()), inet_server_port()::text,
+    current_setting('data_directory'),
+    (SELECT system_identifier::text FROM pg_control_system())
+SQL
+expected = [ ENV.fetch("QUICKFLOW_DEMO_DATABASE"), "127.0.0.1",
+  ENV.fetch("QUICKFLOW_DEMO_PORT"), ENV.fetch("QUICKFLOW_DEMO_CLUSTER_DIR"),
+  ENV.fetch("QUICKFLOW_DEMO_CLUSTER_ID") ]
+abort "Rails connection does not match the new cluster" unless actual == expected
+RUBY
 bin/rails db:migrate
 psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -c "COMMENT ON DATABASE quickflow_test IS 'quickflow-demo:${QUICKFLOW_DEMO_ISOLATION_ID}'"
@@ -193,3 +211,17 @@ manifest書込み失敗時のDBはcommit済みの可能性があるため、成�
   実行した新規クラスタは`tmp/demo-pg.I7HL3FjN`です。
 - 先行head `762175f` のGitHub CI run #136は全job成功。今回のレビュー修正後headは
   push後の新しいCIで確認するため、この成功を最終headの成功とは扱いません。
+
+### Rails primary URLの継承対策
+
+- subshell内で`PRIMARY_DATABASE_URL`を新規`DATABASE_URL`と同値に固定しました。
+  migration前にRails runnerからも実DB名・host・port・data_directory・system_identifierを
+  読み取り、psqlで検証した新規クラスタと一致しない場合は即停止します。
+- 新規隔離sentinelクラスタ57432には`migration_sentinel`一表・架空一行と専用DBコメントだけを用意。
+  別のURLと競合するPRIMARY_DATABASE_URLを指定した読み取りで、Railsが57432を優先することを再現しました。
+- 同じ競合PRIMARY_DATABASE_URLを継承させて、修正Bash例を新規57433へ実行。
+  Railsのmigration前接続照合、migration、seed2回が成功（exit 0）しました。
+  sentinelの表一覧・架空一行・DBコメントの前後比較は完全一致し、Railsのmigration表も作成されていません。
+  実学校DB・既存サービスは試験に使用していません。
+- 初期ファイル存在確認の各`test`を独立コマンドにし、先頭や中間の失敗もset -eで停止させています。
+  Seed冒頭コメントは、eager loadではclass自体を読むがbootで実行・書込みしない、という説明へ正確化しました。

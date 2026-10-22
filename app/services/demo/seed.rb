@@ -4,7 +4,7 @@ require "securerandom"
 require "stringio"
 
 module Demo
-  # Explicit operator task only. Never loaded by db/seeds.rb or application boot.
+  # Executed only by the explicit operator task; boot/eager loading performs no writes.
   class Seed
     class UnsafeTarget < StandardError; end
     MODELS = [ School, Admin, Teacher, Classroom, Student, TeacherClassroom,
