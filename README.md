@@ -1,473 +1,121 @@
 # QuickFlow
 
-## アプリケーション概要
+中学校数学の「式の計算」の小テストを、PDF配信から手書き解答・採点・成績出力まで支援するRailsアプリです。教師の採点・転記負担と、生徒への返却の遅れを減らすことを目指します。普段のPDF教材を使い、AIの判定と教師の最終判定を分け、判読が難しい答案を「要確認」として残す点が特徴です。
 
-QuickFlowは、中学校数学教師を対象に、授業内で実施する「式の計算」の小テストにおける採点・得点計算・成績処理の業務負担を軽減するとともに、生徒へ採点結果を速やかに返すことで、学習の振り返りを支援する学習支援システムです。
+![教師の成績一覧・答案確認・生徒のPDF手書き画面（架空データ）](docs/implementation/issue95-evidence/flow-390.jpg)
 
-教師は既存のPDF形式の小テストをQuickFlowへ登録し、生徒へ配信します。
+画像は[Issue #95の実Chrome監査](docs/implementation/issue95_screen_audit.md)で撮影した架空データです。長文・空状態の試験を含み、AIの実行結果や本番画面ではありません。現行ビューと導線を照合して再利用しています。
 
-生徒の通常操作は「小テストを選択 → PDFへ直接手書き → 自動保存 → 提出する → AI採点 → 結果確認」です。ブラウザ内で複数ページのPDFに黒ペンで解答し、消しゴムで修正できます。下書きはサーバーへ自動保存され、再読み込みや再ログイン後に復元できます。自動保存だけでは正式提出されず、「提出する」を押すと答案PDFを内部生成して既存の提出・採点処理へ送ります。手動ダウンロードやファイル選択は不要です。
+## 現在の実装と検証範囲
 
-従来のPDF手動アップロード処理もコードと小テスト詳細画面の「従来のPDFアップロード」に残っています。現在の通常導線は直接手書き方式で、未提出の小テスト一覧から手書き画面へ進みます。従来アップロードと手書き提出のPDF本体上限は25MiB、提出経路のHTTP本文上限は32MiBです。
+機能の照合基準は [main@cd97d361](https://github.com/arduino0420/quickflow/commit/cd97d361eb18b74b85275730e36c300ee47f17d9)（2026-10-22）。[main CI 39756657910](https://github.com/arduino0420/quickflow/actions/runs/39756657910)はtest・lint・scan_ruby・scan_jsが成功、RSpec 1,839件・失敗0件です。これは提出時点の公開動作や卒業合格を保証するものではありません。最終レビュー前にmain `5c1a4ad8599fced886465494032cf313bfec56b5`（#39のthruster lock更新と#119の教師PDF保存失敗処理）を通常mergeで統合しました。本ドキュメントPRの最終head CIはPRのChecksで別途確認します。
 
-保存失敗・通信エラー・競合時には警告と再試行を表示します。オフライン中の未保存の筆跡はメモリ上にしか残らないため、画面を閉じると失われる場合があります。
+ゲストの技術実装は完了していますが、**外部公開は未実施**です。既存AWS環境の配備コミット・URL・現在の健康状態はこの作業では確認していません。EC2/Caddyによる既存環境と、未配備のmain・独立デモprofileを同一視しません。[本番確認 #99](https://github.com/arduino0420/quickflow/issues/99)・[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)で提出用URL、HTTPS、`/up`、ログイン画面、DB/PDFのバックアップと復元、ワーカー監視の実証が必要です。`/up`はRails起動確認であり、AI・DB・キュー全体の健全性を保証しません。
 
-提出された答案はAIが読み取り、各問題を「正解」「不正解」「要確認」の3種類で判定します。
+## ロール別の利用方法
 
-教師は小テスト配信時に「1問あたりの点数」を入力し、AIが正解と判定した問題数に応じて得点を自動計算します。
+| ロール・入口 | 主な操作 |
+| --- | --- |
+| 教師 `/login` | 教師IDとパスワードでログイン。PDF・点数・配信先クラスを登録し、成績一覧→答案詳細でAI判定を確認/修正。得点は再計算され、単一/全配信クラスのExcelを出力。小テスト名変更・所有する小テスト削除、担当クラスの生徒登録も可能 |
+| 生徒 `/student/login` | 学校コード・学年・クラス・出席番号・パスワードでログイン。未提出小テスト→PDFへ手書き→自動保存→「提出する」→採点結果を確認。通常の選択肢は1〜3年・1〜10組・1〜40番 |
+| 管理者 `/admin/login` | 管理者IDとパスワードでログイン。自校の教師登録/担当・パスワード変更、生徒一覧/登録/所属編集/パスワード再設定/条件付き削除。重要な生徒操作は確認と管理者再認証が必要 |
 
-生徒は採点結果と現在の得点を確認し、AIの判定と自身の解答意図が異なると考えた場合は教師へ申告します。教師は必要に応じて判定を修正し、修正後の得点は自動的に再計算されます。
+公開サインアップはありません。教師/管理者の初期登録は所属と権限を確認した運用担当者が行います。学校コードだけで所属を証明できません。管理者15文字以上、教師は英字と数字を含む半角英数字10文字以上（各72バイト以下）、生徒は半角数字8桁で、弱い反復・語句/連番を拒否します。登録入口/運用タスクとパスワード変更で適用し、既存パスワードの一括変更はしません。パスワード変更後の旧セッションは次の認証確認で失効します。[登録・移行・削除の詳細と安全手順](docs/implementation/operations_details.md)を参照してください。
 
-授業後は、学年・クラス・出席番号・得点を出席番号順に整理し、Excel形式で出力します。
+PDFは複数ページ・黒ペン/消しゴムに対応し、下書きは再ログイン後も復元します。自動保存だけでは正式提出になりません。未保存の筆跡は通信断のまま画面を閉じると失われる場合があります。従来PDFアップロードも詳細画面に残ります。答案PDFは25MiB、提出HTTP本文は32MiBまでです。
 
-QuickFlowでは、教師が普段使用しているPDF教材をそのまま活用し、採点・得点計算・集計・成績処理をできる限り自動化することで、教師の業務負担を実質的に軽減することを目指します。
+AIは「正解・不正解・要確認」を保存し、教師が修正できます。要確認は得点に加算せず、技術的失敗は採点完了と区別します。教師の採点再開ボタンは既定OFFで、世代・PDF・保存結果・未完了Jobを確認する運用条件があります。[採点・復旧・外部ファイル保持の詳細](docs/implementation/operations_details.md)を確認してください。#47/#48等の進行中の変更を完了済みとは扱いません。
 
-## PDF直接手書き機能の確認状況
+### 閲覧専用ゲスト
 
-Phase A1〜Fは、合意したローカル開発・検証の範囲で正式完了しています。直近の検証は全RSpec 1,380件成功・失敗0件、Brakeman 79 checks・警告0件、RuboCop 172ファイル・指摘0件です。開発者によるMac Chromeの総合動作確認8項目も成功しています。詳細は[Phase F報告書](docs/implementation/pdf_handwriting_phase_f.md)を参照してください。
+対応する隔離デモで入口を有効にすると、ホームの管理者/教師/生徒ゲストボタンから開始できます（`POST /guest/:role`、通常環境はOFF）。15分で期限切れとなり、切替/ログアウトで旧cookieを失効します。架空の登録済みデータだけを閲覧し、教師は成績/Excel/答案、生徒は自分の課題/教材/結果、管理者は自校一覧を確認できます。登録・編集・削除・手書き提出・AI呼出し・Job実行は許可しません。手書きや実AIを体験できる公開デモという案内ではありません。
 
-GitHub Actions上のCI成功、Windows・Chromebook実機確認、実通信断試験、実答案PDFサイズ分布は未確認です。サイズ上限追加後のブラウザ操作も未確認で、ローカル検証の成功と区別しています。
+[初期test profileの履歴](docs/implementation/issue93_read_only_guest.md)と[production-mode profile・公開前条件](docs/implementation/issue93_production_demo.md)を参照してください。testサーバーをインターネットへ公開しないでください。実公開のDNS/TLS、OSによる読み取り専用mount、proxy/egress制御、公開Chromeの確認は未実施です。12業務表と正規添付の初期データ検証と、全物理表に5行あるという主張は異なります。
 
-## 開発環境
+## 技術構成
 
-- Ruby 4.0.6
-- Ruby on Rails 8.1.4
-- PostgreSQL 18.6
-- Git
-- GitHub
+Ruby **4.0.6**（`.ruby-version`）、Rails **8.1.4**（`Gemfile.lock`）、PostgreSQL（開発基準18.6）、Puma、Active Record/Active Storage、Hotwire/Importmap、PDF.js/pdf-lib、OpenAI SDK、caxlsx、Solid Queue/Cache/Cableを使用します。DockerfileとKamal設定、GitHub Actions CIがあります。AWS EC2/Caddyは既存配備側の構成であり、リポジトリのKamal設定をそのまま実稼働設定とは扱いません。公開設定の確定・確認は#51/#99の範囲です。
 
-## アプリケーションの実行手順
+## ローカル起動とテスト
 
-### 1. リポジトリをクローン
-
-```bash
-git clone git@github.com:arduino0420/quickflow.git
-```
-
-### 2. アプリケーションのディレクトリへ移動
+Ruby 4.0.6、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意します。System SpecにはChrome/Chromiumと対応Selenium driver（Selenium Manager利用時は取得可能なネットワーク）が必要です。既存DBと共有しない新しいclone・専用DB/Storageを使ってください。通常の開発は`storage/`、テストはclone内`tmp/storage/`です。
 
 ```bash
+git clone https://github.com/arduino0420/quickflow.git
 cd quickflow
-```
-
-### 3. Gemをインストール
-
-```bash
 bundle install
-```
-
-### 4. データベースを作成
-
-```bash
+export RAILS_ENV=development
+export DATABASE_URL=postgresql://127.0.0.1:5432/quickflow_local_development
+# 専用DB名・接続先であることを確認してから作成
 bin/rails db:create
-```
-
-### 5. マイグレーションを実行
-
-```bash
+bin/rails runner 'c = ActiveRecord::Base.connection; puts [Rails.env, c.select_value("SELECT current_database()"), c.select_value("SELECT inet_server_addr()"), c.select_value("SELECT inet_server_port()")].inspect'
+# 上の実接続が意図した専用DBの場合のみ
 bin/rails db:migrate
+bin/rails server -b 127.0.0.1
 ```
 
-### 6. Railsサーバーを起動
+`http://127.0.0.1:3000`へアクセスします。接続URLは自身の専用DBに合わせ、パスワードを履歴やリポジトリに残さないでください。`PRIMARY_DATABASE_URL`等の接続上書きが設定されている場合は取り除くか同じ専用接続先に揃え、Railsの実接続を確認します。新規DBは空です。通常の`db:seed`はコメントのみでデモ/初期アカウントを作りません。**既存DBにreset/drop/demo seedを実行しないでください。** 架空デモは[専用の新規クラスタを使う手順](docs/implementation/issue92_safe_demo_seed.md)だけで作成します。
+
+通常の開発で実AIを利用する場合のみ、運用者から自分の環境用の秘密値を安全に受け取り、`bin/rails credentials:edit`で`openai.api_key`へ保存します。復号には対応する`RAILS_MASTER_KEY`または非公開のmaster keyが必要です。値をREADME・Issue・ログに貼らないでください。`OPENAI_MODEL`、`OPENAI_ANSWER_READING_MODEL`、`OPENAI_QUESTION_GENERATION_MODEL`、`OPENAI_ANSWER_GRADING_MODEL`と`OPENAI_TIMEOUT_SECONDS`が任意設定です。既定モデル名はソース上`gpt-6-astra`、待ち時間120秒で、利用可否・料金の保証ではありません。実送信・課金を伴う確認は別途承認が必要です。通常productionの`QUICKFLOW_DATABASE_PASSWORD`やdemo専用秘密値は[profile手順](docs/implementation/issue93_production_demo.md)に従って管理し、開発/テストへ持ち込みません。
+
+全件/requestsテストにはDB名`quickflow_test`を要求する安全ガードがあります。名前を変えたりガードを外したりせず、**毎回新しい専用PostgreSQLクラスタ**を作り、既存の`quickflow_test`とは物理的に隔離します。PostgreSQL 18の`pg_config`・`initdb`・`pg_ctl`・`createdb`がPATHから使えることを確認し、demo/load専用環境変数や本番秘密値を引き継がない専用ターミナルで、次のブロック全体を実行します。通常の開発サーバーとテストを同じcloneで同時に動かさないでください。
 
 ```bash
-bin/rails server
+(
+set -eu
+export RAILS_ENV=test
+unset QUICKFLOW_DEMO_PROFILE QUICKFLOW_GUEST_LOGIN QUICKFLOW_HTTP_LOAD_RUN_ID SOLID_QUEUE_IN_PUMA
+QF_PG_BIN="$(pg_config --bindir)"
+export QF_TEST_ROOT="$(mktemp -d /tmp/qf-test.XXXXXX)"
+export QF_TEST_PORT=57519
+mkdir "$QF_TEST_ROOT/socket"
+# 失敗時も今回作ったクラスタだけを停止。失敗後にschema準備へ進まない
+trap 'if test -f "$QF_TEST_ROOT/data/postmaster.pid"; then "$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -m fast -w stop; fi' EXIT
+"$QF_PG_BIN/initdb" -D "$QF_TEST_ROOT/data" -U qf_test_owner --locale=C --encoding=UTF8 --auth-local=trust --auth-host=trust
+# ポート使用中なら起動は失敗する。既存サービスを停止せず、別の未使用ポートで新規クラスタを作る
+"$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -l "$QF_TEST_ROOT/postgres.log" \
+  -o "-h 127.0.0.1 -p $QF_TEST_PORT -k $QF_TEST_ROOT/socket" -w start
+unset PGHOSTADDR PGSERVICE PGSERVICEFILE PGOPTIONS PGPASSWORD
+export PGHOST=127.0.0.1 PGPORT="$QF_TEST_PORT" PGUSER=qf_test_owner
+export DATABASE_URL="postgresql://qf_test_owner@127.0.0.1:$QF_TEST_PORT/quickflow_test"
+export PRIMARY_DATABASE_URL="$DATABASE_URL"
+"$QF_PG_BIN/createdb" quickflow_test
+# schema準備前にRailsの設定と実SQL接続、クラスタの実ディレクトリを照合。不一致なら終了する
+bin/rails runner '
+  c = ActiveRecord::Base.connection
+  cfg = ActiveRecord::Base.connection_db_config.configuration_hash
+  actual = [c.select_value("SELECT current_database()"), c.select_value("SELECT inet_server_addr()"),
+    c.select_value("SELECT inet_server_port()").to_i, File.realpath(c.select_value("SHOW data_directory"))]
+  expected = ["quickflow_test", "127.0.0.1", Integer(ENV.fetch("QF_TEST_PORT")), File.realpath(File.join(ENV.fetch("QF_TEST_ROOT"), "data"))]
+  abort "Wrong test target" unless Rails.env.test? && cfg[:database] == expected[0] &&
+    cfg[:host] == expected[1] && cfg[:port].to_i == expected[2] && actual == expected
+  puts actual.inspect
+'
+# 上の照合が成功した場合だけ続行。この新規専用DBのschemaを準備する
+bin/rails db:test:prepare
+bundle exec rspec
+# requests/modelsだけを確認する場合も同じ隔離環境で実行する
+# bundle exec rspec spec/models spec/requests
+bin/rubocop
+bin/brakeman --no-pager
+bin/bundler-audit
+bin/importmap audit
+# 完了後はこのターミナルで作った専用クラスタだけを停止する
+"$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -m fast -w stop
+)
 ```
 
-ブラウザで以下へアクセスします。
+コマンドが失敗したらその先を実行せず、接続先を再確認してください。上のtrust認証は架空データだけの一時的なloopback/専用ソケット用です。実データを入れたり公開アドレスへbindしたりしません。`db:test:prepare`やRSpecは対象DBを書き換えます。`db:drop`/`db:reset`/`demo:seed`で既存DBを掃除・再利用する手順ではありません。クラスタの停止先は記録した`QF_TEST_ROOT/data`だけとし、既存サービスや他タスクのクラスタを停止しないでください。
 
-```text
-http://localhost:3000
-```
+RSpecでは実OpenAIクライアントを禁止し、stubを使用します。実APIキーは不要です。demo/load専用の`QUICKFLOW_DEMO_*`、`QUICKFLOW_GUEST_LOGIN`、`QUICKFLOW_HTTP_LOAD_RUN_ID`等を通常テストに引き継がないでください。CIの実行コマンドとOS依存パッケージは[workflow](.github/workflows/ci.yml)が基準です。モデル/リクエストだけなら`bundle exec rspec spec/models spec/requests`でも実行できます。
 
-## アカウント登録（MVP）
+## データ保護・運用と設計資料
 
-公開サインアップは設けません。学校コードは学校を探す識別子であり、所属を証明する秘密情報ではありません。
+DBと添付PDFは別々に保存されるため、整合したバックアップ・復元確認が必要です。公開環境の保存期間・復元手順の確定は#51で保留しています。小テストのDB削除と物理PDFの非同期削除、外部OpenAIの3600秒File期限/非同期cleanupは別のライフサイクルです。404だけでは外部削除済みを保証せず、`store: false`も保持ゼロを保証しません。[監視・個別再確認・安全な復旧手順](docs/implementation/operations_details.md)を省略せず参照してください。
 
-教師は、信頼できる運用担当者が本人と学校への所属を確認した後に登録します。
-学校・担当クラスは事前に運用担当者が既存モデルで用意します。以下の対話式タスクは、既存の学校に教師だけを追加し、学校やクラスを作成しません。
+- [チェックシート](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=1475280975) / [カタログ](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=0) / [テーブル定義](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=524149616)
+- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図](docs/er_diagram.png) / [画面遷移図](docs/screen_transition.png)
+- [画面・架空スクリーンショット監査](docs/implementation/issue95_screen_audit.md) / [Model Spec監査](docs/implementation/issue98_model_spec_audit.md) / [認証System監査](docs/implementation/issue96_authentication_system_audit.md) / [CRUD System監査](docs/implementation/issue97_crud_system_audit.md)
+- [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
-```bash
-bin/rails accounts:create_teacher
-```
-
-接続先の環境・DBを確認してから実行してください。パスワードは画面に表示せず端末で入力します。
-所属確認の質問への回答だけで本人確認が完了するわけではありません。運用担当者が事前に確認し、確認済みの学校コードを指定してください。
-重複ユーザーID・入力エラーの場合は登録しません。ログイン情報は本人へ安全に伝え、ログやリポジトリに残さないでください。
-
-生徒は、ログイン中の教師が `/students/new` の生徒アカウント登録画面から、本人の所属を確認して登録します。
-登録できるのは同校の担当クラスだけです。出席番号は1〜40、同じクラス内で重複できません。
-登録後も教師のログインを維持し、生徒本人へ学校コード・学年・クラス・出席番号・初期パスワードを安全に伝えます。
-生徒本人は `/student/login`、教師は `/login` からログインします。
-
-### 初期管理者の登録
-
-管理者は教師とは別の `Admin` として、既存学校に所属します。信頼できる運用担当者が本人・所属・管理者としての登録権限を事前確認し、対話可能な端末から登録します。
-対象環境へのmigration適用と実アカウント作成は別途承認後に行ってください。
-
-```bash
-bin/rails accounts:create_admin
-```
-
-環境・接続先DBを確認してから、所属確認、既存学校コード、管理者ID、パスワード、確認用パスワードの順に入力します。
-パスワード2回は非表示入力です。学校の新規作成、公開サインアップ、seedによる初期パスワード設定は行いません。
-存在しない学校コード・重複管理者ID・パスワード不一致・非対話実行は拒否します。
-既存の学校コードであれば別学校でも登録可能です。学校コードは所属の証明にならないため、登録先の正当性は運用担当者が確認してください。
-管理者IDは管理者全体で一意であり、教師IDとは別に管理します。登録によって教師・生徒のアカウントや権限は付与されません。
-パスワードは教師と同じ既存条件（作成時必須、最大72バイト、独自の最低文字数なし）とし、ハッシュだけを保存します。
-管理者向けの最低文字数強化は今後の検討事項です。パスワード再設定トークンは実装していません。
-
-### 管理者ログイン・ログアウト
-
-管理者は `/admin/login` から管理者IDとパスワードでログインします。成功時はセッションを再生成し、`admin_id`だけを設定して `/admin/` の管理者トップへ移動します。
-教師・生徒のログイン状態は引き継ぎません。失敗時はIDの存在にかかわらず共通エラーを表示し、パスワードを再表示しません。
-管理者画面は `Admin::BaseController` で認証を必須化し、セッションのIDから取得した管理者自身の学校だけを参照します。URLやフォームの学校IDは採用しません。
-ヘッダーのログアウトボタンはCSRF保護付きの `DELETE /admin/logout` を送信し、セッションを破棄します。管理者画面・ログイン画面はキャッシュを禁止します。
-管理者セッションだけでは教師・生徒画面へアクセスできません。教師・生徒としてログインし直した場合も、管理者セッションは破棄されます。
-教師一覧は `/admin/teachers`、新規登録は `/admin/teachers/new` です。学校コード（読み取り専用）、教師ID、パスワード・確認、担当クラスの順に表示します。所属学校はログイン中の管理者から決定し、学校コードの送信値は採用せず、学校ID・クラスIDの直接指定は拒否します。
-
-担当クラスは1〜3年・1〜10組から複数選択でき、0件も許可します。選択済みの既存クラスを再利用し、未登録の選択クラスだけを作成します。教師・クラス・担当関係は一つのトランザクションで保存し、学校単位のロックと既存の一意制約で重複を防ぎます。保存競合時は全体を取り消し、再入力を案内します。既存教師の担当関係や生徒・答案・採点結果は変更しません。
-
-教師一覧の「編集」から `/admin/teachers/:id/edit` を開き、担当クラスとパスワードを変更できます。学校コード・教師IDは変更できず、教師IDはモデルの通常更新でも変更を拒否します（直接SQLや検証省略の保存は対象外）。新しいパスワードが空欄の場合は現在のパスワードを維持し、入力した場合は確認欄との一致を必須とします。
-
-担当解除は対象教師の中間レコードだけを削除します。クラス・生徒・小テスト・答案・PDF・採点結果や、他教師の担当関係と小テストの所有権は変更しません。既存担当に表示範囲外（1〜3年・1〜10組以外）または他校のクラスがある場合は、黙って解除せず更新を拒否します。
-
-更新は学校・教師のロック内で一括保存します。署名付きの編集確認情報を教師の最新状態・担当関係と照合し、古い画面・改ざん・別の管理者や教師に対する確認情報を拒否します。競合時は編集画面を開き直してください。失敗時はパスワードを再入力してください。この競合制御は管理者の登録・編集処理が共通のロック規約を使う前提であり、直接SQLなどによる並行変更まで全面的に防ぐものではありません。
-
-**パスワード再設定後も、既存の教師ログイン済みセッションは継続します。** 現在はセッションの `teacher_id` から教師を取得しており、パスワード変更による既存セッションの失効は実装していません。旧パスワードでの新規ログインは拒否します。全セッション失効の仕組みは別途検討事項です。
-
-教師削除は実装していません。今後追加する管理者Controllerも共通の認証を継承し、対象データを管理者の学校で絞り込む必要があります。
-
-### 管理者による生徒登録と画面表示
-
-管理者トップの「生徒を新規登録」から `/admin/students/new` を開きます。学校コードは管理者の所属学校に固定し、1〜3年・1〜10組・出席番号1〜40番とパスワード・確認を入力します。未登録の選択クラスだけを自動作成し、生徒と一括保存します。重複や保存失敗時は全体を取り消します。既存の教師用生徒登録は維持しています。
-
-生徒ログイン画面の選択肢は1〜3年・1〜10組・1〜40番です。サーバー側の既存認証範囲（1〜6年・1〜15組）は変更していません。ただし範囲外のアカウントは通常のプルダウンから選択できません。今回の画面切替前の開発DB監査では該当生徒は0件でした。他環境へ適用する際も事前に確認してください。
-
-生徒の小テスト一覧は採点完了かつ得点取得可能な場合だけ、要確認が残っていても0点を含めて点数を表示します。未提出・採点途中・採点失敗・得点取得不能は空欄とし、一覧に暫定の文言は付けません。教師・生徒ログイン画面の登録案内は削除しています。
-
-### 旧担当情報のコピー（関連切替前の移行用）
-
-`teacher_classrooms:backfill` は、既存の `Classroom.teacher_id` を中間テーブルへコピーする書き込み用タスクです。
-学校一致・参照先を旧担当と既存中間レコードの両方で監査し、不整合があればコピーしません。
-既存の中間レコードは削除・更新せず、不足する組だけを追加します。
-コピー後は教師ID・クラスIDの組を照合し、エラーや不一致では今回の追加をすべてロールバックします。
-出力は `legacy_pairs`（旧担当数）、`inserted_pairs`（追加数）、`already_present_pairs`（コピー済み数）、`total_pairs`（中間テーブル総数）のみです。
-
-専用テストDBでの実行例（データを書き込みます）:
-
-```bash
-RAILS_ENV=test DATABASE_URL=postgresql:///quickflow_test bin/rails teacher_classrooms:backfill
-```
-
-開発・本番環境での実行には別途承認が必要です。接続先・バックアップを確認し、担当変更やクラス作成を止めた移行時間帯に実行します。
-処理中は学校・教師・クラス・中間テーブルの書き込みをロックします。既存の書き込みと競合した場合は待たずに中止します。
-担当取得・生徒登録の認可は `teacher_classrooms` を使用します。旧カラムは移行用にのみ残しています。
-このコピー処理は新しい関連を利用するサーバーの初回起動前に完了させてください。関連切替後・担当解除機能の利用開始後には実行しないでください。
-再実行すると、意図的に解除した旧担当関係を復活させるおそれがあります。
-
-### 開発DBの関連切替手順（別途承認後に実施）
-
-以下は手順書であり、開発DBへの適用は別途承認が必要です。切替中はRailsサーバー、Jobワーカー、console、定期実行や運用スクリプトを止め、書き込みを停止してください。
-先に既存DBのバックアップを `pg_dump -Fc` で取得し、保護された場所へ保存します。バックアップが読めること、必要な場合に復元できることを確認します。
-添付PDFのストレージも別途保全します。DBバックアップにPDF本体は含まれません。
-
-1. 接続先が `quickflow_development` であることと、未適用migrationの一覧を確認する。
-2. 中間テーブル追加だけを適用する（未適用の場合）。
-   `RAILS_ENV=development DATABASE_URL=postgresql:///quickflow_development bin/rails db:migrate:up VERSION=20261015040000`
-3. 同じ接続指定で `bin/rails teacher_classrooms:backfill` を実行し、成功の件数を保存する。不整合や競合があれば中止してサーバーを起動しない。
-4. 書き込み停止を維持したまま、以下の読み取り専用SQLで旧担当の欠落と中間レコードの学校不一致・参照不整合がともに0件であることを確認する。
-5. `RAILS_ENV=development DATABASE_URL=postgresql:///quickflow_development bin/rails db:migrate:up VERSION=20261015050000` を実行し、旧カラムをNULL許可にする。
-6. migration適用状況と既存クラス・生徒・配信・答案・採点結果の件数、代表データの関連が変わらないことを確認する。
-7. 新コードでRailsサーバー・ワーカーを起動し直し、担当クラス表示・生徒登録・配信・既存答案表示を確認して利用を再開する。実AI呼び出しを伴う確認は別途承認する。
-
-照合用SQL（対象DBのpsqlから実行）:
-
-```sql
-BEGIN READ ONLY;
-SELECT COUNT(*) AS missing_legacy_pairs FROM (
-  SELECT teacher_id, id AS classroom_id FROM classrooms
-  EXCEPT SELECT teacher_id, classroom_id FROM teacher_classrooms
-) missing;
-SELECT COUNT(*) AS invalid_pairs FROM teacher_classrooms tc
-LEFT JOIN teachers t ON t.id = tc.teacher_id
-LEFT JOIN classrooms c ON c.id = tc.classroom_id
-LEFT JOIN schools s ON s.id = c.school_id
-WHERE t.id IS NULL OR c.id IS NULL OR s.id IS NULL
-   OR t.school_id IS DISTINCT FROM c.school_id;
-COMMIT;
-```
-
-担当解除は中間レコードのみを削除し、クラス・生徒・答案・配信・採点結果を削除しません。
-同じクラスの担当になっても、他教師が作成した小テストの閲覧・採点権限は付与されません。
-複数担当・未担当クラスを利用した後は旧カラムで関係を表現できません。NULL許可migrationの自動rollbackは不可とし、復旧は多対多対応版での修正を基本とします。
-
-## 小テストの削除
-
-作成者の教師だけが詳細画面の「この小テストを削除する」から削除できます。同校の別教師にも削除権限はありません。
-確認ダイアログには小テスト名と、提出答案・採点結果・成績も削除され元に戻せないことを表示します。
-未配信の小テストは、作成者が `/assignments/:id` を開いて削除できます。
-
-対象の問題・提出・読み取り結果・AI判定・教師判定・配信情報を1トランザクションで削除します。
-アカウント・学校・クラス・他の小テストは保持します。他の小テストをまたぐ不整合データは巻き込まず削除を中断します。
-提出の保存〜PDFアップロード完了と削除は小テスト単位のアドバイザリロックで調停します。
-教材の初回配信も、レコード作成後からコミット後の教材アップロード完了まで同じロックで保護します。
-削除は小テスト（FOR NO KEY UPDATE）→提出（ID順）→問題（ID順）の順で行ロックを取得し、実行中のAI処理が終わるまで待ちます。
-待機中はJobの外部キー確認（KEY SHARE）を妨げず、関連データを削除した後の本体DELETEでロックを強めます。
-既に送信済みの外部AI要求を中断する仕組みではありません。削除済み対象の待機Jobは安全に終了します。
-
-### PDF削除と障害時の確認
-
-教材PDF・答案PDFの添付情報はDB処理で削除します。実ファイルはDBコミット後、Rails標準の
-`ActiveStorage::PurgeJob` で非同期削除します。DB削除完了は物理ファイル削除完了を意味しません。
-共有Blobは他の添付先が残っている間は削除しません。ストレージ全体や他の小テストのファイルを削除しないでください。
-本番ではSolid Queueワーカーの起動・監視が必要です。
-
-キュー登録に失敗した場合も、DB削除がコミット済みなら削除済みであることとPDF後処理が未完了であることを画面で案内します。
-`Assignment PDF cleanup` ログには再処理用のBlob ID・ストレージ識別子・オブジェクトキーを記録します。
-生徒名・小テスト名・答案内容・APIキーは記録しません。この運用ログの閲覧権限は制限してください。
-削除Jobの実行失敗はActive Job / Solid Queueのエラーログ・失敗Jobを確認してください。
-
-運用担当者がストレージ・キュー障害を解消した後、削除対象のログと環境・DBを確認して再処理します。
-Blobが残っている場合、対象IDだけを再取得し、`attachments.exists?` がfalseであることを確認して `purge_later` を再登録します。
-共有Blobは再処理対象にしません。Rails標準のpurgeはBlobレコードを先に削除するため、物理ファイル削除だけ失敗するとBlobが存在しない場合があります。
-その場合、失敗Jobを無条件に再実行しても復旧できません。削除ログのストレージ・キーに対応する対象オブジェクトだけを、ストレージ管理機能で確認・削除してください。
-既存Blobが同じキーを参照していないことも確認し、ファイル名やディレクトリ全体を指定した一括削除は行わないでください。
-
-### 外部OpenAIファイルの保持・削除（Issue #45）
-
-教材・答案PDFは `QuestionGenerator` / `AnswerReader` が `purpose: "user_data"` で送信し、作成時から3600秒の `expires_after` を指定します。Responses API は `store: false` を指定します。
-取得したファイルIDは処理中に保持し、成功・APIエラー・解析失敗・保存ロールバックのいずれでも `ensure` から `AiFileCleanupJob` を登録します。削除は非同期なので、処理完了時点で削除済みとは限りません。
-
-ジョブは同じIDに削除を要求し、`deleted: true` なら終了します。例外または `deleted: false` では1・3・10・20分の待機を挟み、初回を含む最大5回まで試行します。404は削除済み・期限切れとアクセス不能を区別できないため、成功と断定せず `AI file cleanup uncertain` / `not_found_or_inaccessible` を警告して終了します。
-
-Active Storage の添付・物理ファイル削除とは別のライフサイクルです。小テスト削除処理から外部API削除は要求せず、外部削除ジョブも元の添付を削除しません。外部IDの専用台帳はありません。キュー引数または登録失敗等のログに残ったIDを、対象環境・APIプロジェクトと照合して個別再確認・再登録に利用できます。どちらにも記録されなかったIDは、アプリから追跡できません。ID取得前のアップロード失敗・応答喪失や、ID取得後から登録までのプロセス停止ではIDを追跡できず、アプリからの削除を保証できません。新規アップロードの期限指定はその補完策であり、過去の期限未指定ファイルには遡及しません。
-
-**失敗監視と再確認:** `AI file cleanup failed` の `enqueue_rejected` / `enqueue_error` / `retry_enqueue_rejected` / `retry_enqueue_error` / `final_delete_error` / `final_delete_not_confirmed` と、上記の警告を監視します。終端エラーは捕捉してログに記録するため、Solid Queue の失敗ジョブ一覧だけでは検知できません。記録するのはファイルID・理由・例外クラスで、教材・答案本文や例外メッセージは含めません。ログへのアクセスを制限し、運用担当者は障害解消後、対象ID・環境・APIプロジェクト・権限とキュー状態を照合して、削除状態や期限を確認します。必要な再登録は対象ID単位で承認された運用として実施し、404だけで削除済みと判断したり、履歴やアカウント全体を一括削除したりしません。
-
-公式仕様（2026-10-22確認）では [Files の期限指定](https://developers.openai.com/api/reference/resources/files/methods/create) による自動削除と、[データ保持ポリシー](https://developers.openai.com/api/docs/guides/your-data) の不正利用監視用ログ（通常最大30日、法的義務等の例外あり）は別扱いです。3600秒はFileの期限であり、プロバイダー側の全データが1時間以内に消える保証ではありません。`store: false` も保持ゼロの証明ではなく、契約・プロジェクト設定・機能別の例外を確認する必要があります。学校の保存規程や事業者との条件は本実装で確定しません。
-
-## 設計資料
-
-### チェックシート
-
-[チェックシート](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=1475280975)
-
-### カタログ設計
-
-[カタログ設計](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=0)
-
-### テーブル定義書
-
-[テーブル定義書](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=524149616)
-
-### ワイヤーフレーム
-
-[QuickFlow ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4)
-
-## ER図
-
-![ER図](docs/er_diagram.png)
-
-## 画面遷移図
-
-![画面遷移図](docs/screen_transition.png)
-
-## AI読み取り・採点（Phase 8・9）
-
-教師の初回配信保存後、`QuestionGenerationJob` を登録します。配信操作はAIの応答を待たずに完了し、
-バックグラウンドで教材PDFから正答・採点条件を生成して `Question` に保存します。
-答案提出後、`AnswerReadingJob` が答案を読み取り、`Submission.extracted_text` にJSONを保存します。
-その後 `AnswerGradingJob` が保存済みの正答だけを使って採点結果を保存します。生徒側から正答生成は行いません。
-教材の正答は `QuestionGenerator`、採点は `AnswerGrader` が担当します。
-正答の準備前に読み取りが完了した場合は、答案と読み取り結果を残して `grading` のまま待機します。
-生成Jobの完了時に、読み取り済み・未完了の答案の採点Jobを登録します。待機中の定期再試行はありません。
-生成やJob登録が失敗した場合はエラーと失敗キャッシュを記録し、読み取り済み答案を `failed` にします。
-失敗後に提出・読み取りされた答案も、採点Jobが失敗記録を確認して停止します。答案読み取りの流れは維持します。
-
-### API料金を抑える仕組み
-
-- 教材の正答は教師の初回配信後に生成し、保存済みの `Question` を全生徒で再利用します。
-- 正答生成中は小テストの `FOR NO KEY UPDATE` ロックを保持し、重複生成を防ぎながら別の生徒の提出時の外部キー確認を妨げないようにします。
-- 保存済み正答は必須項目、問題番号の重複、1から連続する順番、採点条件JSONを検証します。不正な保存データは停止し、自動再生成しません。
-- 読み取り済みの `extracted_text` は再利用します。読み取り・採点中も提出のDBロックを保持します。
-- 採点が必要な問題だけを、生徒1人につき1回のテキストリクエストで送ります。採点時にPDFは送りません。
-- 未記入は不正解、判読困難・複数解釈・対応付け不能・指定解法確認不能は要確認とし、これらはAPIを使わず処理します。
-- 全問が上記に該当する場合、採点APIの呼び出しは0回です。
-- SDKの自動再試行は無効です。完了・失敗した提出のJobも、自動的に処理し直しません。
-- 正答生成の失敗も既存のキャッシュに記録し、同じ教材・モデル・プロンプト版での再呼び出しを抑えます。
-
-新規答案がN人分あり、全員にAI採点が必要な場合、AI応答生成は最大 `2N + 1` 回です。
-内訳は教材の正答生成1回、答案読み取りN回、まとめ採点N回です。
-これとは別に、教材1回・答案N回のファイルアップロードがあります。
-読み取り済み答案のPhase 9だけなら、正答生成1回と採点最大N回です。
-保存済みの正答があれば、その正答生成も不要です。
-
-失敗キャッシュは教材ファイル・モデル・プロンプト版ごとに分けています。
-キャッシュが消去・退避された場合や、開発環境のメモリキャッシュが再起動で失われた場合は再生成されることがあります。
-モデルを明示的に変更した場合も、新しい設定で生成を試みます。
-API応答後、DB保存前にプロセスが停止した場合は、次の実行で呼び出しが重複する可能性があります。
-ロック中はDB接続を保持するため、大量同時提出時の待ち時間は今後の確認事項です。
-保存済み正答の検証だけでは、末尾の問題の欠落は検出できません。
-既存画面は初回配信だけで、同じAssignmentの再配信・教材差し替えはありません。
-もう一度フォームから配信すると新しいAssignmentになり、別の小テストとして正答を1回生成します。
-生成Jobは配信時の教材ファイルIDを受け取り、変更されていれば生成せず停止します。
-新しく生成する採点条件JSONには `material_blob_id` を保存し、保存後の教材変更も検出して停止します。
-この項目がない従来の正常な正答は再利用しますが、教材変更を検出できません。
-変更前に配信済みの小テストに生成Jobを自動追加する処理はありません。正答がなければ採点は待機します。
-採点Jobの登録失敗は正答・読み取り結果を残して失敗扱いにします。
-失敗キャッシュ消失やJobの異常停止で待機が残る場合も、自動生成・定期再試行はしません。
-
-### モデル設定
-
-環境変数で設定できます。用途別の設定が共通設定より優先されます。
-
-| 環境変数 | 用途 |
-|---|---|
-| `OPENAI_MODEL` | 共通のモデル |
-| `OPENAI_ANSWER_READING_MODEL` | 答案PDFの読み取り |
-| `OPENAI_QUESTION_GENERATION_MODEL` | 教材PDFからの正答生成 |
-| `OPENAI_ANSWER_GRADING_MODEL` | テキストでのまとめ採点 |
-
-未設定時は既存の `gpt-6-astra` を維持します。これを低価格モデルとして推奨するものではありません。
-設定するモデルの利用可否・料金は実API検証前に確認してください。
-PDF処理用モデルにはPDF入力への対応も必要です。APIキーは従来どおりRails credentialsの `openai.api_key` を使います。
-
-APIの待ち時間は1リクエストにつき既定120秒です。環境変数 `OPENAI_TIMEOUT_SECONDS` で正の秒数を設定できます。
-アップロードと応答生成にはそれぞれ適用され、処理全体の上限ではありません。
-タイムアウトはJobがエラーを記録して失敗扱いにし、自動再試行しません。正答生成の失敗はキャッシュにも記録します。
-
-### 保存データと安全な判定
-
-`Question.grading_rule` は既存のtextカラムに、`criteria`（採点条件）と
-`requires_work`（途中式・指定解法の確認が必要か）、`material_blob_id`（生成元教材のID）のJSONを保存します。
-Phase 8は途中式を保存しないため、確認が必要な問題は要確認になります。
-問題番号が一意に一致する答案を、保存済みの正答・採点条件に基づいて採点します。問題文の一致確認は行いません。
-番号が不明・重複・欠落する場合は、順番から推測せず要確認にします。
-保存済み採点条件のJSONが不正な場合は、採点開始前に停止します。
-
-生徒の最終解答は読み取り値のまま保存し、教師判定は変更しません。
-AIを使わない判定では、`ai_model_name` に `local-rules` を保存します。
-AIを使った判定と正答生成では、応答のモデル名（取得できなければ設定モデル名）・プロンプト版・日時を保存します。
-読み取り確信度はPhase 8で取得していないため `NULL` とします。
-全問題の結果保存を完了すれば、要確認を含んでも `Submission.status` は `completed` です。
-技術的な失敗は `failed` とし、保存済みの読み取り結果は残します。
-正答生成に失敗した場合は仮の正答を保存せず、採点を中止します。
-
-### テスト
-
-RSpecでは実OpenAIクライアントの生成を禁止し、明示的なスタブだけを使用します。
-関連テストは以下で実行できます。
-
-```bash
-bundle exec rspec spec/services spec/jobs spec/requests/assignments_spec.rb spec/requests/student_submissions_spec.rb
-```
-
-実API・実際の数学答案を使う確認は、別途許可を得てから実施します。
-教師の判定修正・得点計算・結果画面・成績出力はPhase 9には含めません。
-
-### 関連データの整合性（Issue #43）
-
-モデルの通常保存（新規作成・更新）では、次の不整合を拒否します。
-
-- TeacherClassroomの教師とクラスの学校が異なる（多対多への切替に伴い、旧Classroomの検証から移行）。
-- AssignmentClassroomの配信先クラスと小テスト作成教師の学校が異なる。
-- Submissionの生徒所属クラスへ小テストが配信されていない、または生徒と作成教師の学校が異なる。
-- GradingResultの問題と提出が別の小テストに属している。
-
-同じ学校の別教師が担当するクラスへの配信は許可します。
-既存の表示側の認可・絞り込み、得点計算・削除時の防御は維持します。
-DB構造や採点基準は変更せず、既存データの自動修復・削除も行いません。
-直接SQL、`update_columns`、検証を省略した保存などはこの検証を迂回できます。
-教師の所属学校や生徒の所属クラスなど、関連先を後から変更した際に、
-既存の全関連レコードを自動再検証する仕組みではありません。
-
-### 採点失敗・長時間未更新の答案を調査する（読み取り専用）
-
-運用担当者は、指定した答案の保存状態を次のコマンドで確認できます。
-`123` は実在するSubmissionのIDに置き換えてください。
-
-```bash
-bin/rails 'recovery:inspect[123]'
-bin/rails 'recovery:eligibility[123]'
-bin/rails 'recovery:candidates'
-bin/rails 'recovery:candidates[30,100]'
-```
-
-`candidates` は、全ての `failed` と、指定分数より前から更新されていない
-`submitted`・`grading` を、更新日時・IDの古い順に表示します。
-引数は「経過分数、表示上限」で、省略時は30分・100件、表示上限は最大1000件です。
-経過分数は1〜525600分（365日）、表示上限は1〜1000件の整数で指定してください。
-経過分数の上限は調査用引数の制限であり、採点のタイムアウト条件ではありません。
-範囲外の入力は日時計算・検索前に日本語の入力エラーとして拒否します。
-表示上限を超える対象は表示しません。
-長時間未更新でも、キュー待ちや実行中の可能性があり、処理停止とは断定しません。
-
-本番環境を調べる場合は、接続先を確認したうえで `RAILS_ENV=production` を付けます。
-結果は標準出力へJSONで表示し、ID・状態・日時・件数・確認理由を出力します。
-生徒名、答案・正答本文、ファイル名、ストレージキーは出力しません。
-`reading`・`questions` は `missing`（なし）、`valid`（既存の形式検証に適合）、
-`invalid`（形式不正・不整合）を表します。数学的な正しさを保証するものではありません。
-
-`inspect`と`candidates`はDBを更新せず、Jobの登録・実行、実OpenAI API呼び出し、キャッシュ操作、
-PDF実体の取得・解析を行いません。添付レコードとBlobレコードがあってもPDF実体の存在・破損は未確認です。
-失敗キャッシュ、待機中・実行中Job、失敗原因、採点時点の教材との一致も未確認として表示します。
-調査中に通常の採点処理が進む可能性があるため、結果はその時点の観測情報です。
-
-`recovery:eligibility`は、失敗した答案が採点再開候補となる条件を満たすか、別途読み取り専用で調べます。
-保存済み読み取りと問題の一対一対応、教材Blob ID、採点結果、答案・教材PDFの実体を確認します。
-Active Storageから両PDFを取得するため時間がかかり、取得時は一時ファイルを使います。1答案ずつ実行してください。
-保存チェックサムがある場合は`Blob#open`による照合を行い、MIMEと先頭1024バイト内の`%PDF-`も確認します。
-PDF全体の構文解析は行わず、ヘッダー確認だけでファイル全体の正常性を保証するものではありません。
-
-出力JSONは機械判定用の`candidate`、`ineligible`、`indeterminate`と理由コードだけです。
-`candidate`は観測時点で条件を満たしたという意味で、採点再開の許可ではありません。
-このコマンドはDB状態・世代を変更せず、Solid Queueの状態確認やJob登録も行いません。
-再開処理では、別途条件を再確認し、ロック下で世代を進めます。
-
-全問分の採点結果がある `failed` も「既存結果の確認が必要」と表示します。
-自動で `completed` へ変更せず、既存結果・教師判定を保持します。
-表示される再開位置は検討対象であり、復旧の安全性を保証しません。
-この調査コマンド自体は復旧、再提出、再採点、キャッシュ解除を行いません。
-
-専用テストDBでの関連RSpec:
-
-```bash
-RAILS_ENV=test DATABASE_URL=postgresql:///quickflow_test bundle exec rspec spec/services/recovery spec/tasks/recovery_spec.rb
-```
-
-### 採点Jobの世代管理（Issue #53 STEP 2-A）
-
-`submissions.processing_generation` は整数・初期値0・NULL不可です。既存答案と従来の引数形式で登録済みのJobは世代0として扱います。新しい形式のJobは世代を明示でき、読取Jobから採点Jobへ同じ世代を渡します。Jobは世代が一致しない答案の状態・読取結果・採点結果を変更せず、確認時に世代が違えば後続Jobも登録しません。正答生成Jobの登録確認直後に世代が進んで旧世代Jobがキューに残っても、そのJobは実行開始時に終了します。
-
-ローカルでは対象DBを確認してから `RAILS_ENV=development bin/rails db:migrate` を実行します。テストは `quickflow_test` に限定してください。本番導入は次の順序が必要です。
-
-1. `submissions` の列追加migrationを適用する。
-2. 旧形式Jobと明示的な世代引数の両方を扱えるコードをWeb・ワーカーへ配備する。
-3. 旧コードのワーカーとJob登録元が全て終了したこと、待機中Jobを新コードのワーカーが処理することを確認する。
-4. 後続STEPの復旧可否判定・復旧処理を検証してから、復旧操作を解禁する。
-
-STEP 2-Aには世代を増やす操作、採点再開サービス、教師ボタンはありません。これだけで復旧操作を解禁してはいけません。旧ワーカーは世代を確認できないため、混在中に復旧を始めることもできません。
-
-切戻し時は先に復旧操作を停止し、新世代の待機中・実行中Jobがないことを確認します。新世代Jobが存在する状態で旧コードへ戻したり、列を削除したりしないでください。正答生成Jobが保存する共有Questionと失敗キャッシュは答案単位の世代の対象外です。正答生成が進行中または失敗状態が不明な課題は、後続STEPの復旧可否判定で再開を許可しない設計が必要です。
-
-### 教師による採点再開の運用（Issue #53 STEP 2-C〜2-E）
-
-教師の答案詳細画面から再開できるのは、条件を満たす `failed` と、停止候補と判定できる `grading` の答案です。`grading` は保存済み正答があり、対象の読取・採点Jobと課題の正答生成Jobに未完了の登録がない場合だけボタンを表示します。時間経過だけでは停止と判定しません。`submitted` は対象外です。画面の表示だけでは復旧可能と断定せず、POST時にPDF実体・読み取り・正答・既存結果とキュー状態を再確認します。生徒の画面更新では再開しません。
-
-復旧ボタンは初期状態でOFFです。運用環境で次を確認してから、Webプロセスに `QUICKFLOW_GRADING_RECOVERY_ENABLED=true` を設定して再起動してください。CLIの `recovery:resume_grading` はこの画面用フラグの対象外なので、運用担当者だけが使用してください。
-
-1. DB列と世代ガードを含む新コードがWeb・ワーカー・Job登録元の全てに配備され、旧コードのプロセスが終了していることを確認する。旧形式の待機Jobは新ワーカーが世代0として扱う。
-2. Solid Queueの別DBを読めること、対象答案の読取・採点Jobと課題の正答生成Jobに未完了の登録がないことを確認する。キュー状態が読めない、正答が未保存・不整合、PDFや保存結果に不整合がある場合は再開しない。正答生成失敗がキャッシュから消えた場合も、正答未保存なら拒否する。
-3. 教師は対象答案の「採点を再開する」を1回押す。受付後の `grading` は処理中として待ち、連打しない。再開不可やenqueue失敗の案内が出たら、`recovery:inspect`・`recovery:eligibility` とアプリ・キューログを運用担当者が確認する。答案の再提出や結果の手動書換えはしない。
-4. 状態更新後〜Job登録前にプロセスが止まった疑いがある場合は、先に対象の現世代、未完了Job、ワーカーの実行状態を調べる。`grading` のままという理由だけで再登録しない。実行中・待機中の可能性が残る場合は運用担当者が再開を保留する。
-
-切戻し時は先に環境変数を解除してWebプロセスを再起動し、教師POSTを停止する。新世代の待機中・実行中Jobがなくなるまで旧コードのワーカーへ戻さない。採点結果・教師判定・PDFは削除せず、原因調査と対応を記録する。
-
-### 架空デモseed（Issue #92）
-
-通常の起動・`db:prepare`・`db:seed`ではデモデータを作成しません。
-新規の専用ローカルPostgreSQLクラスタ・専用Storageを準備し、接続と隔離印を照合する
-明示タスクのみ対応しています。[実行手順・全表の棚卸し・失敗時の扱い](docs/implementation/issue92_safe_demo_seed.md)を確認してください。
-ゲストは[初期test profile](docs/implementation/issue93_read_only_guest.md)に加え、[独立したproduction-mode profile](docs/implementation/issue93_production_demo.md)を実装し、隔離ローカル環境で3ロール・権限・logout・HTTPSを検証済みです。外部公開は未実施です。
-初期データは12業務表と正規添付の件数・整合性を実証し、内部運用状態を捏造しない適用判断を実行手順に記録しています。公開時の費用・運用承認と実インフラ検証は、既存の公開・運用作業で別途扱います。
+設計画像と外部設計資料はschema安定後の#101/#102で照合・更新します。この作業では外部資料を編集せず、現行schemaに完全同期したとは宣言しません。Windows/Chromebook実機、実通信断、実答案サイズ分布、実AIの数学的正確性、公開環境での主要フロー確認は別途必要です。
