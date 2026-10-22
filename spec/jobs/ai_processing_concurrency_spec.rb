@@ -57,6 +57,10 @@ RSpec.describe "Concurrent AI processing", type: :job do
     end
     Timeout.timeout(10) { entered.pop }
 
+    request = QuestionGenerationRequest.find(assignment.current_question_generation_request_id)
+    expect(request.state).to eq("running")
+    expect(request.claim_token).to be_present
+
     # This separate connection uses the same INSERT and attachment save as the controller.
     other_submission = Submission.transaction do
       ActiveRecord::Base.connection.execute("SET LOCAL lock_timeout = '2s'")

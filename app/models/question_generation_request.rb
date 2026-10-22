@@ -32,7 +32,7 @@ class QuestionGenerationRequest < ApplicationRecord
   def claim!
     token = nil
     with_selected_lock do
-      if state == "pending"
+      if state == "pending" && claim_token.nil?
         token = SecureRandom.uuid
         update!(state: "running", claim_token: token, started_at: Time.current)
       end
@@ -52,7 +52,7 @@ class QuestionGenerationRequest < ApplicationRecord
 
   def enqueue_failed!
     with_selected_lock do
-      update!(state: "failed", failure_code: "enqueue_failed", finished_at: Time.current) if state == "pending"
+      update!(state: "failed", failure_code: "enqueue_failed", finished_at: Time.current) if state == "pending" && claim_token.nil?
     end
   end
 end

@@ -25,6 +25,23 @@ end
     denied += 1
   end
 end
+# The generation ledger is immutable business state, including its sequence.
+[ "INSERT INTO question_generation_requests (assignment_id, material_blob_id, model, prompt_version, state, created_at, updated_at) SELECT 0, 0, 'probe', 'probe', 'pending', NOW(), NOW() WHERE false",
+  "UPDATE question_generation_requests SET state=state WHERE false",
+  "TRUNCATE question_generation_requests",
+  "ALTER TABLE question_generation_requests ADD COLUMN forbidden_probe integer",
+  "SELECT nextval('question_generation_requests_id_seq')",
+  "SELECT currval('question_generation_requests_id_seq')",
+  "SELECT setval('question_generation_requests_id_seq', 1)" ].each do |sql|
+  begin
+    ApplicationRecord.transaction(requires_new: true) { connection.execute(sql); raise ActiveRecord::Rollback }
+    raise "Runtime ledger/sequence mutation allowed"
+  rescue ActiveRecord::StatementInvalid => error
+    raise unless error.cause.is_a?(PG::InsufficientPrivilege)
+    denied += 1
+  end
+end
+raise "Synthetic ledger not empty" if QuestionGenerationRequest.exists? || Assignment.where.not(current_question_generation_request_id: nil).exists?
 ApplicationRecord.transaction do
   probe = AuthenticationAttemptBucket.create!(key_digest: "f" * 64, attempts: 0, expires_at: Time.current + 60)
   probe.update!(attempts: 1)

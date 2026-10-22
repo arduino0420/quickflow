@@ -249,7 +249,7 @@ RSpec.describe QuestionGenerator, type: :model do
     assignment.material_file.attach(io: StringIO.new(File.binread(Rails.root.join("spec/fixtures/files/material.pdf"))),
       filename: "replacement.pdf", content_type: "application/pdf")
     expect { generator.saved_questions(assignment) }.to raise_error(/Material PDF has changed/)
-    expect { generator.call(assignment) }.to raise_error(/Material PDF has changed/)
+    expect(generator.call(assignment)).to be_nil
     expect(files).to have_received(:create).once
     expect(responses).to have_received(:create).once
     expect(assignment.questions.count).to eq(1)

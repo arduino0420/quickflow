@@ -133,6 +133,120 @@ RSpec.describe "Durable question generation lifecycle" do
     expect(responses).not_to have_received(:create)
   end
 
+  it "does not overwrite a running worker with an enqueue failure" do
+    request = select_request
+    token = request.claim!
+    request.enqueue_failed!
+    expect(request.reload.state).to eq("running")
+    expect(request.claim_token).to eq(token)
+  end
+
+  [ :pointer, :token, :material ].each do |change|
+    it "fences #{change} changes in the gap after the committed claim and before the API transaction" do
+      request = select_request
+      allow_any_instance_of(QuestionGenerationRequest).to receive(:claim!).and_wrap_original do |method|
+        token = method.call
+        case change
+        when :pointer then select_request(model: "model-B")
+        when :token then request.update!(claim_token: "different-token")
+        when :material
+          assignment.material_file.attach(io: StringIO.new("%PDF-1.4 replacement"), filename: "replacement.pdf", content_type: "application/pdf")
+        end
+        token
+      end
+      expect(generator.call(assignment)).to be_nil
+      expect(request.reload.state).to eq("running")
+      expect(assignment.questions.count).to eq(0)
+      expect(responses).not_to have_received(:create)
+    end
+  end
+
+  it "does not fan out a delayed success after a different request was selected" do
+    request = select_request
+    original_reading = submission.extracted_text
+    allow(AiClient).to receive(:build).and_return(client)
+    allow_any_instance_of(QuestionGenerator).to receive(:call).and_wrap_original do |method, *args, **options|
+      result = method.call(*args, **options)
+      select_request(model: "model-B")
+      result
+    end
+    QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id)
+    expect(request.reload.state).to eq("succeeded")
+    expect(submission.reload).to be_submitted
+    expect(submission.extracted_text).to eq(original_reading)
+    expect(AnswerGradingJob).not_to have_been_enqueued
+  end
+
+  it "does not adopt a replacement claim token for success fan-out" do
+    request = select_request
+    submission
+    allow(AiClient).to receive(:build).and_return(client)
+    allow_any_instance_of(QuestionGenerator).to receive(:call).and_wrap_original do |method, *args, **options|
+      result = method.call(*args, **options)
+      request.reload.update!(claim_token: "replacement-token")
+      result
+    end
+    QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id)
+    expect(request.reload.state).to eq("succeeded")
+    expect(submission.reload).to be_submitted
+    expect(AnswerGradingJob).not_to have_been_enqueued
+  end
+
+  it "fences a late error recorded after rollback when the pointer has moved" do
+    request = select_request
+    submission
+    allow(AiClient).to receive(:build).and_return(client)
+    allow(responses).to receive(:create).and_raise("late error")
+    allow_any_instance_of(QuestionGenerationRequest).to receive(:fail!).and_wrap_original do |method, **options|
+      select_request(model: "model-B")
+      method.call(**options)
+    end
+    QuestionGenerationJob.perform_now(assignment, request.material_blob_id, request_id: request.id)
+    expect(request.reload.state).to eq("running")
+    expect(assignment.reload.current_question_generation_request.state).to eq("pending")
+    expect(submission.reload).to be_submitted
+    expect(assignment.questions.count).to eq(0)
+  end
+
+  it "rolls back every question if committing success fails, then persists safe failure" do
+    request = select_request
+    allow_any_instance_of(QuestionGenerationRequest).to receive(:update!).and_wrap_original do |method, **attributes|
+      raise "success save failed" if attributes[:state] == "succeeded"
+
+      method.call(**attributes)
+    end
+    expect { generator.call(assignment) }.to raise_error("success save failed")
+    expect(assignment.questions.count).to eq(0)
+    expect(request.reload.state).to eq("failed")
+    expect(request.failure_code).to eq("generation_failed")
+  end
+
+  it "keeps request input identity immutable after persistence" do
+    request = select_request
+    [ :assignment_id, :material_blob_id, :model, :prompt_version ].each do |attribute|
+      replacement = attribute.to_s.end_with?("_id") ? 999_999 : "replacement"
+      expect { request.update!(attribute => replacement) }.to raise_error(ActiveRecord::ReadonlyAttributeError)
+      request.reload
+    end
+  end
+
+  it "removes selected and historical requests only in the protected assignment deletion" do
+    first = select_request
+    first.update!(state: "failed", failure_code: "generation_failed")
+    second = select_request(model: "model-B")
+    expect(AssignmentDeletion.new.call(assignment, teacher: teacher)).to eq(:deleted)
+    expect(QuestionGenerationRequest.where(id: [ first.id, second.id ])).not_to exist
+    expect(Assignment.where(id: assignment.id)).not_to exist
+  end
+
+  it "rolls pointer and ledger deletion back if the authorized assignment deletion fails" do
+    request = select_request
+    allow(assignment).to receive(:destroy!).and_raise(ActiveRecord::RecordNotDestroyed)
+    expect { AssignmentDeletion.new.call(assignment, teacher: teacher) }.to raise_error(ActiveRecord::RecordNotDestroyed)
+    expect(assignment.reload.current_question_generation_request_id).to eq(request.id)
+    expect(request.reload.state).to eq("pending")
+  end
+
   it "does not accept another assignment's selected request" do
     request = select_request
     other = Assignment.create!(teacher: teacher, title: "Other", point_per_question: 5)

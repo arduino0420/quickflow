@@ -11,6 +11,7 @@ class QuestionGenerationJob < ApplicationJob
     return unless request
     return if request.state == "failed"
 
+    initial_token = request.claim_token
     generator = QuestionGenerator.new
     begin
       questions = generator.call(assignment, material_blob_id: material_blob_id, request_id: request_id)
@@ -23,14 +24,15 @@ class QuestionGenerationJob < ApplicationJob
       return
     end
 
-    fan_out(request, material_blob_id, generation, state: "succeeded", token: request.reload.claim_token) do |submission|
+    success_token = generator.claim_token || initial_token
+    fan_out(request, material_blob_id, generation, state: "succeeded", token: success_token) do |submission|
       begin
         raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
       rescue StandardError => error
         submission.reload
         request.reload
         owner = request.assignment.reload
-        if request.selected_input?(owner) && request.state == "succeeded" &&
+        if request.selected_input?(owner) && request.state == "succeeded" && request.claim_token == success_token &&
             submission.processing_generation == generation && !submission.completed? && !submission.failed? && !submission.grading_results.exists?
           submission.update!(status: :failed)
         end
