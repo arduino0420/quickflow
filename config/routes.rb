@@ -1,5 +1,5 @@
 Rails.application.routes.draw do
-  if ENV["QUICKFLOW_GUEST_LOGIN"] == "true" && Rails.env.test?
+  if Demo::Guest.enabled?
     post "/guest/:role", to: "guest_sessions#create", as: :guest_login
   end
 

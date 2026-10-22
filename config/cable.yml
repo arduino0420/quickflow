@@ -9,6 +9,9 @@ test:
   adapter: test
 
 production:
+<% if ENV["QUICKFLOW_DEMO_PROFILE"] == "production" %>
+  adapter: async
+<% else %>
   adapter: solid_cable
   connects_to:
     database:
@@ -17,3 +20,5 @@ production:
   message_retention: 1.day
   writer_batch_size: 4
   writer_batch_delay: 0.001.seconds
+
+<% end %>

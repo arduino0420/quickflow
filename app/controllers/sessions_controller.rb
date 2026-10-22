@@ -20,6 +20,6 @@ class SessionsController < ApplicationController
 
   def destroy
     reset_session
-    redirect_to login_path, status: :see_other
+    redirect_to(Demo::Profile.identity? ? root_path : login_path, status: :see_other)
   end
 end

@@ -133,6 +133,26 @@ RSpec.describe "Read-only fictional guests", type: :request do
     end
   end
 
+  { "admin" => "/admin/logout", "teacher" => "/logout", "student" => "/student/logout" }.each do |role, path|
+    it "returns #{role} logout to the demo landing and revokes the previous cookie" do
+      # Production identity uses the same controller logout branch; production
+      # endpoint/grant/TLS verification is exercised by the real HTTP harness.
+      allow(Demo::Profile).to receive(:identity?).and_return(true)
+      allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+      start(role)
+      key = Rails.application.config.session_options.fetch(:key)
+      previous = cookies[key]
+      delete path
+      expect(response).to redirect_to(root_path)
+      follow_redirect!
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("架空データ専用の閲覧デモ")
+      cookies[key] = previous
+      get({ "admin" => "/admin", "teacher" => "/assignments", "student" => "/student/assignments" }.fetch(role))
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   it "fails closed when data, password digests or PDF bytes change" do
     start("teacher")
     Assignment.first.update!(title: "changed")

@@ -10,19 +10,34 @@ module Demo
     TTL = 15.minutes
 
     def self.configured?
-      ENV["QUICKFLOW_GUEST_LOGIN"] == "true"
+      ENV["QUICKFLOW_GUEST_LOGIN"] == "true" || Profile.identity?
     end
 
     def self.enabled?
-      configured? && Rails.env.test?
+      ENV["QUICKFLOW_GUEST_LOGIN"] == "true" && (Rails.env.test? || (Profile.identity? && Rails.env.production?))
     end
 
     def self.verify!
       raise Unavailable unless enabled?
-      Seed.new.verify_guest!
-    rescue Seed::UnsafeTarget, JSON::ParserError, KeyError, IOError, SystemCallError, ActiveRecord::ActiveRecordError => error
+      verify_target!
+    rescue Profile::Unsafe, Seed::UnsafeTarget, JSON::ParserError, KeyError, IOError, SystemCallError, ActiveRecord::ActiveRecordError => error
       Rails.logger.warn("Guest demo unavailable: #{error.class}")
       raise Unavailable
+    end
+
+    def self.verify_target!
+      if Profile.identity?
+        TargetVerifier.new.verify_runtime!
+      else
+        Seed.new.verify_guest!
+      end
+    end
+
+    def self.cleanup_expired!
+      return unless Profile.identity?
+      cutoff = Time.current
+      keys = AuthenticationAttemptBucket.where(expires_at: ...cutoff).order(:expires_at, :key_digest).limit(100).pluck(:key_digest)
+      AuthenticationAttemptBucket.where(key_digest: keys, expires_at: ...cutoff).delete_all
     end
 
     def self.record(role)
