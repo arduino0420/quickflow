@@ -162,10 +162,24 @@ RSpec.describe "Authentication and access boundaries in Chrome", type: :system d
     expect(browser_form_request("form", assignment_path(protected_assignment), method: "DELETE")).to include("status" => 404)
     visit assignment_submission_path(assignment, own_result.submission)
     expect(page).to have_css("h1", text: "答案詳細")
+    judgment_fields = { "final_judgments[#{protected_result.id}]" => "incorrect",
+      "original_final_judgments[#{protected_result.id}]" => "correct" }
+    judgment_groups = [ "final_judgments", "original_final_judgments" ]
     expect(browser_form_request("#teacher-judgments", assignment_submission_path(protected_assignment, answer), method: "PATCH",
-      fields: { "final_judgments[#{protected_result.id}]" => "incorrect",
-        "original_final_judgments[#{protected_result.id}]" => "correct" })).to include("status" => 404)
+      fields: judgment_fields, clear_groups: judgment_groups)).to include("status" => 404)
     expect(snapshot).to eq(original)
+
+    # The identical target IDs and judgments are valid when its creator sends them.
+    visit login_path
+    click_button "ログアウト"
+    expect(page).to have_button("ログイン")
+    login_teacher(actor: colleague)
+    visit assignment_submission_path(protected_assignment, answer)
+    expect(page).to have_css("h1", text: "答案詳細")
+    expect(browser_form_request("#teacher-judgments", assignment_submission_path(protected_assignment, answer), method: "PATCH",
+      fields: judgment_fields, clear_groups: judgment_groups)).to eq("status" => 200, "path" => assignment_submission_path(protected_assignment, answer))
+    expect(protected_result.reload.teacher_judgment).to eq("incorrect")
+    expect(own_result.reload.teacher_judgment).to be_nil
   end
 
   it "denies a teacher another school's quiz and its modification" do
@@ -254,9 +268,9 @@ RSpec.describe "Authentication and access boundaries in Chrome", type: :system d
     expect(snapshot).to eq(original)
   end
 
-  def login_teacher(password: "password123")
+  def login_teacher(actor: teacher, password: "password123")
     visit login_path
-    fill_in "ユーザーID", with: teacher.user_id
+    fill_in "ユーザーID", with: actor.user_id
     fill_in "パスワード", with: password
     click_button "ログイン"
     expect(page).to have_current_path(assignments_path) if password == "password123"
@@ -319,13 +333,17 @@ RSpec.describe "Authentication and access boundaries in Chrome", type: :system d
   end
 
   # Serialize an existing application form, then tamper only its target/fields.
-  # This is an actual Chrome request with the browser session and CSRF token.
-  def browser_form_request(selector, path, method:, fields: {})
+  # Same-origin Chrome request with its session; forward a CSRF token if present.
+  # Ordinary test configuration disables CSRF protection: this proves authorization, not CSRF.
+  def browser_form_request(selector, path, method:, fields: {}, clear_groups: [])
     expect(page).to have_css(selector, visible: :all)
-    page.evaluate_async_script(<<~JS, selector, path, method, fields)
-      const [selector, path, method, fields, done] = arguments;
+    page.evaluate_async_script(<<~JS, selector, path, method, fields, clear_groups)
+      const [selector, path, method, fields, clearGroups, done] = arguments;
       const data = new FormData(document.querySelector(selector));
       data.delete('_method');
+      for (const name of [...data.keys()]) {
+        if (clearGroups.some(group => name.startsWith(`${group}[`))) data.delete(name);
+      }
       for (const [name, value] of Object.entries(fields)) data.set(name, value);
       fetch(path, {method, body: data, credentials: 'same-origin',
         headers: {'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''}})
