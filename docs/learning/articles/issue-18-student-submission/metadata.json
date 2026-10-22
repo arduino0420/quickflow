@@ -1,0 +1,28 @@
+{
+  "id": "issue-18-student-submission",
+  "title": "「提出」を押すと、誰の答案がどう保存される？",
+  "summary": "Issue #18：所属クラスへの認可、PDF内容判定、一度だけ保存する処理と提出済み表示を実コードでたどる。",
+  "issue": 18,
+  "updatedAt": "2026-10-06",
+  "sourceCommit": "01c978890f308119f05c08b2893ac945387c2d15",
+  "sourceDirty": true,
+  "sourceFiles": [
+    "app/controllers/student/submissions_controller.rb",
+    "app/controllers/student/assignments_controller.rb",
+    "app/views/student/assignments/show.html.erb",
+    "app/models/submission.rb",
+    "config/routes.rb",
+    "db/schema.rb",
+    "spec/requests/student_submissions_spec.rb",
+    "spec/requests/student_assignments_spec.rb",
+    "spec/models/submission_spec.rb"
+  ],
+  "verification": {
+    "status": "limited",
+    "summary": "2026-10-06にSubmission・生徒提出/閲覧/認証・教師配信の関連RSpecを再実行：121 examples, 0 failures。ユーザーからブラウザ確認完了の報告あり。初見読者のskimを実施。 学習サイトbuild・コード/ハッシュ/リンク照合・サイトテスト、1280px/390pxの表示と記事遷移を確認。",
+    "limitations": [
+      "実際の並列送信・ストレージ障害・全RSpecは未検証。",
+      "専用VLM・first-reader通読/想起検査は未実施。"
+    ]
+  }
+}

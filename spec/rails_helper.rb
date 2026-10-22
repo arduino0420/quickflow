@@ -35,6 +35,11 @@ rescue ActiveRecord::PendingMigrationError => e
   abort e.to_s.strip
 end
 RSpec.configure do |config|
+  # Every API example must explicitly inject/stub a client; never construct a real one.
+  config.before do
+    allow(OpenAI::Client).to receive(:new).and_raise("Real OpenAI API clients are disabled in RSpec")
+  end
+
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
   config.fixture_paths = [
     Rails.root.join('spec/fixtures')

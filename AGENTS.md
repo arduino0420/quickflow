@@ -122,3 +122,14 @@ When reporting work:
 - Report tests or commands run.
 - Report any remaining concerns or confirmation items.
 - Use beginner-friendly explanations when possible.
+
+## QuickFlow Learning Site
+
+When the user requests an explainer explanation about QuickFlow, read
+`docs/learning/AGENTS.md` and automatically create or update the article,
+regenerate the learning site and article index, and run the necessary checks.
+These documentation updates are authorized without a separate HUMAN CHECK.
+Reuse an existing article for the same topic unless the user requests a separate article.
+Explicit READ/PLAN-only or no-file-change instructions take precedence.
+This authorization does not permit changes to application code, dependencies
+outside docs/learning, existing CI, commits, pushes, or publishing.

@@ -1,0 +1,13 @@
+<div>
+  <%= label_tag :confirmed do %>
+    <%= check_box_tag :confirmed, "1", false, required: true %> 表示された対象と操作内容を確認しました
+  <% end %>
+</div>
+<% if local_assigns[:always] || !admin_reauthenticated? %>
+  <div>
+    <%= label_tag :admin_password, "管理者自身のパスワード" %>
+    <%= password_field_tag :admin_password, nil, autocomplete: "current-password", required: true %>
+  </div>
+<% else %>
+  <p>管理者の再認証は有効です。有効期間は再認証から15分で、操作しても延長されません。</p>
+<% end %>

@@ -25,8 +25,8 @@ Rails.application.configure do
   # Render exception templates for rescuable exceptions and raise for other exceptions.
   config.action_dispatch.show_exceptions = :rescuable
 
-  # Disable request forgery protection in test environment.
-  config.action_controller.allow_forgery_protection = false
+  # Ordinary specs retain their default; supported local guest boots require CSRF.
+  config.action_controller.allow_forgery_protection = ENV["QUICKFLOW_GUEST_LOGIN"] == "true"
 
   # Store uploaded files on the local file system in a temporary directory.
   config.active_storage.service = :test

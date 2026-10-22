@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe Student, type: :model do
   let(:school) { School.create!(school_code: "ABC123") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher1", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:attributes) { { classroom: classroom, attendance_number: 1, password: "password123" } }
 
   it "persists its classroom" do
@@ -15,6 +15,7 @@ RSpec.describe Student, type: :model do
   it "returns its submissions" do
     student = described_class.create!(attributes)
     assignment = Assignment.create!(teacher: teacher, title: "Quiz", point_per_question: 5)
+    assignment.assignment_classrooms.create!(classroom: classroom)
     submission = Submission.create!(assignment: assignment, student: student, submitted_at: Time.current)
 
     expect(student.submissions).to contain_exactly(submission)
@@ -52,7 +53,7 @@ RSpec.describe Student, type: :model do
 
   it "allows the same attendance number in another classroom" do
     described_class.create!(attributes)
-    other_classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
+    other_classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
 
     expect(described_class.new(attributes.merge(classroom: other_classroom))).to be_valid
   end
@@ -130,5 +131,24 @@ RSpec.describe Student, type: :model do
         student.save!(validate: false)
       end
     end.to raise_error(ActiveRecord::InvalidForeignKey)
+  end
+
+  it "preserves a legacy credential until a valid password change succeeds" do
+    student = described_class.create!(attributes.merge(password: "739162840517294")).reload
+    original_digest = student.password_digest
+
+    expect(student.update(attendance_number: 2)).to be(true)
+    expect(student.reload.password_digest).to eq(original_digest)
+    expect(student.authenticate("739162840517294")).to eq(student)
+
+    expect(student.update(password: "short")).to be(false)
+    expect(student.errors[:password]).to be_present
+    expect(student.reload.password_digest).to eq(original_digest)
+    expect(student.authenticate("739162840517294")).to eq(student)
+
+    expect(student.update(password: "58392047")).to be(true)
+    expect(student.reload.password_digest).not_to eq(original_digest)
+    expect(student.authenticate("739162840517294")).to be(false)
+    expect(student.authenticate("58392047")).to eq(student)
   end
 end

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>「提出」を押すと、誰の答案がどう保存される？ | QuickFlow学習サイト</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f3f6fa;color:#243247;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;line-height:1.9}header{background:#153550;color:white;padding:56px 24px}header>div,main,footer{max-width:960px;margin:auto}h1{font-size:clamp(26px,4vw,40px);line-height:1.5;margin:12px 0}header p{color:#dfebf5}.eyebrow{font-size:13px;letter-spacing:.16em;color:#a9dccf}main{padding:28px 20px 48px}section,.intro,.recap{background:white;border:1px solid #dce4ed;border-radius:16px;padding:28px 32px;margin-bottom:24px;box-shadow:0 5px 18px #15355006}h2{font-size:22px;line-height:1.6;margin:0 0 20px;display:flex;gap:12px;align-items:baseline}h2 span{flex-shrink:0;background:#e7f4f0;color:#146451;border-radius:8px;padding:0 10px;font-size:18px}h3{font-size:18px}p{margin:14px 0}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em;background:#edf2f7;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{background:#17283c;color:#eff6ff;padding:20px;border-radius:10px;overflow:auto;line-height:1.7}pre code{background:none;padding:0;overflow-wrap:normal}table{border-collapse:collapse;width:100%;font-size:15px}th,td{text-align:left;padding:14px 16px;border-bottom:1px solid #dae3ec;vertical-align:top}th{background:#eaf1f7;color:#153550}.table-wrap{overflow-x:auto;margin:20px 0}.note{border-left:4px solid #21866d;background:#eef8f4;padding:16px 20px;border-radius:0 8px 8px 0}li{margin:8px 0}nav{display:flex;flex-wrap:wrap;gap:10px}nav a{color:#155c78;text-decoration:none;border:1px solid #d3e2eb;border-radius:7px;padding:5px 12px;font-size:14px}a:hover{text-decoration:underline}a:focus-visible{outline:3px solid #21866d;outline-offset:3px}.flow{list-style:none;padding:0;counter-reset:steps}.flow li{counter-increment:steps;position:relative;padding:14px 18px 14px 54px;background:#f1f6fa;border-radius:8px;margin:0 0 18px;line-height:1.65}.flow li:before{content:counter(steps);position:absolute;left:16px;color:#146451;font-weight:bold}.flow li:not(:last-child):after{content:"↓";position:absolute;bottom:-23px;left:24px;color:#637c92}footer{font-size:13px;color:#53677a;padding:0 24px 36px}@media(max-width:600px){header{padding:32px 20px}main{padding:20px 12px}section,.intro,.recap{padding:22px 18px}h2{font-size:19px}th,td{padding:10px;min-width:120px}}@media print{body{background:white}header{background:white;color:#153550;padding:0}header p{color:#243247}main{padding:0}nav{display:none}section,.intro,.recap{box-shadow:none;break-inside:avoid}pre{white-space:pre-wrap}footer{padding:0}}
+.article-meta{font-size:14px;color:#53677a}.article-card{display:block;color:inherit;text-decoration:none}.article-card h2{color:#155c78}.article-card:hover{border-color:#21866d}.verification{border-left:4px solid #aa7500;background:#fff7e7;padding:16px 20px;border-radius:8px;margin:20px 0}
+</style></head><body><header><div><div class="eyebrow">QUICKFLOW · LEARNING</div><h1>「提出」を押すと、誰の答案がどう保存される？</h1><p><a href="../index.html" style="color:#dfebf5">← 記事一覧へ</a></p></div></header><main><p class="article-meta">更新 2026-10-06 · 対象コミット <code>01c978890f30</code>（対象コードに未commit変更あり）</p><aside class="verification" aria-label="検証状況"><strong>検証状況：未検証事項あり</strong><p>2026-10-06にSubmission・生徒提出/閲覧/認証・教師配信の関連RSpecを再実行：121 examples, 0 failures。ユーザーからブラウザ確認完了の報告あり。初見読者のskimを実施。 学習サイトbuild・コード/ハッシュ/リンク照合・サイトテスト、1280px/390pxの表示と記事遷移を確認。</p><ul><li>実際の並列送信・ストレージ障害・全RSpecは未検証。</li><li>専用VLM・first-reader通読/想起検査は未実施。</li></ul></aside><blockquote>
+<p>想定読者：QuickFlowを作りながらRailsを学ぶ方。依頼で確認できたのは、提出画面から保存・重複防止までを理解したいことです。
+仮定：短いコードと操作を並べると理解しやすいと考えています。既知の範囲は未確認です。
+所要時間：約8分。省いたもの：AI採点、再提出、答案ダウンロード、Railsの導入手順。</p>
+</blockquote>
+<p>伝えたいこと：提出する生徒と小テストはサーバーが決め、PDFを確認して一度だけ保存します。画面・Controller・DBの三段階で再提出を防いでいます。</p>
+<p>読み終えたら、①他クラスへのPOSTがどこで止まるか、②PDFの名前だけでは足りない理由、③二重送信で既存答案が変わらない仕組みを説明できます。</p>
+<h2>一枚で：何をどこで決めるか</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>節</th>
+<th>役割</th>
+<th>実コードの根拠</th>
+<th>読めるようになること</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>モデルとroute</td>
+<td>誰のどの答案かを表す</td>
+<td>belongs_to、単数resource</td>
+<td>Submission一件の意味</td>
+</tr>
+<tr>
+<td>POSTと認可</td>
+<td>保存可能な対象を限定</td>
+<td>所属クラスからfind</td>
+<td>ID改ざんへの防御</td>
+</tr>
+<tr>
+<td>PDFと保存</td>
+<td>入力を確認して添付</td>
+<td>Marcel、save!</td>
+<td>acceptと内容判定の違い</td>
+</tr>
+<tr>
+<td>提出済みと競合</td>
+<td>上書きを防止</td>
+<td>persisted?、unique index</td>
+<td>二重送信への防御</td>
+</tr>
+<tr>
+<td>応答とspec</td>
+<td>成功・失敗を区別</td>
+<td>303、422、404</td>
+<td>検証できた範囲</td>
+</tr>
+</tbody></table>
+</div><h2>Submissionは「この生徒が、この小テストへ提出した答案」</h2>
+<p>Assignmentは小テスト、Studentは生徒です。その二つをSubmissionの<code>assignment_id</code>と<code>student_id</code>が結びます。提出先クラスの紐付けであるAssignmentClassroomとは役割が違います。</p>
+<!-- source: app/models/submission.rb -->
+<pre><code class="language-ruby">  belongs_to :assignment
+  has_many :grading_results
+  belongs_to :student
+
+  has_one_attached :answer_file
+</code></pre>
+<p><code>answer_file</code>は解答の添付です。SubmissionのカラムにPDF全体を入れるのではなく、Active StorageのAttachment・BlobがSubmissionと保存ファイルを結びます。既存の添付設定とテーブルを使うため、migrationは追加していません。</p>
+<!-- source: config/routes.rb -->
+<pre><code class="language-ruby">      resource :submission, only: [ :create ]
+</code></pre>
+<p>これは生徒用Assignmentの内側にあり、<code>POST /student/assignments/:assignment_id/submission</code>を<code>Student::SubmissionsController#create</code>へ渡します。単数形は「この小テストへの自分の提出一件」を扱うためです。</p>
+<p>単数resourceでもController名は複数形のSubmissionsControllerです。URLにSubmissionのIDは不要ですが、<strong>単数routeだけでDBの一件制限ができるわけではありません。</strong></p>
+<h2>詳細画面からPOSTすると、認証と認可をやり直す</h2>
+<p>未提出の詳細画面には、解答PDFを選ぶフォームがあります。</p>
+<!-- source: app/views/student/assignments/show.html.erb -->
+<pre><code class="language-erb">  &lt;%= form_with model: @submission, url: student_assignment_submission_path(@assignment) do |form| %&gt;
+    &lt;%= form.label :answer_file, &quot;解答PDF&quot; %&gt;
+    &lt;%= form.file_field :answer_file, accept: &quot;application/pdf,.pdf&quot; %&gt;
+    &lt;%= form.submit &quot;提出&quot; %&gt;
+  &lt;% end %&gt;
+</code></pre>
+<p>ファイル入力があるためmultipart形式で送信されます。POSTの入口では生徒認証を行い、未ログイン・教師ログインなら生徒ログイン画面へ戻します。</p>
+<!-- source: app/controllers/student/submissions_controller.rb -->
+<pre><code class="language-ruby">    @assignment = current_student.classroom.assignments.find(params[:assignment_id])
+    return redirect_already_submitted if existing_submission
+</code></pre>
+<p>URLのIDは、ログイン生徒の所属クラスへ配信されたAssignmentの範囲で検索します。他クラスだけ・別学校・未配信・不存在IDは範囲内に見つからず404です。詳細画面を開けたことだけに頼らず、保存するPOSTでも確認します。</p>
+<p>例えば1年1組の生徒が1年2組専用のIDへPOSTしても、ファイル保存には進めません。自分のクラスにも配信されていれば、別の教師が作成した小テストでも提出できます。</p>
+<h2>生徒・状態・日時はフォームに決めさせない</h2>
+<!-- source: app/controllers/student/submissions_controller.rb -->
+<pre><code class="language-ruby">    @submission = current_student.submissions.build(
+      assignment: @assignment, status: :submitted, submitted_at: Time.current
+    )
+    upload = params.fetch(:submission, ActionController::Parameters.new).permit(:answer_file)[:answer_file]
+</code></pre>
+<p><code>current_student.submissions.build</code>が生徒を設定し、認可済みの<code>@assignment</code>が提出先になります。statusは提出済み状態の<code>submitted</code>、submitted_atはサーバーの現在時刻です。buildはまだDB保存しません。</p>
+<p>Strong Parametersは<code>answer_file</code>だけを許可します。hidden入力でIDを送る方法でも入力は書き換えられるため、生徒ID・Assignment ID・status・日時をフォームから採用しません。</p>
+<p>URLのassignment_idは検索の手掛かりですが、認可済みのレコードを得てから関連を設定します。「IDを受け取ったから信用する」とは違います。</p>
+<h2>acceptは選択補助、Marcelはサーバー側の内容確認</h2>
+<p><code>accept=&quot;application/pdf,.pdf&quot;</code>はファイル選択画面の補助です。ブラウザ外から直接POSTできるので、これだけでPDF限定にはできません。</p>
+<!-- source: app/controllers/student/submissions_controller.rb -->
+<pre><code class="language-ruby">    upload.tempfile.rewind
+    pdf = File.extname(upload.original_filename).downcase == &quot;.pdf&quot; &amp;&amp;
+      Marcel::MimeType.for(upload.tempfile) == &quot;application/pdf&quot;
+</code></pre>
+<p>その前に<code>ActionDispatch::Http::UploadedFile</code>であることを確認します。未選択や文字列などはエラーです。拡張子は大小文字を揃え、<code>.PDF</code>も認めます。</p>
+<p>Marcelは既存のActive Storage依存です。判定に名前やブラウザ申告のContent-Typeを渡さず、一時ファイルの内容を読みます。テキストを<code>answer.pdf</code>へ改名し、<code>application/pdf</code>を申告しても通りません。</p>
+<p>判定後もensureでrewindし、保存時に先頭から読めるようにします。この確認は今回の提出処理だけに置き、Submission全体のvalidationは変えていません。</p>
+<p>PDFの特徴の判定と、全ページが壊れず読めるかの完全解析は別です。容量上限・完全解析は今回追加していません。</p>
+<h2>添付してから、Submissionを保存する</h2>
+<!-- source: app/controllers/student/submissions_controller.rb -->
+<pre><code class="language-ruby">    @submission.answer_file = upload
+    Submission.transaction(requires_new: true) { @submission.save! }
+    redirect_to student_assignment_path(@assignment), notice: &quot;提出しました&quot;, status: :see_other
+</code></pre>
+<p>未保存Submissionへ添付を設定し、save!でモデルvalidationとDB保存を行います。Submissionだけを先に登録して、別操作で添付する流れにはしていません。</p>
+<p>transactionはDB保存をまとめ、save!の失敗では例外を発生させます。<code>requires_new: true</code>は既存transactionがある場合にも保存範囲を分ける指定です。</p>
+<p>注意点として、Active Storageの実ファイル転送はafter_commitです。DBのtransactionが、Disk障害まで完全に巻き戻す保証ではありません。今回のspecもストレージ障害への完全な原子性を保証していません。</p>
+<h2>persisted?でフォームと提出済み表示を切り替える</h2>
+<p>詳細のshowでは、自分のSubmissionを検索し、なければ未保存のオブジェクトを作ります。</p>
+<!-- source: app/controllers/student/assignments_controller.rb -->
+<pre><code class="language-ruby">    @submission = current_student.submissions.find_by(assignment: @assignment) ||
+      current_student.submissions.build(assignment: @assignment)
+</code></pre>
+<p>Viewの<code>@submission.persisted?</code>がtrueなら「提出済み」、解答ファイル名、提出日時を表示します。falseなら提出フォームです。persisted?はファイルの有無ではなく、レコードが保存されているかの判定です。</p>
+<p>保存失敗時には未保存Submissionを作り直し、errorsをコピーして詳細をrenderします。ファイルは再選択が必要です。提出済み答案を開く・ダウンロードするリンクはありません。</p>
+<h2>再提出は画面・Controller・DBで防ぐ</h2>
+<p>画面でフォームを隠しても、直接POSTや二重クリックはあり得ます。Controllerは既存Submissionがあれば保存せず「すでに提出済みです」と詳細へ戻します。</p>
+<!-- source: app/models/submission.rb -->
+<pre><code class="language-ruby">  validates :student_id, uniqueness: { scope: :assignment_id }
+</code></pre>
+<p>さらにDBには<code>assignment_id</code>と<code>student_id</code>の組み合わせのunique indexがあります。事前検索とモデルvalidationを二つの同時リクエストが両方通っても、DBが二件目を拒否するため、最後の防御になります。</p>
+<!-- source: app/controllers/student/submissions_controller.rb -->
+<pre><code class="language-ruby">  rescue ActiveRecord::RecordInvalid
+    return redirect_already_submitted if existing_submission
+
+    render_errors
+  rescue ActiveRecord::RecordNotUnique
+    return redirect_already_submitted if existing_submission
+
+    raise
+</code></pre>
+<p>例外処理は保存transactionの外側です。既存Submissionを再検索し、競合相手の提出が存在すれば通常の重複と同じredirectにします。失敗したtransaction内で検索を続けません。</p>
+<p>無関係なunique違反まで「提出済み」とは扱いません。既存提出が見つからないRecordNotUniqueは再raiseします。今回の通常の二重提出では、既存答案・日時・statusを変更しません。</p>
+<h2>422・303・404は次の行動が違う</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>応答</th>
+<th>ケース</th>
+<th>ブラウザの次の動き</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>422</td>
+<td>PDF未選択・形式不正・通常のvalidation失敗</td>
+<td>同じPOSTへの返答として詳細とエラーを表示</td>
+</tr>
+<tr>
+<td>303</td>
+<td>提出成功・提出済み</td>
+<td>指定された詳細URLを新しくGET</td>
+</tr>
+<tr>
+<td>303</td>
+<td>未ログイン・教師ログイン</td>
+<td>生徒ログイン画面をGET</td>
+</tr>
+<tr>
+<td>404</td>
+<td>所属クラスの範囲外・不存在Assignment</td>
+<td>対象を取得できず終了</td>
+</tr>
+</tbody></table>
+</div><p>renderは新しいGETを送りません。redirectはブラウザへ移動先を返します。成功後にGETへ移すことで、詳細の再読み込みで同じ提出POSTを繰り返す流れを避けます。</p>
+<h2>Request Specが確かめている境界</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>境界</th>
+<th>確認内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>正常提出</td>
+<td>Student・Assignment・status・時刻・PDF内容の一致</td>
+</tr>
+<tr>
+<td>入力改ざん</td>
+<td>送られたID・status・時刻を採用しない</td>
+</tr>
+<tr>
+<td>認可</td>
+<td>他クラス・別学校・未配信・不存在は404、保存なし</td>
+</tr>
+<tr>
+<td>認証</td>
+<td>未ログイン・教師・ログアウト後は保存なし</td>
+</tr>
+<tr>
+<td>PDF</td>
+<td>未選択・不正入力・改名やContent-Type偽装を拒否</td>
+</tr>
+<tr>
+<td>重複</td>
+<td>Submission・添付・日時・状態を変更しない</td>
+</tr>
+<tr>
+<td>競合</td>
+<td>RecordInvalid／RecordNotUnique経路でも提出済みへ戻る</td>
+</tr>
+<tr>
+<td>画面</td>
+<td>未提出フォーム、422のエラー、提出済み表示</td>
+</tr>
+</tbody></table>
+</div><p>競合specは例外経路を再現したもので、実際の並列送信試験ではありません。DB自体の重複拒否は既存Submissionモデルspecで確認します。validation失敗specも保存例外の経路を再現しています。</p>
+<p>ユーザーから、実装とブラウザ確認の完了が報告されています。この記事作成時のRailsアプリのブラウザ再確認は行っていません。関連RSpecの今回の再実行結果は記事冒頭の検証情報に記録します。</p>
+<h2>保存と表示の一本道</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>順番</th>
+<th>処理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>詳細GETで自分のSubmissionを検索、未提出ならフォーム</td>
+</tr>
+<tr>
+<td>2</td>
+<td>提出POSTを生徒用SubmissionsControllerが受ける</td>
+</tr>
+<tr>
+<td>3</td>
+<td>生徒認証→所属クラスからAssignmentを検索</td>
+</tr>
+<tr>
+<td>4</td>
+<td>既存提出ならredirect。なければ生徒・状態・日時を設定</td>
+</tr>
+<tr>
+<td>5</td>
+<td>ファイル形式・拡張子・Marcelの内容判定</td>
+</tr>
+<tr>
+<td>6</td>
+<td>answer_fileを設定→transaction内でsave!</td>
+</tr>
+<tr>
+<td>7</td>
+<td>303→詳細GET→persisted?がtrue→提出済み表示</td>
+</tr>
+</tbody></table>
+</div><h2>理解度チェック</h2>
+<details><summary>1. 単数resourceならDBの重複も防げる？</summary>
+防げません。routeは一件を扱うURLの形です。重複防止はController・モデルvalidation・DBのunique indexが担当します。
+</details><details><summary>2. 詳細を開けた生徒ならPOSTの認可は省いてよい？</summary>
+省けません。POSTのURLは直接指定できます。保存前にcurrent_student.classroom.assignmentsから再検索します。
+</details><details><summary>3. answer.pdfという名前とaccept属性でPDFを保証できる？</summary>
+できません。サーバーで拡張子とMarcelによる内容判定も行います。ただしPDFの完全な破損検証ではありません。
+</details><details><summary>4. 二人のリクエストが「未提出」を同時に確認したら？</summary>
+同じ生徒・Assignmentの二件目はDBのunique indexが拒否します。transactionの外で既存提出を再確認し、上書きせず提出済みへ戻します。
+</details><details><summary>5. 422のrenderと303のredirectは同じ移動？</summary>
+違います。422はそのPOSTへの返答としてエラー画面を作ります。303ではブラウザが詳細やログインへ新しいGETを送ります。
+</details>
+</main><footer>QuickFlowのコードを自分の言葉で説明するための学習資料。Railsから独立した静的サイトです。</footer></body></html>

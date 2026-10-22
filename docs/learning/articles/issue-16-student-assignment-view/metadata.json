@@ -1,0 +1,33 @@
+{
+  "id": "issue-16-student-assignment-view",
+  "title": "生徒はなぜ自分のクラスの小テストだけ見られる？",
+  "summary": "Issue #16：生徒ログインから所属クラスの一覧・詳細、認可付き教材PDF取得までを実コードでたどる。",
+  "issue": 16,
+  "updatedAt": "2026-10-06",
+  "sourceCommit": "01c978890f308119f05c08b2893ac945387c2d15",
+  "sourceDirty": true,
+  "sourceFiles": [
+    "config/routes.rb",
+    "config/application.rb",
+    "config/storage.yml",
+    "app/controllers/application_controller.rb",
+    "app/controllers/student_sessions_controller.rb",
+    "app/controllers/student/assignments_controller.rb",
+    "app/models/student.rb",
+    "app/models/classroom.rb",
+    "app/models/assignment.rb",
+    "app/models/assignment_classroom.rb",
+    "app/views/student/assignments/index.html.erb",
+    "app/views/student/assignments/show.html.erb",
+    "spec/requests/student_assignments_spec.rb",
+    "spec/requests/student_sessions_spec.rb"
+  ],
+  "verification": {
+    "status": "limited",
+    "summary": "Issue #18追加後のroutes・詳細View・関連specを再READして照合情報を更新。過去の検証結果は本文の実行日を参照。",
+    "limitations": [
+      "他クラスURL直アクセスはブラウザ未確認。request specで404を確認。",
+      "全RSpec・大容量教材の性能・専用VLM検査・first-reader通読/想起検査は未実施。"
+    ]
+  }
+}

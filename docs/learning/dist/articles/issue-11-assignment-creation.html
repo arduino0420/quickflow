@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>「配信」を押すと、登録・保存・一覧表示はどうつながる？ | QuickFlow学習サイト</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f3f6fa;color:#243247;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;line-height:1.9}header{background:#153550;color:white;padding:56px 24px}header>div,main,footer{max-width:960px;margin:auto}h1{font-size:clamp(26px,4vw,40px);line-height:1.5;margin:12px 0}header p{color:#dfebf5}.eyebrow{font-size:13px;letter-spacing:.16em;color:#a9dccf}main{padding:28px 20px 48px}section,.intro,.recap{background:white;border:1px solid #dce4ed;border-radius:16px;padding:28px 32px;margin-bottom:24px;box-shadow:0 5px 18px #15355006}h2{font-size:22px;line-height:1.6;margin:0 0 20px;display:flex;gap:12px;align-items:baseline}h2 span{flex-shrink:0;background:#e7f4f0;color:#146451;border-radius:8px;padding:0 10px;font-size:18px}h3{font-size:18px}p{margin:14px 0}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em;background:#edf2f7;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{background:#17283c;color:#eff6ff;padding:20px;border-radius:10px;overflow:auto;line-height:1.7}pre code{background:none;padding:0;overflow-wrap:normal}table{border-collapse:collapse;width:100%;font-size:15px}th,td{text-align:left;padding:14px 16px;border-bottom:1px solid #dae3ec;vertical-align:top}th{background:#eaf1f7;color:#153550}.table-wrap{overflow-x:auto;margin:20px 0}.note{border-left:4px solid #21866d;background:#eef8f4;padding:16px 20px;border-radius:0 8px 8px 0}li{margin:8px 0}nav{display:flex;flex-wrap:wrap;gap:10px}nav a{color:#155c78;text-decoration:none;border:1px solid #d3e2eb;border-radius:7px;padding:5px 12px;font-size:14px}a:hover{text-decoration:underline}a:focus-visible{outline:3px solid #21866d;outline-offset:3px}.flow{list-style:none;padding:0;counter-reset:steps}.flow li{counter-increment:steps;position:relative;padding:14px 18px 14px 54px;background:#f1f6fa;border-radius:8px;margin:0 0 18px;line-height:1.65}.flow li:before{content:counter(steps);position:absolute;left:16px;color:#146451;font-weight:bold}.flow li:not(:last-child):after{content:"↓";position:absolute;bottom:-23px;left:24px;color:#637c92}footer{font-size:13px;color:#53677a;padding:0 24px 36px}@media(max-width:600px){header{padding:32px 20px}main{padding:20px 12px}section,.intro,.recap{padding:22px 18px}h2{font-size:19px}th,td{padding:10px;min-width:120px}}@media print{body{background:white}header{background:white;color:#153550;padding:0}header p{color:#243247}main{padding:0}nav{display:none}section,.intro,.recap{box-shadow:none;break-inside:avoid}pre{white-space:pre-wrap}footer{padding:0}}
+.article-meta{font-size:14px;color:#53677a}.article-card{display:block;color:inherit;text-decoration:none}.article-card h2{color:#155c78}.article-card:hover{border-color:#21866d}.verification{border-left:4px solid #aa7500;background:#fff7e7;padding:16px 20px;border-radius:8px;margin:20px 0}
+</style></head><body><header><div><div class="eyebrow">QUICKFLOW · LEARNING</div><h1>「配信」を押すと、登録・保存・一覧表示はどうつながる？</h1><p><a href="../index.html" style="color:#dfebf5">← 記事一覧へ</a></p></div></header><main><p class="article-meta">更新 2026-10-06 · 対象コミット <code>01c978890f30</code>（対象コードに未commit変更あり）</p><aside class="verification" aria-label="検証状況"><strong>検証状況：未検証事項あり</strong><p>Issue #18追加後のroutes・詳細View・関連specを再READして照合情報を更新。過去の検証結果は本文の実行日を参照。</p><ul><li>今回のエージェントによるRailsアプリのブラウザ再確認・全RSpec実行は行っていません。</li><li>first-readerは初見のskimのみ。時間制約付きの通読・翌日想定の想起検査、explainer専用の図・VLM検査は未実施。コード・HTML照合は学習サイトの既存検査を使用。</li></ul></aside><blockquote>
+<p>想定読者：QuickFlowを開発するRails学習者。今回は初心者向けという依頼に合わせています。コードと動作を並べると理解しやすい、という点は説明方法としての仮定です。
+所要時間：約10分。再配信・追加配信・編集・削除・教材ダウンロードは扱いません。</p>
+</blockquote>
+<p>伝えたいこと：<strong>配信は「入力を全部確かめてから小テストと配信先をまとめて保存する処理」、一覧・詳細は「自分の配信済みデータだけを読み取る処理」です。</strong></p>
+<p>読み終わったら、①不正なクラスが混ざっても一部保存されない理由、②自分の配信済み小テストだけ見える理由、③その保証をRSpecがどう確かめるかを説明できることが目標です。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>読む順番</th>
+<th>ここで分かること</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>routesとフォーム</td>
+<td>ブラウザの入力がどのactionへ届くか</td>
+</tr>
+<tr>
+<td>Controllerと入力検証</td>
+<td>誰の小テストか、どのクラスが使えるか</td>
+</tr>
+<tr>
+<td>transactionと関連</td>
+<td>Assignmentだけが残らない仕組み</td>
+</tr>
+<tr>
+<td>一覧・詳細とView</td>
+<td>保存したデータを安全に表示する流れ</td>
+</tr>
+<tr>
+<td>Request Spec</td>
+<td>実際のリクエストで確認している範囲</td>
+</tr>
+</tbody></table>
+</div><h2>1. routesは、ブラウザの行き先をactionへつなぐ</h2>
+<!-- source: config/routes.rb -->
+<pre><code class="language-ruby">resources :assignments, only: [ :index, :show, :new, :create ]
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>ブラウザのリクエスト</th>
+<th>action</th>
+<th>役割</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>GET /assignments/new</td>
+<td>new</td>
+<td>配信フォームを表示</td>
+</tr>
+<tr>
+<td>POST /assignments</td>
+<td>create</td>
+<td>登録と初回配信を保存</td>
+</tr>
+<tr>
+<td>GET /assignments</td>
+<td>index</td>
+<td>配信済み一覧を表示</td>
+</tr>
+<tr>
+<td>GET /assignments/:id</td>
+<td>show</td>
+<td>閲覧専用の詳細を表示</td>
+</tr>
+</tbody></table>
+</div><p>GETは画面を見る入口、POSTは入力を送る入口です。同じ <code>/assignments</code> でも、HTTPの種類によって一覧か保存かが決まります。</p>
+<p>配信画面の <code>form_with model: @assignment</code> は、未保存Assignmentの入力フォームを作ります。教材のファイル欄も含めてPOSTし、クラス選択は <code>assignment[classroom_ids][]</code> という配列で届きます。</p>
+<p><code>new</code> は <code>current_teacher.assignments.build</code> で空のAssignmentを用意します。<strong>buildは教師を設定したRubyオブジェクトを作るだけで、この時点ではDBに保存しません。</strong></p>
+<h2>2. Controllerは、まず教師を確認し、使ってよい入力を選ぶ</h2>
+<!-- source: app/controllers/assignments_controller.rb -->
+<pre><code class="language-ruby">before_action :require_teacher_login
+</code></pre>
+<p>これは各actionより前の教師確認です。<code>current_teacher</code> はsessionの教師IDから取得され、見つからなければ教師ログイン画面へ303で戻します。</p>
+<p><code>create</code> はログイン教師の関連からAssignmentを作ります。入力から教師IDを採用しないので、別の教師IDを送っても所有者を変更できません。</p>
+<!-- source: app/controllers/assignments_controller.rb -->
+<pre><code class="language-ruby">params.require(:assignment).permit(:title, :point_per_question, :material_file)
+</code></pre>
+<p>これがStrong Parametersです。「assignmentというまとまりから、この3項目を受け取る」という入力項目の許可であり、内容が正しいことまでは保証しません。</p>
+<p>クラスIDは別に <code>permit(classroom_ids: [])</code> で許可し、検証します。Assignmentのbuildへそのまま渡さず、確認済みクラスだけを後で紐付ける設計です。</p>
+<h2>3. validationと学校内IDの確認は、保存を始める前に行う</h2>
+<p><code>@assignment.valid?</code> は、モデルの入力チェックを実行します。タイトルは必須、1問あたりの点数は1以上の整数です。まだ保存はしません。</p>
+<p>教材必須は今回の初回配信処理に限る条件なので、Controllerが未添付時にエラーを追加します。モデル全体に教材必須のvalidationは追加していません。</p>
+<p>配信先はログイン教師と同じ学校から取得します。</p>
+<!-- source: app/controllers/assignments_controller.rb -->
+<pre><code class="language-ruby">@classrooms = Classroom.where(school_id: current_teacher.school_id).order(:grade, :class_number)
+</code></pre>
+<p>学校だけで絞るため、同じ学校なら他教師が担当するクラスも選べます。<code>Classroom.teacher_id</code> は制限に使いません。</p>
+<p>ID確認は、配列か → 正の整数の文字列か → 空文字除去・重複除去 → 最低1件か → 全IDが学校内に存在するか、の順です。空文字はフォームの隠し入力から届くため除外しますが、空文字だけなら未選択エラーです。</p>
+<p>例えば学校内のIDが10と20なのに、10と別学校の99を送ったとします。学校内検索は10しか返さず、要求した <code>[10, 99]</code> と一致しないのでリクエスト全体を拒否します。</p>
+<p><strong>「使える10だけ保存する」ことはありません。</strong> エラーが1つでもあれば保存開始前に422でフォームを返します。</p>
+<h2>4. transactionは、小テストと全配信先を一まとまりにする</h2>
+<!-- source: app/controllers/assignments_controller.rb -->
+<pre><code class="language-ruby">    Assignment.transaction do
+      @assignment.save!
+      selected_classrooms.each do |classroom|
+        @assignment.assignment_classrooms.create!(classroom: classroom)
+      end
+    end
+</code></pre>
+<p><code>save!</code> がAssignmentを保存し、そのIDを使って配信先のAssignmentClassroomを作成します。末尾の <code>!</code> は失敗を例外として知らせる呼び出しで、途中の失敗をtransactionの外まで伝えます。</p>
+<p>transactionは、DBの変更をまとめて確定し、途中で例外が出れば巻き戻す仕組みです。2クラス目の保存が失敗すれば、Assignmentも1クラス目の紐付けも取り消します。</p>
+<p>validationによる <code>RecordInvalid</code> はtransactionの外で受け取り、エラー付きフォームを422で表示します。例外を内側で握りつぶして確定させる構造ではありません。</p>
+<h3>Model / Associationは、保存した行同士の関係を表す</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>モデル</th>
+<th>保存する意味</th>
+<th>関連</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Assignment</td>
+<td>教師が作った小テスト本体</td>
+<td>belongs_to teacher、has_many assignment_classrooms</td>
+</tr>
+<tr>
+<td>AssignmentClassroom</td>
+<td>小テストと配信先クラスの組</td>
+<td>belongs_to assignment / classroom</td>
+</tr>
+<tr>
+<td>Classroom</td>
+<td>学年・組を持つクラス</td>
+<td>Assignmentから中間テーブル経由で参照</td>
+</tr>
+</tbody></table>
+</div><p>Assignmentの <code>has_many :classrooms, through: :assignment_classrooms</code> は、「紐付けの表を通って配信先クラスを取得できる」という宣言です。選択が2クラスなら、小テスト1行と紐付け2行を保存します。</p>
+<p>同じ小テストとクラスの組はモデルのuniqueness validationとDBのunique indexで重複を防ぎます。入力内のID重複も事前に除去します。</p>
+<p>教材は <code>has_one_attached :material_file</code> によりActive Storageが管理します。DBのtransactionはAssignment・紐付け・添付情報を扱いますが、外部のファイルストレージ全体をDBと一緒に原子的に保証するものではありません。</p>
+<h2>5. 成功はredirect、入力エラーはrenderで返す</h2>
+<p>成功すると303で <code>/assignments/new</code> を開き直します。新しい <code>new</code> が空フォームを用意し、「小テストを配信しました」を表示します。</p>
+<p>失敗時の <code>render :new</code> は、new actionを呼び直す命令ではありません。Controllerが用意したエラーと入力値を使って同じViewを表示します。</p>
+<p><code>render_creation_errors</code> は未保存Assignmentを作り直し、タイトル・点数・エラーをコピーします。途中保存後のロールバックでも、フォームが編集用に変わらずPOSTのまま再送信できます。</p>
+<p>クラスの有効な選択も保持します。教材は引き継がず、画面の案内どおり再選択します。</p>
+<h2>6. 一覧は「自分のもの」かつ「配信先があるもの」を読む</h2>
+<!-- source: app/controllers/assignments_controller.rb -->
+<pre><code class="language-ruby">current_teacher.assignments.where(id: AssignmentClassroom.select(:assignment_id))
+</code></pre>
+<p><code>current_teacher.assignments</code> が所有者を絞り、<code>where</code> が配信先の紐付けを持つAssignmentに限定します。<code>select(:assignment_id)</code> は中間テーブルから小テストIDだけを選ぶDBの問い合わせです。</p>
+<p>これは <code>published_at</code> を見る処理ではありません。今回の「配信済み」は <strong>AssignmentClassroomが1件以上あること</strong>です。</p>
+<p><code>index</code> はこの範囲を <code>created_at</code> 降順、同時刻なら <code>id</code> 降順で並べます。一覧Viewがタイトルと <code>assignment_path(assignment)</code> への「詳細」リンクを表示し、0件なら案内を表示します。</p>
+<p>中間テーブルの行を直接一覧に並べないため、複数クラスへ配信した小テストも一覧では1件です。</p>
+<h2>7. 詳細は、同じ取得範囲から1件を探して表示する</h2>
+<!-- source: app/controllers/assignments_controller.rb -->
+<pre><code class="language-ruby">@assignment = distributed_assignments.find(params[:id])
+</code></pre>
+<p>URLのIDだけで全Assignmentを探すのではなく、自分の配信済みの範囲から探します。他教師・未配信・不存在のIDなら404です。同じ学校の教師でも、他教師の小テストは閲覧できません。</p>
+<p><code>show</code> は <code>@assignment.classrooms.order(:grade, :class_number)</code> で配信先を読み取ります。show Viewはタイトル・1問あたりの点数・配信先クラス・教材ファイル名の4項目と、一覧へ戻るリンクを表示します。</p>
+<p>GETで見るだけなので保存処理はありません。再配信・追加配信・編集・削除・教材ダウンロードのフォームやリンクもありません。</p>
+<h2>8. Request Specは、入口から保存・応答までを確認する</h2>
+<p><code>spec/requests/assignments_spec.rb</code> は実際の教師・生徒ログインrouteを使い、GET/POSTを送って、保存件数・応答・HTMLを確認します。Controllerのメソッドだけを直接呼ぶテストではありません。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>確認すること</th>
+<th>specの確かめ方</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>登録と配信を同時保存</td>
+<td>Assignmentが1件、選択数分の紐付けが増える</td>
+</tr>
+<tr>
+<td>教材・クラス必須、不正ID拒否</td>
+<td>422、Assignment・紐付け・添付情報が増えない</td>
+</tr>
+<tr>
+<td>途中失敗を巻き戻す</td>
+<td>2件目の作成を失敗させ、1件目も残らない</td>
+</tr>
+<tr>
+<td>自分の配信済みだけ閲覧</td>
+<td>他教師・未配信は一覧に出ず、詳細は404</td>
+</tr>
+<tr>
+<td>閲覧がデータを変えない</td>
+<td>件数・属性・紐付けが変わらない</td>
+</tr>
+<tr>
+<td>画面の連携</td>
+<td>初回配信→一覧→詳細を実際のリンクでたどる</td>
+</tr>
+</tbody></table>
+</div><p>2026年10月6日に、この解説作成時点のrequest specを再実行しました。</p>
+<pre><code class="language-text">44 examples, 0 failures
+</code></pre>
+<p>これは上記のrequest specの範囲の結果です。ユーザーからRailsアプリのブラウザ確認完了が報告されていますが、今回のエージェントによるアプリ画面再確認とは区別します。</p>
+<h2>保存と表示の一本道</h2>
+<div class="table-wrap"><table><thead><tr><th>配信する</th><th>配信済みを見る</th></tr></thead><tbody><tr><td>フォームからPOST</td><td>一覧・詳細へGET</td></tr><tr><td>routes → create</td><td>routes → index / show</td></tr><tr><td>教師確認 → 入力許可 → validationと学校内ID照合</td><td>教師確認 → 自分の配信済みを取得</td></tr><tr><td>transaction → 本体と全紐付けを保存</td><td>関連から配信先を読み取る</td></tr><tr><td>成功303 / 入力エラー422 → 配信View</td><td>一覧・詳細Viewを表示</td></tr></tbody></table></div><h2>理解度チェック</h2>
+<details><summary>1. Strong Parametersを通ったクラスIDなら、そのまま保存してよい？</summary><p>いいえ。項目の許可とは別に、形式・存在・学校所属を確認します。別学校IDが混ざれば全部拒否します。</p></details>
+<details><summary>2. 2クラス目の紐付けが失敗しても、Assignmentだけ残せる？</summary><p>今回の仕様では残しません。同じtransaction内で例外が伝わり、Assignmentとそれまでの紐付けもロールバックします。</p></details>
+<details><summary>3. 同じ学校の他教師の小テストは、詳細で見られる？</summary><p>見られません。配信先選択は学校単位ですが、小テストの閲覧は所有教師単位です。</p></details>
+<details><summary>4. 配信済みの判定にpublished_atを使っている？</summary><p>使っていません。自分のAssignmentのうち、AssignmentClassroomが1件以上あるものを取得します。</p></details>
+<details><summary>5. request spec成功はブラウザの見た目まで保証する？</summary><p>しません。保存・応答・HTMLの確認と、実ブラウザでの表示や操作の確認は別です。</p></details><h2>Issue #16とのつながり</h2>
+<p>教師側の配信・一覧・詳細は維持されています。生徒側には別の<code>/student/assignments</code>が追加され、所属クラスへの配信を根拠に取得します。教材取得の認可は生徒用Controllerが行い、標準Active Storage公開routesは無効です。</p>
+</main><footer>QuickFlowのコードを自分の言葉で説明するための学習資料。Railsから独立した静的サイトです。</footer></body></html>
