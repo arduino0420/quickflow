@@ -6,10 +6,12 @@ class QuestionGenerator
     @model = model
   end
 
-  attr_reader :request, :claim_token
+  attr_reader :request, :claim_token, :failure_recorded
 
   def call(assignment, material_blob_id: nil, request_id: nil)
     @request = @claim_token = nil
+    @failure_recorded = false
+    snapshot = response = nil
     assignment.reload
     begin
       questions = saved_questions(assignment)
@@ -25,71 +27,86 @@ class QuestionGenerator
     return unless @request.selected_input?(assignment)
     return if !material_blob_id.nil? && material_blob_id != @request.material_blob_id
 
-    @claim_token = @request.claim!
-    return unless @claim_token
+    @request.with_selected_lock do |owner|
+      @claim_token = @request.claim!
+      owner.reload
+      @request.reload(lock: true)
+      next unless @claim_token && @request.owned?(owner, @claim_token)
+      raise "Material PDF is missing" unless owner.material_file.attached?
 
-    @model = @request.model
-    # Serialize generation without blocking the foreign-key check on new submissions.
-    assignment.with_lock("FOR NO KEY UPDATE") do
-      @request.reload
-      next unless @request.owned?(assignment, @claim_token)
-      raise saved_error if saved_error
+      snapshot = { blob: owner.material_file.blob, teacher_id: owner.teacher_id,
+        questions: owner.questions.order(:id).map { |question| question.attributes.except("created_at", "updated_at") },
+        blob_identity: owner.material_file.blob.attributes.slice("id", "key", "checksum", "byte_size", "service_name", "content_type"),
+        attachment_id: owner.material_file_attachment.id, model: @request.model, prompt: prompt }
+    end
+    return unless snapshot
 
-      if material_blob_id && assignment.material_file.blob&.id != material_blob_id
-        raise "Material PDF has changed; automatic regeneration is disabled"
-      end
-      questions = saved_questions(assignment)
-      next questions if questions.any?
+    @model = snapshot.fetch(:model)
+    raise saved_error if saved_error
 
-      raise "Material PDF is missing" unless assignment.material_file.attached?
+    # The captured blob is opened without a row lock or an open transaction.
+    snapshot.fetch(:blob).open do |file|
+      raise "Material is not a PDF" unless Marcel::MimeType.for(file) == "application/pdf"
 
-      raise "Previous question generation failed; automatic reattempt is disabled" if failed?(assignment)
-
-      assignment.material_file.open do |file|
-        raise "Material is not a PDF" unless Marcel::MimeType.for(file) == "application/pdf"
-
-        begin
-          PdfReadabilityValidator.validate!(file)
-          @client ||= AiClient.build
-          uploaded_file = @client.files.create(file: Pathname.new(file.path), purpose: "user_data",
-            expires_after: { anchor: "created_at", seconds: 3600 })
-          response = @client.responses.create(
-            model: @model, instructions: prompt, store: false,
-            text: { format: { type: "json_schema", name: "generated_questions", strict: true, schema: response_schema } },
-            input: [ { role: "user", content: [ { type: "input_file", file_id: uploaded_file.id } ] } ]
-          )
-          validate_response!(response)
-          data = JSON.parse(response.output_text)
-          validate!(data)
+      begin
+        PdfReadabilityValidator.validate!(file)
+        @client ||= AiClient.build
+        uploaded_file = @client.files.create(file: Pathname.new(file.path), purpose: "user_data",
+          expires_after: { anchor: "created_at", seconds: 3600 })
+        response = @client.responses.create(
+          model: snapshot.fetch(:model), instructions: snapshot.fetch(:prompt), store: false,
+          text: { format: { type: "json_schema", name: "generated_questions", strict: true, schema: response_schema } },
+          input: [ { role: "user", content: [ { type: "input_file", file_id: uploaded_file.id } ] } ]
+        )
+        validate_response!(response)
+        data = JSON.parse(response.output_text)
+        validate!(data)
+        result = nil
+        @request.with_selected_lock do |owner|
+          next unless generation_owned?(owner, snapshot)
+          next if owner.questions.exists?
 
           generated_at = Time.current
-          questions = data.fetch("questions").each_with_index.map do |question, index|
-            assignment.questions.create!(
+          result = data.fetch("questions").each_with_index.map do |question, index|
+            owner.questions.create!(
               question_label: question.fetch("question_label"), position: index + 1,
               question_text: question.fetch("question_text"), correct_answer: question.fetch("correct_answer"),
               grading_rule: JSON.generate(criteria: question.fetch("grading_rule"), requires_work: question.fetch("requires_work"),
-                material_blob_id: assignment.material_file.blob.id),
-              answer_generation_model: response.model.presence || @model,
-              answer_generation_prompt_version: PROMPT_VERSION, answer_generated_at: generated_at
+                material_blob_id: snapshot.fetch(:blob).id),
+              answer_generation_model: response.model.presence || snapshot.fetch(:model),
+              answer_generation_prompt_version: @request.prompt_version, answer_generated_at: generated_at
             )
           end
-          @request.reload
-          raise "Question generation input is stale" unless @request.owned?(assignment.reload, @claim_token)
-
           @request.update!(state: "succeeded", finished_at: Time.current)
-          questions
-        rescue StandardError
-          log_failure(assignment, response)
-          raise
-        ensure
-          AiFileCleanupJob.schedule(uploaded_file.id) if uploaded_file&.id
         end
+        result
+      ensure
+        AiFileCleanupJob.schedule(uploaded_file.id) if uploaded_file&.id
       end
     end
+  rescue ActiveRecord::RecordNotFound
+    nil
   rescue StandardError
-    # The API-spanning transaction has rolled back before this independent write.
-    @request&.fail!(token: @claim_token) if @claim_token
+    # A failed atomic finalize rolls back before this fresh, equally fenced write.
+    begin
+      if @request && @claim_token
+        @failure_recorded = @request.fail!(token: @claim_token) do |owner|
+          snapshot && generation_owned?(owner, snapshot)
+        end
+      end
+    rescue ActiveRecord::RecordNotFound
+      nil
+    end
+    log_failure(assignment, response)
     raise
+  end
+
+  def generation_owned?(owner, snapshot)
+    @request.owned?(owner, @claim_token) && owner.teacher_id == snapshot.fetch(:teacher_id) &&
+      owner.material_file_attachment&.id == snapshot.fetch(:attachment_id) &&
+      @request.model == snapshot.fetch(:model) &&
+      owner.questions.order(:id).map { |question| question.attributes.except("created_at", "updated_at") } == snapshot.fetch(:questions) &&
+      owner.material_file.blob.attributes.slice("id", "key", "checksum", "byte_size", "service_name", "content_type") == snapshot.fetch(:blob_identity)
   end
 
   # Read-only path for grading: never constructs a client or generates missing answers.

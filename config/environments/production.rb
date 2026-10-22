@@ -87,6 +87,9 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  config.session_store :cookie_store, key: "_quickflow_session", secure: true,
+    httponly: true, same_site: :lax, path: "/"
+
   if Demo::Profile.identity?
     require Rails.root.join("lib/demo/reject_jobs_adapter")
     require Rails.root.join("lib/demo/transport_boundary")

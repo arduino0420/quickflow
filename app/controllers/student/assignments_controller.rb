@@ -7,8 +7,9 @@ class Student::AssignmentsController < ApplicationController
     @assignments = available_assignments.order(created_at: :desc, id: :desc)
     submissions = current_student.submissions.where(assignment: @assignments)
     @submissions_by_assignment_id = submissions.includes(:assignment).index_by(&:assignment_id)
+    scores = SubmissionScores.new.call(@submissions_by_assignment_id.values)
     @scores_by_assignment_id = @submissions_by_assignment_id.values.select(&:completed?).to_h do |submission|
-      [ submission.assignment_id, submission.score ]
+      [ submission.assignment_id, scores[submission.id] ]
     end
     @pending_review_counts = GradingResult.pending_review.joins(:submission, :question)
       .where(submission: submissions).where("questions.assignment_id = submissions.assignment_id")
