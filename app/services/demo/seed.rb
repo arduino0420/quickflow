@@ -71,7 +71,7 @@ module Demo
       refuse!("Only test environment is supported") unless Rails.env.test?
       token = @env["QUICKFLOW_DEMO_ISOLATION_ID"].to_s
       refuse!("Missing isolation ID") unless token.match?(/\A[0-9a-f]{32}\z/)
-      actual = connection.select_one("SELECT current_database() AS database, inet_server_addr()::text AS host, inet_server_port()::text AS port, shobj_description(oid, 'pg_database') AS marker FROM pg_database WHERE datname = current_database()")
+      actual = connection.select_one("SELECT current_database() AS database, host(inet_server_addr()) AS host, inet_server_port()::text AS port, shobj_description(oid, 'pg_database') AS marker FROM pg_database WHERE datname = current_database()")
       expected = { "database" => @env["QUICKFLOW_DEMO_DATABASE"], "host" => "127.0.0.1", "port" => @env["QUICKFLOW_DEMO_PORT"], "marker" => "quickflow-demo:#{token}" }
       refuse!("Actual database endpoint or isolation marker differs") unless actual == expected && actual["database"] == "quickflow_test" && actual["port"].to_i.between?(1024, 65535) && actual["port"] != "5432"
       config = ApplicationRecord.connection_db_config.configuration_hash

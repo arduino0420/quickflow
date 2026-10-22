@@ -118,3 +118,26 @@ manifest書込み失敗時のDBはcommit済みの可能性があるため、成�
 
 全RSpecはseed実行**前の空の専用テストDB**で実行してください。
 成功デモseedと全RSpecを同じDBで続けて運用しません（fixture/認証試行がデモmanifestを変えます）。
+
+## ローカル検証記録（2026-10-22）
+
+- 全RSpec: 1,709件・失敗0件（追加途中のseed13件を含む）。
+- 最終seed関連RSpec: 23件・失敗0件。無効/環境/設定/実接続不一致、Storage不一致、symlink、
+  未知の表、既存非デモ、既存値変更、再実行、PDF破損、部分upload失敗、manifest失敗、
+  flock競合、別PG接続の表ロック競合を確認。
+- RuboCop: 228ファイル・指摘0件。Brakeman: 79checks・警告0件。
+- 全RSpec用は新規 `tmp/demo-pg-cluster`、127.0.0.1:57429/quickflow_test。
+  実デモ用は別の新規 `tmp/demo-seed-pg-cluster`、127.0.0.1:57430/quickflow_test。
+  両方とも実SQLのdata_directory・DB名・アドレス・ポートを照合。
+- 実 `demo:seed` タスクを2回実行し、各回とも上表の件数。
+  2回目の全行/ファイルSHA256照合が成功し、ID・password digest・時刻・checksum不変。
+  全FK convalidated=true、無効な索引0件、正規PDF10個。
+- 実デモ検証ではOpenAIクライアント生成/AiClient構築を例外で禁止し、ActiveJob enqueue通知を監視。
+  実API呼出しなし・登録Job0件。PDF10個をGhostscriptで構文解析しexit 0。
+- 実接続ガード確認でinetのtext castが`127.0.0.1/32`となることを検出。
+  DB書込み前に安全に停止し、SQLの`host(inet_server_addr())`でアドレス自体を比較するよう修正後、
+  上記実タスク2回と最終関連23件を再実行して成功。
+- DB競合テストの初版でRails fixture接続のスレッド共有による待ちを検出。
+  自分の該当テストプロセスだけを終了し、独立PG接続に修正して23件を再実行済み。
+  既存サービス停止・DB削除・reset・purgeは行っていません。
+- 最終headの全RSpecはGitHub CIで別途確認します。上記のローカル全RSpecと混同しません。
