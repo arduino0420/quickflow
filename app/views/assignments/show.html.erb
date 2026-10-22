@@ -1,3 +1,4 @@
+<% content_for :title, "小テスト詳細 | QuickFlow" %>
 <% content_for :head do %><meta name="turbo-cache-control" content="no-cache"><% end %>
 <h1>小テスト詳細</h1>
 
@@ -60,7 +61,7 @@
               <% unless @selected_classroom %><td><%= classroom_label(student.classroom) %></td><% end %>
               <td class="grade-attendance">
                 <% if submission %>
-                  <%= link_to "#{student.attendance_number}番", assignment_submission_path(@assignment, submission), class: "grade-row-link", aria: { label: "#{classroom_label(student.classroom)} 出席番号#{student.attendance_number}の答案確認" } %>
+                  <%= link_to "#{student.attendance_number}番", assignment_submission_path(@assignment, submission, classroom_id: @classroom_selection, filter: @review_only ? "needs_review" : "all"), class: "grade-row-link", aria: { label: "#{classroom_label(student.classroom)} 出席番号#{student.attendance_number}の答案確認" } %>
                 <% else %>
                   <%= student.attendance_number %>番
                 <% end %>

@@ -1,8 +1,9 @@
+<% content_for :title, "答案詳細 | QuickFlow" %>
 <% content_for :head do %><meta name="turbo-cache-control" content="no-cache"><% end %>
 <h1>答案詳細</h1>
 <% if notice.present? %><p role="status"><%= notice %></p><% end %>
 <% if alert.present? %><p role="alert"><%= alert %></p><% end %>
-<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment, classroom_id: @submission.student.classroom_id) %>
+<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment, **(@return_context.presence || { classroom_id: @submission.student.classroom_id })) %>
 <p><%= @assignment.title %> ／ <%= classroom_label(@submission.student.classroom) %> <%= @submission.student.attendance_number %>番</p>
 <% unless @submission.completed? %><p>採点状態：<%= submission_status_label(@submission) %></p><% end %>
 <% if !guest_session? && grading_recovery_enabled? && (@submission.failed? || @grading_recovery_candidate) %>
@@ -41,7 +42,7 @@
       <p>採点結果がありません。</p>
     <% else %>
       <% unless guest_session? %><p>正解・不正解を選択し、「保存」を押すと変更した問題だけに反映されます。</p><% end %>
-      <%= form_with url: assignment_submission_path(@assignment, @submission), method: :patch, id: "teacher-judgments" do %>
+      <%= form_with url: assignment_submission_path(@assignment, @submission, **@return_context), method: :patch, id: "teacher-judgments" do %>
         <% @grading_results.each do |result| %>
           <article class="grading-result teacher-grading-result judgment-<%= result.final_judgment %>" id="question_<%= result.question_id %>">
             <h3>問題 <%= result.question.question_label %></h3>

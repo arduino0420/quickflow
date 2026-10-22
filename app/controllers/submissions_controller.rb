@@ -2,6 +2,7 @@ class SubmissionsController < ApplicationController
   before_action :require_teacher_login
   before_action :prevent_caching
   before_action :set_submission
+  before_action :set_return_context, only: [ :show, :update ]
 
   def show
     set_grading_results
@@ -39,7 +40,7 @@ class SubmissionsController < ApplicationController
       original = original.is_a?(ActionController::Parameters) ? original.each_pair.to_h : nil
       @submission.update_teacher_judgments!(judgments, original)
     end
-    redirect_to assignment_submission_path(@assignment, @submission), notice: "判定を保存しました。", status: :see_other
+    redirect_to assignment_submission_path(@assignment, @submission, **@return_context), notice: "判定を保存しました。", status: :see_other
   rescue Submission::InvalidTeacherJudgments => error
     render_update_error(error.message)
   rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotSaved
@@ -84,6 +85,20 @@ class SubmissionsController < ApplicationController
       changes = input.each_pair.to_h.reject { |id, value| value.empty? || value == original[id] }
       @submission.update_teacher_judgments!(changes, original.each_pair.to_h.slice(*changes.keys)) if changes.any?
     end
+  end
+
+  def set_return_context
+    @return_context = {}
+    return unless params.key?(:classroom_id)
+
+    classroom_id = params[:classroom_id]
+    unless classroom_id == "all"
+      raise ActiveRecord::RecordNotFound unless classroom_id.is_a?(String) && classroom_id.match?(/\A[1-9][0-9]*\z/)
+
+      @assignment.classrooms.where(school_id: current_teacher.school_id).find(classroom_id)
+    end
+    @return_context[:classroom_id] = classroom_id
+    @return_context[:filter] = params[:filter] if [ "all", "needs_review" ].include?(params[:filter])
   end
 
   def set_grading_results
