@@ -1,8 +1,10 @@
 require "rails_helper"
+require_relative "../support/demo_seed_fixture"
 require "tmpdir"
 require "open3"
 
 RSpec.describe "Read-only fictional guests", type: :request do
+  include DemoSeedFixture
   include ActiveSupport::Testing::TimeHelpers
   around do |example|
     old = ENV["QUICKFLOW_GUEST_LOGIN"]
@@ -25,7 +27,7 @@ RSpec.describe "Read-only fictional guests", type: :request do
     @normal_password = SecureRandom.hex(24)
     allow(SecureRandom).to receive(:hex).and_call_original
     allow(SecureRandom).to receive(:hex).with(24).and_return(@normal_password)
-    Demo::Seed.new.call
+    prepare_demo_seed_fixture
     allow(AiClient).to receive(:build).and_call_original
     allow(ActiveJob::Base).to receive(:perform_later).and_raise("No jobs")
   end
