@@ -96,3 +96,5 @@ host/port/dbと実SQLのhost/port/db/data_directory、Storage rootを照合し�
 - 既存PDF/footer/エラー/ゲスト/成績/Excel/MVP回帰と統合後検証は下記に追記。
 - 既存回帰: 57例、失敗0。PDFの保存/復元・実worker/描画・4幅/ズーム、footer、管理者長ID/多数担当、Japanese error layout、ゲスト、全クラス成績、Excel、MVPを含む。
 - 表内スクロール・PDF描画完了待ちを加えた最終関連: 44例、失敗0。108枚を再生成し、一覧・長文答案・保存後空・描画済みPDFの画像を再確認。
+- main `09588f380a9b0ce6f09b0f8a22a7ba4d1a498f26`を通常mergeした統合headで、context request＋全画面Systemは16例、失敗0。
+  main差分は#95の31ファイルのみ。#50 docsはmain由来で差分には含まれない。
