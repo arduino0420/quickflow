@@ -34,6 +34,12 @@ Demo cache uses null_store. No secondary cache/queue/cable configuration exists;
 
 Successful guest starts consume the existing raw-peer budget (10/10 minutes, shared by clients behind one proxy) and global budget (50/15 minutes). The verifier hashes the manifest before the entry throttle; this is not an ingress DoS defense. After verified starts, at most 100 already-expired auth rows are removed using the existing expiry predicate; active counters/nonces and business data are untouched.
 
+## Technical acceptance and deployment are separate
+
+Issue #92's implementation evidence covers classified initial business data (12 tables with at least five records, ten regular PDF attachments), an explicit isolated seed, complete integrity verification, refusal of existing data, and repeat execution without replacement. Authentication limits, Queue/Cache/Cable, variants and Rails metadata are operating state produced by genuine execution. Not fabricating those rows is an engineering application judgment; it is not an official DPro exemption or a claim that every physical table literally contains five rows.
+
+Issue #93's technical evidence covers administrator and general-user guests (teacher/student), isolation, readonly scopes, credential/session switching, logout landing and revocation, CSRF and no-AI/no-job checks. Production-mode checks run on isolated local infrastructure with a CA/hostname-verifying HTTP client, including an already valid guest retaining readonly access when entry is disabled. A public URL is not an explicit Issue #93 checkbox. These implementation criteria are assessed from the text and evidence, separately from owner-approved deployment work; no additional mentor or public-deployment gate is imposed here.
+
 ## Before any public deployment
 
 These are concrete deployment conditions, not additional DPro requirements or a requirement for mentor permission:
@@ -45,4 +51,4 @@ These are concrete deployment conditions, not additional DPro requirements or a 
 - Set proxy rate/body/concurrency limits before the manifest verifier. The current transport accepts direct TLS only; a future proxy must strip untrusted forwarded headers and preserve the approved TLS/peer boundary. Do not silently start trusting X-Forwarded-For.
 - Validate deployment-level no-worker/no-secondary-service/no-egress controls and effective role grants on the actual independent demo. Do not expose `RAILS_ENV=test` on the Internet.
 
-#92/#93 are not automatically closed by this implementation. The parent task compares the DPro text and actual evidence, distinguishing initial business data from genuine internal operating state. No fabricated operational rows, official exemptions, or extra mentor stop conditions are implied.
+Actual deployment and real infrastructure verification remain unperformed and belong to the existing deployment work. The conditions above govern that future operation, rather than adding checkboxes to Issues #92/#93. Historical review comments are not rewritten by this current clarification.
