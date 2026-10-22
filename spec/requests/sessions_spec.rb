@@ -23,6 +23,7 @@ RSpec.describe "Teacher sessions", type: :request do
     expect(document.at_css('input[name="session[user_id]"]')).to be_present
     expect(document.at_css('input[name="session[password]"][type="password"]')).to be_present
     expect(document.at_css('form[action="/logout"]')).to be_nil
+    expect(document.at_css(".teacher-header-identity")).to be_nil
   end
 
   it "shows the login form when logged out" do
@@ -72,6 +73,29 @@ RSpec.describe "Teacher sessions", type: :request do
       expect_login_form
       expect(response.body).not_to include("ユーザーIDまたはパスワードが正しくありません。")
     end
+  end
+
+  it "shows the current teacher ID before logout and switches it after another teacher logs in" do
+    login
+    follow_redirect!
+    actions = Nokogiri::HTML(response.body).at_css("header .teacher-header-actions")
+    expect(actions.element_children.map(&:name)).to eq(%w[span form])
+    expect(actions.at_css(".teacher-header-identity").text).to eq(teacher.user_id)
+    expect(actions.at_css("form")[:action]).to eq(logout_path)
+    expect(actions.at_css("button").text).to eq("ログアウト")
+
+    delete logout_path
+    follow_redirect!
+    expect_login_form
+    expect(response.body).not_to include(teacher.user_id)
+
+    other_teacher = Teacher.create!(school: school, user_id: "teacher2", password: "password123")
+    post login_path, params: { session: { user_id: other_teacher.user_id, password: "password123" } }
+    expect(response).to redirect_to(assignments_path)
+    follow_redirect!
+    actions = Nokogiri::HTML(response.body).at_css("header .teacher-header-actions")
+    expect(actions.at_css(".teacher-header-identity").text).to eq(other_teacher.user_id)
+    expect(actions.text).not_to include(teacher.user_id)
   end
 
   it "logs out and clears authentication for subsequent requests" do
