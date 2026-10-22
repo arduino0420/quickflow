@@ -11,6 +11,9 @@ RSpec.describe AssignmentDeletion do
     @question = create_question
     @result = submission.grading_results.create!(question: @question, ai_judgment: :needs_review,
       teacher_judgment: :correct, ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
+    @draft = AnswerDraft.create!(student: student, assignment: assignment,
+      material_fingerprint: AnswerDraftContext.fingerprint(assignment),
+      page_data: [ { page_number: 1, operations: [] } ])
     clear_enqueued_jobs
   end
 
@@ -19,6 +22,7 @@ RSpec.describe AssignmentDeletion do
     blobs.each { |blob| expect(blob.service.exist?(blob.key)).to be(true) }
     expect { described_class.new.call(assignment, teacher: teacher) }.to have_enqueued_job(ActiveStorage::PurgeJob).exactly(2).times
     expect(ActiveStorage::Attachment.where(record: [ assignment, submission ])).to be_empty
+    expect(AnswerDraft.exists?(@draft.id)).to be(false)
     blobs.each { |blob| expect(blob.service.exist?(blob.key)).to be(true) }
     perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
     blobs.each do |blob|
@@ -38,7 +42,7 @@ RSpec.describe AssignmentDeletion do
   end
 
   it "rolls back prior dependent deletions and does not enqueue file purges if a later deletion fails" do
-    records = [ assignment, submission, @question, @result ]
+    records = [ assignment, submission, @question, @result, @draft ]
     original = records.map { |record| record.reload.attributes }
     allow_any_instance_of(Question).to receive(:destroy!).and_raise(ActiveRecord::RecordNotDestroyed)
     expect { described_class.new.call(assignment, teacher: teacher) }.to raise_error(ActiveRecord::RecordNotDestroyed)
@@ -51,21 +55,37 @@ RSpec.describe AssignmentDeletion do
   [ :incoming, :outgoing ].each do |kind|
     it "refuses #{kind} cross-assignment grading links instead of deleting another quiz's data" do
       other = Assignment.create!(teacher: teacher, title: "他", point_per_question: 5)
+      other.assignment_classrooms.create!(classroom: classroom)
       other_question = create_question(owner: other)
       other_submission = Submission.create!(assignment: other, student: student, submitted_at: Time.current)
       cross = if kind == :incoming
-        other_submission.grading_results.create!(question: @question, ai_judgment: :correct,
+        other_submission.grading_results.build(question: @question, ai_judgment: :correct,
           ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
       else
-        submission.grading_results.create!(question: other_question, ai_judgment: :correct,
+        submission.grading_results.build(question: other_question, ai_judgment: :correct,
           ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
       end
+      cross.save!(validate: false) # Historical cross-assignment data for the deletion guard.
       original = cross.attributes
       expect { described_class.new.call(assignment, teacher: teacher) }.to raise_error(AssignmentDeletion::InconsistentData)
       expect(cross.reload.attributes).to eq(original)
+      expect(@draft.reload).to be_persisted
       expect(assignment.reload).to be_persisted
       expect(submission.reload).to be_persisted
     end
+  end
+
+  it "rolls back draft removal when the final assignment destroy is aborted" do
+    original = @draft.attributes
+    allow_any_instance_of(Assignment).to receive(:destroy!).and_wrap_original do |_method, *_args|
+      expect(AnswerDraft.exists?(@draft.id)).to be(false)
+      raise ActiveRecord::RecordNotDestroyed
+    end
+    expect { described_class.new.call(assignment, teacher: teacher) }.to raise_error(ActiveRecord::RecordNotDestroyed)
+    expect(@draft.reload.attributes).to eq(original)
+    expect(submission.reload).to be_persisted
+    expect(@result.reload).to be_persisted
+    expect(enqueued_jobs.select { |job| job[:job] == ActiveStorage::PurgeJob }).to be_empty
   end
 
   it "reports committed DB deletion separately when purge job registration fails and logs recovery identifiers" do

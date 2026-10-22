@@ -1,0 +1,12 @@
+.git
+.env*
+.bundle
+config/master.key
+config/credentials.yml.enc
+config/credentials/
+log/*
+tmp/*
+storage/*
+node_modules/
+public/assets/
+perf/http_load/results/

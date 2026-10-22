@@ -3,19 +3,20 @@ require "rails_helper"
 RSpec.describe "Authentication branding and role-specific home links", type: :request do
   let(:school) { School.create!(school_code: "BRAND") }
   let(:teacher) { Teacher.create!(school: school, user_id: "brand-teacher", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
 
   def document
     Nokogiri::HTML(response.body)
   end
 
-  it "shows prominent branding, registration guidance and masked passwords without public signup" do
+  it "shows prominent branding without registration guidance and masked passwords without public signup" do
     [ login_path, student_login_path ].each do |path|
       get path
       expect(document.at_css(".app-header--auth .app-brand").text).to eq("QuickFlow")
       expect(document.at_css("a.app-brand")).to be_nil
-      expect(document.at_css(".account-registration-help").text).to include("登録")
+      expect(document.at_css(".account-registration-help")).to be_nil
+      expect(response.body).not_to include("アカウントの登録について", "新規登録は", "運用担当者が登録", "所属を確認した先生")
       expect(document.at_css("input[type='password']")[:autocomplete]).to eq("current-password")
       expect(response.body).not_to include("もっとスムーズに", "役割を選択")
     end

@@ -36,7 +36,7 @@ RSpec.describe School, type: :model do
   it "returns its classrooms" do
     school = described_class.create!(school_code: "ABC123")
     teacher = Teacher.create!(school: school, user_id: "teacher1", password: "password123")
-    classroom = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1)
+    classroom = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1)
 
     expect(school.classrooms).to contain_exactly(classroom)
   end

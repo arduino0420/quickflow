@@ -3,8 +3,8 @@ require "rails_helper"
 RSpec.describe "Teacher-managed student registration", type: :request do
   let(:school) { School.create!(school_code: "REGISTER") }
   let(:teacher) { Teacher.create!(school: school, user_id: "register-teacher", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
-  let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "password123", password_confirmation: "password123" } }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
+  let(:attributes) { { classroom_id: classroom.id.to_s, attendance_number: "1", password: "58392047", password_confirmation: "58392047" } }
 
   def login
     post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
@@ -26,14 +26,14 @@ RSpec.describe "Teacher-managed student registration", type: :request do
     expect(response).to redirect_to(new_student_path)
     pupil = Student.last
     expect(pupil.classroom).to eq(classroom)
-    expect(pupil.password_digest).not_to eq("password123")
-    expect(pupil.authenticate("password123")).to eq(pupil)
+    expect(pupil.password_digest).not_to eq(attributes[:password])
+    expect(pupil.authenticate(attributes[:password])).to eq(pupil)
     get assignments_path
     expect(response).to have_http_status(:ok)
     get student_assignments_path
     expect(response).to redirect_to(student_login_path)
     post student_login_path, params: { student_session: {
-      school_code: school.school_code, grade: 1, class_number: 1, attendance_number: 1, password: "password123"
+      school_code: school.school_code, grade: 1, class_number: 1, attendance_number: 1, password: attributes[:password]
     } }
     expect(response).to redirect_to(student_assignments_path)
     get assignments_path
@@ -76,7 +76,9 @@ RSpec.describe "Teacher-managed student registration", type: :request do
     it "excludes and rejects #{kind} classrooms" do
       target_school = kind == :other_teacher ? school : School.create!(school_code: "FOREIGN")
       owner = kind == :inconsistent_school ? teacher : Teacher.create!(school: target_school, user_id: "other", password: "password123")
-      target = Classroom.create!(school: target_school, teacher: owner, grade: 2, class_number: 1)
+      target = Classroom.create!(school: target_school, grade: 2, class_number: 1)
+      link = TeacherClassroom.new(classroom: target, teacher: owner)
+      link.save!(validate: kind != :inconsistent_school) # Historical cross-school relationship only.
       login
       get new_student_path
       expect(document.css("option").map { |option| option[:value] }).not_to include(target.id.to_s)
@@ -100,7 +102,7 @@ RSpec.describe "Teacher-managed student registration", type: :request do
       teacher_id: teacher.id, role: "teacher", password_digest: "forged", user_id: "forged") }
     expect(response).to redirect_to(new_student_path)
     expect(Student.last.classroom).to eq(classroom)
-    expect(Student.last.authenticate("password123")).to be_truthy
+    expect(Student.last.authenticate(attributes[:password])).to be_truthy
     expect(Teacher.count).to eq(teacher_count)
   end
 
@@ -154,7 +156,7 @@ RSpec.describe "Teacher-managed student registration", type: :request do
 
   [ { grade: 7 }, { class_number: 16 } ].each do |invalid|
     it "excludes and rejects legacy out-of-range classrooms #{invalid}" do
-      target = Classroom.new(school: school, teacher: teacher, grade: 1, class_number: 2, **invalid)
+      target = Classroom.new(school: school, teachers: [ teacher ], grade: 1, class_number: 2, **invalid)
       target.save!(validate: false)
       login
       get new_student_path

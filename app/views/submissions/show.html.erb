@@ -1,9 +1,16 @@
+<% content_for :title, "答案詳細 | QuickFlow" %>
+<% content_for :head do %><meta name="turbo-cache-control" content="no-cache"><% end %>
 <h1>答案詳細</h1>
 <% if notice.present? %><p role="status"><%= notice %></p><% end %>
 <% if alert.present? %><p role="alert"><%= alert %></p><% end %>
-<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment, classroom_id: @submission.student.classroom_id) %>
+<%= link_to "小テスト詳細へ戻る", assignment_path(@assignment, **(@return_context.presence || { classroom_id: @submission.student.classroom_id })) %>
 <p><%= @assignment.title %> ／ <%= classroom_label(@submission.student.classroom) %> <%= @submission.student.attendance_number %>番</p>
 <% unless @submission.completed? %><p>採点状態：<%= submission_status_label(@submission) %></p><% end %>
+<% if !guest_session? && grading_recovery_enabled? && (@submission.failed? || @grading_recovery_candidate) %>
+  <%= button_to "採点を再開する", resume_grading_assignment_submission_path(@assignment, @submission), method: :post %>
+<% elsif @submission.grading? || @submission.submitted? %>
+  <p>この状態の答案は画面から採点を再開できません。処理が進まない場合は運用担当者に確認してください。</p>
+<% end %>
 <p id="pending-review-count">未確認の要確認：<%= @pending_review_count %>件</p>
 <p id="submission-score">現在の得点：<%= submission_score_label(@submission, @score, pending_review_count: @pending_review_count) %></p>
 <% if !@score.nil? && @pending_review_count.positive? %>
@@ -34,8 +41,8 @@
     <% elsif @grading_results.empty? %>
       <p>採点結果がありません。</p>
     <% else %>
-      <p>正解・不正解を選択し、「保存」を押すと変更した問題だけに反映されます。</p>
-      <%= form_with url: assignment_submission_path(@assignment, @submission), method: :patch, id: "teacher-judgments" do %>
+      <% unless guest_session? %><p>正解・不正解を選択し、「保存」を押すと変更した問題だけに反映されます。</p><% end %>
+      <%= form_with url: assignment_submission_path(@assignment, @submission, **@return_context), method: :patch, id: "teacher-judgments" do %>
         <% @grading_results.each do |result| %>
           <article class="grading-result teacher-grading-result judgment-<%= result.final_judgment %>" id="question_<%= result.question_id %>">
             <h3>問題 <%= result.question.question_label %></h3>
@@ -49,14 +56,16 @@
               <% end %>
               <dt>最終判定</dt><dd><%= result.final_judgment == "needs_review" ? "未確定（要確認）" : judgment_label(result.final_judgment) %></dd>
             </dl>
+            <% unless guest_session? %>
             <%= label_tag "judgment_#{result.id}", "問題#{result.question.question_label}の最終判定" %>
             <%= hidden_field_tag "original_final_judgments[#{result.id}]", result.final_judgment %>
             <%= select_tag "final_judgments[#{result.id}]",
               options_for_select((result.final_judgment == "needs_review" ? [[ "未確定（要確認）", "" ]] : []) + [[ "正解", "correct" ], [ "不正解", "incorrect" ]], result.final_judgment == "needs_review" ? "" : result.final_judgment),
               id: "judgment_#{result.id}" %>
+            <% end %>
           </article>
         <% end %>
-        <%= submit_tag "保存" %>
+        <%= submit_tag "保存" unless guest_session? %>
       <% end %>
     <% end %>
   </section>

@@ -32,12 +32,23 @@ body {
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
+.app-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.app-shell > .app-main { flex: 1 0 auto; }
+.app-footer { flex: 0 0 auto; padding: 1rem; color: var(--color-muted); text-align: center; }
+.app-footer small { font-size: 0.875rem; }
 .app-header { background: var(--color-surface); border-bottom: 1px solid var(--color-soft-border); }
 .app-header-inner { max-width: none; margin: 0 auto; padding: 1rem 1.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; }
 .app-brand { color: var(--color-primary); font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; }
 .app-header--with-actions .app-header-inner { max-width: none; justify-content: space-between; }
 .app-header-actions { margin-left: auto; flex: 0 0 auto; }
 .app-header-actions form.button_to { margin: 0; }
+.app-header-actions:has(.teacher-header-actions) { min-width: 0; max-width: 100%; flex-shrink: 1; }
+.teacher-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.75rem; }
+.teacher-header-identity { min-width: 0; overflow-wrap: anywhere; }
+.teacher-header-actions form.button_to { flex-shrink: 0; }
+.student-header-actions { display: flex; align-items: center; gap: 0.75rem; }
+.student-header-identity { white-space: nowrap; }
+.student-header-actions form.button_to { flex-shrink: 0; }
 a.app-brand { text-decoration: none; }
 .app-header--auth { background: var(--color-background); border-bottom: 0; }
 .app-header--auth .app-header-inner { justify-content: center; padding: 2rem 1rem 0.5rem; }
@@ -130,6 +141,8 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 .distributed-classrooms li::before { content: none; }
 .grade-export-actions { display: flex; justify-content: flex-end; margin-top: 1.5rem; }
 .grade-export-actions .button { max-width: 100%; }
+.button-excel-export { background: #15803d; color: var(--color-surface); }
+.button-excel-export:hover, .button-excel-export:focus-visible { background: #166534; color: var(--color-surface); }
 .assignment-list--student .assignment-list-title { flex-basis: 100%; }
 .assignment-list--student .button { margin-left: auto; }
 .assignment-metadata { display: grid; grid-template-columns: minmax(8rem, auto) minmax(0, 1fr); gap: 0.75rem 1.5rem; margin: 1.5rem 0; padding: 1.25rem; background: var(--color-background); border-radius: var(--control-radius); }
@@ -168,3 +181,128 @@ legend { padding: 0 0.4rem; font-weight: 600; }
 .assignment-delete-actions .button { max-width: 100%; white-space: normal; }
 .button-danger { background: var(--color-danger); color: var(--color-surface); }
 .button-danger:hover { background: var(--color-danger-text); color: var(--color-surface); }
+
+/* Teacher list only: keep shared forms and quiz cards unchanged. */
+.admin-teacher-list-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 0.75rem; margin: 1.25rem 0; }
+.admin-teacher-list { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 0.75rem; }
+.admin-teacher-list th, .admin-teacher-list td { padding: 1rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.admin-teacher-list th:first-child { width: 30%; }
+.admin-teacher-list th:last-child { width: 18rem; }
+.admin-teacher-row-actions { display: flex; align-items: stretch; gap: 0.5rem; }
+.admin-teacher-row-actions .button { flex: 0 0 auto; white-space: nowrap; overflow-wrap: normal; }
+.admin-teacher-list td { background: var(--color-surface); border-top: 1px solid var(--color-soft-border); border-bottom: 1px solid var(--color-soft-border); }
+.admin-teacher-list td:first-child { border-left: 1px solid var(--color-soft-border); border-radius: var(--radius) 0 0 var(--radius); }
+.admin-teacher-list td:last-child { border-right: 1px solid var(--color-soft-border); border-radius: 0 var(--radius) var(--radius) 0; }
+@media (max-width: 36rem) {
+  .admin-teacher-list, .admin-teacher-list tbody { display: block; }
+  .admin-teacher-list thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .admin-teacher-list tr { display: block; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid var(--color-soft-border); border-radius: var(--radius); }
+  .admin-teacher-list td, .admin-teacher-list td:first-child, .admin-teacher-list td:last-child { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 0.5rem; padding: 0.5rem; border: 0; border-radius: 0; }
+  .admin-teacher-list td::before { content: attr(data-label); font-weight: 700; color: var(--color-muted); }
+  .admin-teacher-list td[data-label="操作"] { grid-template-columns: minmax(0, 1fr); }
+  .admin-teacher-row-actions .button { font-size: 0.875rem; padding-inline: 0.5rem; }
+}
+
+/* Student list presentation: submission status still comes from the server. */
+.assignment-list--student .assignment-card:not(.assignment-card--submitted) .student-card-link { background: var(--color-surface); }
+.assignment-list--student .assignment-card:not(.assignment-card--submitted) .student-card-link:hover,
+.assignment-list--student .assignment-card:not(.assignment-card--submitted) .student-card-link:focus-visible { background: var(--color-info-soft); }
+.assignment-list--student .assignment-card--submitted .assignment-list-title { font-weight: 400; }
+/* Administrator navigation and teacher rows only. */
+.admin-dashboard-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; max-width: 72rem; margin: 1.5rem 0; }
+.admin-dashboard-action { min-height: 4rem; padding: 1rem 1.5rem; box-shadow: 0 3px 8px rgb(37 99 235 / 12%); transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease; }
+.admin-dashboard-action:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgb(37 99 235 / 18%); }
+.admin-teacher-list tbody tr[data-controller~="row-navigation"] { cursor: pointer; }
+.admin-teacher-list tbody td { transition: background-color 160ms ease; }
+.admin-teacher-list tbody tr:hover td,
+.admin-teacher-list tbody tr:focus-within td { background: var(--color-info-soft); }
+@media (max-width: 36rem) {
+  .admin-dashboard-actions { grid-template-columns: minmax(0, 1fr); }
+  .admin-teacher-list tbody tr:hover,
+  .admin-teacher-list tbody tr:focus-within { background: var(--color-info-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-dashboard-action, .admin-teacher-list tbody td { transition: none; }
+  .admin-dashboard-action:hover { transform: none; }
+}
+
+.assignment-list--student .assignment-card--submitted .student-card-score { font-weight: 400; font-size: 1.1rem; }
+
+.admin-student-actions,
+.admin-student-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.admin-student-list {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 .75rem;
+}
+
+.admin-student-list th,
+.admin-student-list td {
+  padding: 1rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.admin-student-list td {
+  background: var(--color-surface);
+  border-block: 1px solid var(--color-soft-border);
+}
+
+.admin-student-list td:first-child {
+  border-left: 1px solid var(--color-soft-border);
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.admin-student-list td:last-child {
+  border-right: 1px solid var(--color-soft-border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+@media (max-width: 36rem) {
+  .admin-student-list,
+  .admin-student-list tbody { display: block; }
+  .admin-student-list thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .admin-student-list tr {
+    display: block;
+    margin-bottom: .75rem;
+    padding: .75rem;
+    border: 1px solid var(--color-soft-border);
+    border-radius: var(--radius);
+  }
+  .admin-student-list td,
+  .admin-student-list td:first-child,
+  .admin-student-list td:last-child {
+    display: grid;
+    grid-template-columns: 5rem minmax(0, 1fr);
+    gap: .5rem;
+    padding: .5rem;
+    border: 0;
+    border-radius: 0;
+  }
+  .admin-student-list td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--color-muted);
+  }
+}
+
+/* Account management only; preserve student/editor styling. */
+.admin-student-row-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.admin-student-row-actions .button { padding: .5rem .75rem; }
+.admin-account-identity { border: 2px solid var(--color-soft-border); padding: 1rem; margin: 1rem 0; }
+@media (min-width: 36.01rem) and (max-width: 47.99rem) {
+  .admin-dashboard-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

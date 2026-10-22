@@ -1,0 +1,15 @@
+FROM ruby:4.0.6
+
+RUN apt-get update -qq && apt-get install --no-install-recommends -y libpq-dev libvips postgresql-client nodejs chromium chromium-driver && rm -rf /var/lib/apt/lists/*
+WORKDIR /rails
+COPY Gemfile Gemfile.lock ./
+RUN bundle install
+COPY . .
+RUN mv /usr/bin/chromium /usr/bin/chromium-real && \
+    printf '#!/bin/sh\nexec /usr/bin/chromium-real --no-sandbox "$@"\n' > /usr/bin/chromium && \
+    chmod 755 /usr/bin/chromium
+RUN useradd --uid 1000 --create-home load && chown -R load:load /rails
+USER load
+
+ENV RAILS_ENV=test RAILS_MAX_THREADS=3
+CMD ["bin/rails", "server", "-b", "127.0.0.1"]

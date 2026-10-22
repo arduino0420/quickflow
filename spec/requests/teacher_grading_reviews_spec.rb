@@ -17,9 +17,11 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   def result_for(item = submission, judgment: :needs_review, teacher_judgment: nil, position: 1, owner: item.assignment)
     question = create_question(position: position, label: "問題番号#{position}", owner: owner)
-    item.grading_results.create!(question: question, student_answer: "生徒解答#{position}",
+    result = item.grading_results.build(question: question, student_answer: "生徒解答#{position}",
       ai_judgment: judgment, teacher_judgment: teacher_judgment, review_reason: "判読困難#{position}",
       feedback: "フィードバック#{position}", ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
+    result.save!(validate: question.assignment_id == item.assignment_id) # Preserve historical-corruption defenses.
+    result
   end
 
   def document
@@ -28,6 +30,10 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   def detail_path(item = submission, parent = item.assignment)
     assignment_submission_path(parent, item)
+  end
+
+  def list_detail_path(item = submission, filter: "all")
+    assignment_submission_path(item.assignment, item, classroom_id: "all", filter: filter)
   end
 
   def pdf_path(item = submission, parent = item.assignment)
@@ -57,7 +63,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(document.css("#grade-summary tbody tr").size).to eq(2)
       expect(grade_cells).to eq([ "1番", "5点" ])
       expect(grade_cells(unsubmitted)).to eq([ "2番", "" ])
-      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
       expect(document.css("#grade_student_#{unsubmitted.id} a")).to be_empty
       expect(Submission.count).to eq(original_count)
       expect(unsubmitted.submissions).to be_empty
@@ -73,7 +79,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(row["data-action"]).to eq("click->row-navigation#open")
       expect(row[:class]).to include("grade-needs-review")
       expect(row.css("a").size).to eq(1)
-      expect(row.at_css("a.grade-row-link")[:href]).to eq(detail_path)
+      expect(row.at_css("a.grade-row-link")[:href]).to eq(list_detail_path)
       expect(row.at_css("a")["tabindex"]).to be_nil
       expect(row.css("a a, a button, form, select")).to be_empty
       expect(row.element_children.map(&:name)).to all(eq("td"))
@@ -83,15 +89,15 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(empty_row.css("a")).to be_empty
       expect(document.css(".review-filters a").map(&:text)).to eq([ "すべての生徒", "要確認のある生徒" ])
       expect(document.at_css(".review-filters a[aria-current]").text).to eq("すべての生徒")
-      patch detail_path, params: { judgments: { result.id.to_s => "correct" } }
+      patch detail_path, params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       get assignment_path(assignment)
       expect(document.at_css("#grade_student_#{student.id}")[:class]).not_to include("grade-needs-review")
       expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("なし")
     end
 
     it "defaults to all classrooms and supports selecting each classroom" do
-      later_grade = Classroom.create!(school: school, teacher: teacher, grade: 2, class_number: 1)
-      later_class = Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2)
+      later_grade = Classroom.create!(school: school, teachers: [ teacher ], grade: 2, class_number: 1)
+      later_class = Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2)
       [ later_grade, later_class ].each { |target| assignment.assignment_classrooms.create!(classroom: target) }
       Student.create!(classroom: later_grade, attendance_number: 1, password: "password123")
       Student.create!(classroom: later_class, attendance_number: 2, password: "password123")
@@ -121,7 +127,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
         expect(summary_cells[2..4]).to eq([ label, "", "—" ])
         expect(grade_cells).to eq([ "1番", "" ])
-        expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+        expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
         get detail_path
         expect(document.at_css("#submission-score").text).to eq("現在の得点：—")
       end
@@ -198,7 +204,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       result_for(judgment: :correct)
       other_assignment = Assignment.create!(teacher: teacher, title: "別の小テスト", point_per_question: 5)
       foreign_review = result_for(owner: other_assignment)
-      foreign_review.update!(student_answer: "別小テストの解答", review_reason: "別小テストの要確認理由")
+      foreign_review.update_columns(student_answer: "別小テストの解答", review_reason: "別小テストの要確認理由")
       result_for(owner: other_assignment, position: 2, judgment: :correct)
       login
       get assignment_path(assignment, filter: "all")
@@ -227,7 +233,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         get assignment_path(assignment)
         expect(summary_cells[3]).to eq(original_label)
 
-        patch detail_path, params: { judgments: { result.id.to_s => teacher_value } }
+        patch detail_path, params: { judgments: { result.id.to_s => teacher_value }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
         follow_redirect!
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{corrected_label}")
         get assignment_path(assignment)
@@ -235,7 +241,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(grade_cells[1]).to eq(corrected_label)
         expect(summary_cells[4]).to eq("なし")
 
-        patch detail_path, params: { judgments: { result.id.to_s => "" } }
+        patch detail_path, params: { judgments: { result.id.to_s => "" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
         follow_redirect!
         expect(document.at_css("#submission-score").text).to eq("現在の得点：#{original_label}")
         get assignment_path(assignment)
@@ -257,20 +263,21 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
       expect(summary_cells[3..4]).to eq([ "0点（暫定）", "あり（1件）" ])
       expect(summary_cells(other_student)[3..4]).to eq([ "5点", "なし" ])
-      expect(document.at_css("#grade_student_#{other_student.id} a")[:href]).to eq(detail_path(other_submission))
+      expect(document.at_css("#grade_student_#{other_student.id} a")[:href]).to eq(list_detail_path(other_submission))
     end
 
     [ :other_school, :undistributed_classroom ].each do |kind|
       it "excludes submitted and unsubmitted students from #{kind}" do
         result = result_for(judgment: :correct)
         target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-        target = Classroom.create!(school: target_school, teacher: teacher, grade: 2, class_number: 1)
-        assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+        target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
+        assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
         foreign_students = [ 1, 2 ].map do |number|
           Student.create!(classroom: target, attendance_number: number, password: "password123")
         end
-        forbidden = Submission.create!(assignment: assignment, student: foreign_students.first,
+        forbidden = Submission.new(assignment: assignment, student: foreign_students.first,
           status: :completed, submitted_at: Time.current)
+        forbidden.save!(validate: false) # Historical submission outside the allowed distribution.
         forbidden.grading_results.create!(question: result.question, ai_judgment: :needs_review,
           ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
         login
@@ -288,13 +295,13 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "includes a distributed same-school classroom owned by another teacher" do
       other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-      classroom.update!(teacher: other_teacher)
+      classroom.update!(teachers: [ other_teacher ])
       result_for(judgment: :correct)
       login
       get assignment_path(assignment)
 
       expect(summary_cells[3]).to eq("5点")
-      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(detail_path)
+      expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
     end
 
     it "calls score once per completed submission when preparing the summary" do
@@ -317,7 +324,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
   end
 
   describe "classroom selection" do
-    let(:second_classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 2) }
+    let(:second_classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 2) }
     let(:second_student) { Student.create!(classroom: second_classroom, attendance_number: 1, password: "password123") }
     let(:second_submission) do
       Submission.create!(assignment: assignment, student: second_student, status: :completed, submitted_at: Time.current)
@@ -389,7 +396,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get assignment_path(assignment, classroom_id: second_classroom.id)
       get document.at_css("#grade_student_#{second_student.id} a")[:href]
-      patch detail_path(second_submission), params: { judgments: { result.id.to_s => "correct" } }
+      patch detail_path(second_submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       follow_redirect!
       back_link = document.css("a").find { |link| link.text == "小テスト詳細へ戻る" }
       expect(back_link[:href]).to eq(assignment_path(assignment, classroom_id: second_classroom.id))
@@ -409,7 +416,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "allows an explicitly selected same-school destination assigned to another teacher" do
       other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-      second_classroom.update!(teacher: other_teacher)
+      second_classroom.update!(teachers: [ other_teacher ])
       second_student
       login
       get assignment_path(assignment, classroom_id: second_classroom.id)
@@ -434,8 +441,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
     [ :other_school, :undistributed_classroom ].each do |kind|
       it "excludes #{kind} from options and rejects its explicit selection" do
         target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-        target = Classroom.create!(school: target_school, teacher: teacher, grade: 3, class_number: 1)
-        assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+        target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 3, class_number: 1)
+        assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
         login
         get assignment_path(assignment)
         expect(document.css("#classroom_id option").map { |option| option[:value] }).to eq([ "all", classroom.id.to_s, second_classroom.id.to_s ])
@@ -468,7 +475,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(document.at_css("#grade_student_#{student.id}")[:class]).to include("grade-needs-review")
     expect(document.at_css("#grade_student_#{student.id} .grade-review").text.strip).to eq("あり（1件）")
     expect(document.at_css("#grade_student_#{other_student.id}")).to be_nil
-    expect(document.at_css("#grade-summary a")[:href]).to eq(detail_path)
+    expect(document.at_css("#grade-summary a")[:href]).to eq(list_detail_path(filter: "needs_review"))
     get assignment_path(assignment, filter: "unexpected")
     expect(document.css("#grade-summary tbody tr").size).to eq(2)
     expect(pending.reload.teacher_judgment).to be_nil
@@ -509,7 +516,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     get assignment_path(assignment, filter: "needs_review")
     expect(response.body).to include("要確認のある生徒はいません。", "未確認の要確認：0件")
     get assignment_path(assignment)
-    expect(document.at_css("#grade-summary a")[:href]).to eq(detail_path)
+    expect(document.at_css("#grade-summary a")[:href]).to eq(list_detail_path)
     expect(document.at_css(".grade-review").text.strip).to eq("—")
     get detail_path
     expect(response.body).to include("採点結果がありません。")
@@ -522,7 +529,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       [ assignment_path(assignment), assignment_path(assignment, filter: "all") ].each do |path|
         get path
         expect(response.body).to include(label)
-        expect(document.at_css("a[href='#{detail_path}']")).to be_present
+        expect(document.at_css("a[href='#{list_detail_path}']")).to be_present
       end
       get detail_path
       expect(response.body).to include(label, "採点結果は未完成です。", "暫定件数")
@@ -568,13 +575,13 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(document.at_css("#question_#{pending.question_id}").text).to include("要確認")
     expect(document.at_css("iframe")[:src]).to eq(pdf_path)
     expect(response.body).not_to include("答案PDFを開く", "答案をダウンロード")
-    patch detail_path, params: { judgments: { pending.id.to_s => "correct" } }
+    patch detail_path, params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     follow_redirect!
     expect(document.css(".teacher-grading-result.judgment-needs_review")).to be_empty
     expect(document.at_css("#question_#{pending.question_id}")[:class]).to include("judgment-correct")
     fields = document.at_css("#question_#{pending.question_id}").css("dt, dd").map(&:text).each_slice(2).to_h
     expect(fields.slice("AI判定", "最終判定")).to eq("最終判定" => "正解")
-    patch detail_path, params: { judgments: { pending.id.to_s => "" } }
+    patch detail_path, params: { judgments: { pending.id.to_s => "" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     follow_redirect!
     expect(document.at_css("#question_#{pending.question_id}")[:class]).to include("judgment-needs_review")
   end
@@ -626,7 +633,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   it "rejects another teacher even in the same school and even if they own the target classroom" do
     other_teacher = Teacher.create!(school: school, user_id: "other", password: "password123")
-    classroom.update!(teacher: other_teacher)
+    classroom.update!(teachers: [ other_teacher ])
     login(other_teacher)
     get assignments_path
     expect(response.body).not_to include(assignment.title)
@@ -642,11 +649,11 @@ RSpec.describe "Teacher grading reviews", type: :request do
   [ :other_school, :undistributed_classroom ].each do |kind|
     it "excludes #{kind} submissions from counts, lists, details and PDF access" do
       target_school = kind == :other_school ? School.create!(school_code: "FOREIGN") : school
-      target = Classroom.create!(school: target_school, teacher: teacher, grade: 2, class_number: 1)
-      assignment.assignment_classrooms.create!(classroom: target) if kind == :other_school
+      target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
+      assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :other_school
       student.update!(classroom: target)
       result_for
-      submission.update!(status: :grading)
+      submission.update_columns(status: :grading) # Historical submission outside its distribution.
       login
       [ assignment_path(assignment), assignment_path(assignment, filter: "all") ].each do |path|
         get path
@@ -676,8 +683,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
   it "excludes assignments distributed only to another school" do
     AssignmentClassroom.where(assignment: assignment).delete_all
     target_school = School.create!(school_code: "FOREIGN")
-    target = Classroom.create!(school: target_school, teacher: teacher, grade: 2, class_number: 1)
-    assignment.assignment_classrooms.create!(classroom: target)
+    target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
+    assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } # Historical foreign distribution.
     login
     get assignments_path
     expect(response.body).not_to include(assignment.title)
@@ -730,7 +737,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
   describe "saving teacher judgments" do
     def save_judgments(values, parent = assignment)
-      patch assignment_submission_path(parent, submission), params: { judgments: values }
+      patch assignment_submission_path(parent, submission), params: { judgments: values, original_final_judgments: GradingResult.where(id: values.keys).to_h { |result| [ result.id.to_s, result.final_judgment ] } }
     end
 
     [ [ :correct, "incorrect" ], [ :incorrect, "correct" ],
@@ -775,7 +782,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     it "accepts explicit JSON null as a return to AI" do
       result = result_for(teacher_judgment: :incorrect)
       login
-      patch detail_path, params: { judgments: { result.id.to_s => nil } }, as: :json
+      patch detail_path, params: { judgments: { result.id.to_s => nil }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }, as: :json
       expect(response).to have_http_status(:see_other)
       expect(result.reload.teacher_judgment).to be_nil
     end
@@ -825,7 +832,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
         first = result_for
         second = result_for(position: 2)
         login
-        patch detail_path, params: { judgments: { first.id.to_s => "correct", second.id.to_s => invalid } }, as: :json
+        patch detail_path, params: { judgments: { first.id.to_s => "correct", second.id.to_s => invalid },
+          original_final_judgments: { first.id.to_s => first.final_judgment, second.id.to_s => second.final_judgment } }, as: :json
         expect(response).to have_http_status(422)
         expect(first.reload.teacher_judgment).to be_nil
         expect(second.reload.teacher_judgment).to be_nil
@@ -857,7 +865,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       result = result_for
       original = result.reload.attributes.except("teacher_judgment", "updated_at")
       login
-      patch detail_path, params: { judgments: { result.id.to_s => "correct" },
+      patch detail_path, params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment },
         ai_judgment: "incorrect", feedback: "forged", graded_at: "2000-01-01", question_id: 999, submission_id: 999 }
       expect(response).to have_http_status(:see_other)
       expect(result.reload.attributes.except("teacher_judgment", "updated_at")).to eq(original)
@@ -932,8 +940,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
           login(other_teacher)
         when :undistributed_classroom, :foreign_classroom
           target_school = kind == :foreign_classroom ? School.create!(school_code: "FOREIGN") : school
-          target = Classroom.create!(school: target_school, teacher: teacher, grade: 2, class_number: 1)
-          assignment.assignment_classrooms.create!(classroom: target) if kind == :foreign_classroom
+          target = Classroom.create!(school: target_school, teachers: [ Teacher.create!(school: target_school, user_id: "foreign-#{SecureRandom.hex(4)}", password: "password123") ], grade: 2, class_number: 1)
+          assignment.assignment_classrooms.build(classroom: target).tap { |link| link.save!(validate: false) } if kind == :foreign_classroom
           student.update!(classroom: target)
           login
         end
@@ -959,7 +967,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "allows the distributor to update a same-school classroom owned by another teacher" do
       result = result_for
-      classroom.update!(teacher: Teacher.create!(school: school, user_id: "other", password: "password123"))
+      classroom.update!(teachers: [ Teacher.create!(school: school, user_id: "other", password: "password123") ])
       login
       save_judgments(result.id.to_s => "correct")
       expect(response).to have_http_status(:see_other)
@@ -1005,6 +1013,151 @@ RSpec.describe "Teacher grading reviews", type: :request do
       card = document.at_css("#question_#{result.question_id}")
       expect(card.css("dt").map(&:text)).to include("要確認理由", "フィードバック")
       expect(card.text).to include(result.review_reason, result.feedback)
+    end
+  end
+
+  describe "resuming failed grading" do
+    def resume_path
+      resume_grading_assignment_submission_path(assignment, submission)
+    end
+
+    before do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("QUICKFLOW_GRADING_RECOVERY_ENABLED").and_return("true")
+      submission.update!(status: :failed)
+    end
+
+    it "keeps the feature off by default on GET and POST" do
+      allow(ENV).to receive(:[]).with("QUICKFLOW_GRADING_RECOVERY_ENABLED").and_return(nil)
+      login
+      get detail_path
+      expect(document.text).not_to include("採点を再開する")
+      expect(Recovery::GradingRecovery).not_to receive(:new)
+      post resume_path
+      expect(response).to redirect_to(detail_path)
+      follow_redirect!
+      expect(document.at_css("[role='alert']").text).to include("現在は採点を再開できません")
+      expect(submission.reload).to be_failed
+    end
+
+    it "shows a CSRF-protected POST button without checking PDF contents on GET" do
+      login
+      expect(Recovery::GradingEligibility).not_to receive(:new)
+      get detail_path
+      form = document.at_css("form[action='#{resume_path}']")
+      expect(form[:method]).to eq("post")
+      expect(form.at_css("button").text).to eq("採点を再開する")
+    end
+
+    it "reuses the recovery service and refuses a repeated POST" do
+      question = create_question
+      question.update!(grading_rule: JSON.generate(criteria: "同類項をまとめる。", requires_work: false,
+        material_blob_id: assignment.material_file.blob.id))
+      login
+      expect(AnswerGradingJob).to receive(:perform_later).once.and_return(true)
+      post resume_path
+      expect(response).to redirect_to(detail_path)
+      expect(submission.reload).to be_grading
+      expect(submission.processing_generation).to eq(1)
+      follow_redirect!
+      expect(document.at_css("[role='status']").text).to include("採点を再開しました")
+      expect(document.text).not_to include("採点を再開する")
+      post resume_path
+      expect(submission.reload.processing_generation).to eq(1)
+      follow_redirect!
+      expect(document.at_css("[role='alert']").text).to include("現在は採点を再開できません")
+    end
+
+    it "rejects an ineligible failed answer without enqueueing" do
+      expect(AnswerGradingJob).not_to receive(:perform_later)
+      login
+      post resume_path
+      expect(submission.reload).to be_failed
+      follow_redirect!
+      expect(document.at_css("[role='alert']").text).to include("現在は採点を再開できません")
+    end
+
+    it "shows and accepts the button for a stopped grading answer" do
+      question = create_question
+      question.update!(grading_rule: JSON.generate(criteria: "同類項をまとめる。", requires_work: false,
+        material_blob_id: assignment.material_file.blob.id))
+      submission.update!(status: :grading, processing_generation: 1)
+      allow_any_instance_of(Recovery::GradingRecovery).to receive(:queue_clear?).and_return(true)
+      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+      login
+      get detail_path
+      expect(document.at_css("form[action='#{resume_path}'] button").text).to eq("採点を再開する")
+      post resume_path
+      expect(response).to redirect_to(detail_path)
+      expect(submission.reload.processing_generation).to eq(2)
+      follow_redirect!
+      expect(document.at_css("[role='status']").text).to include("採点を再開しました")
+    end
+
+    [ :submitted, :grading, :completed ].each do |state|
+      it "does not offer or resume #{state} answers" do
+        submission.update!(status: state)
+        login
+        get detail_path
+        expect(document.text).not_to include("採点を再開する")
+        expect(document.text).to include("画面から採点を再開できません") unless state == :completed
+        expect_any_instance_of(Recovery::GradingRecovery).not_to receive(:call) unless state == :grading
+        post resume_path
+        expect(submission.reload.status).to eq(state.to_s)
+      end
+    end
+
+    [ :anonymous, :student, :other_teacher, :foreign_teacher ].each do |actor|
+      it "rejects #{actor} before invoking recovery" do
+        case actor
+        when :student
+          post student_login_path, params: { student_session: { school_code: school.school_code,
+            grade: classroom.grade, class_number: classroom.class_number,
+            attendance_number: student.attendance_number, password: "password123" } }
+        when :other_teacher, :foreign_teacher
+          target_school = actor == :foreign_teacher ? School.create!(school_code: "FOREIGN") : school
+          login(Teacher.create!(school: target_school, user_id: "other", password: "password123"))
+        end
+        expect(Recovery::GradingRecovery).not_to receive(:new)
+        post resume_path
+        if [ :anonymous, :student ].include?(actor)
+          expect(response).to redirect_to(login_path)
+        else
+          expect(response).to have_http_status(:not_found)
+        end
+        expect(submission.reload).to be_failed
+      end
+    end
+
+    it "rejects an undistributed answer and a swapped assignment ID" do
+      login
+      another_assignment = Assignment.create!(teacher: teacher, title: "別テスト", point_per_question: 5)
+      another_assignment.assignment_classrooms.create!(classroom: classroom)
+      expect(Recovery::GradingRecovery).not_to receive(:new)
+      post resume_grading_assignment_submission_path(another_assignment, submission)
+      expect(response).to have_http_status(:not_found)
+      AssignmentClassroom.where(assignment: assignment).delete_all
+      post resume_path
+      expect(response).to have_http_status(:not_found)
+      expect(submission.reload).to be_failed
+    end
+
+    it "requires a CSRF token when forgery protection is enabled" do
+      original = ActionController::Base.allow_forgery_protection
+      ActionController::Base.allow_forgery_protection = true
+      get login_path
+      token = document.at_css("input[name='authenticity_token']")[:value]
+      post login_path, params: { authenticity_token: token,
+        session: { user_id: teacher.user_id, password: "password123" } }
+      get detail_path
+      token = document.at_css("form[action='#{resume_path}'] input[name='authenticity_token']")[:value]
+      post resume_path
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(submission.reload).to be_failed
+      post resume_path, params: { authenticity_token: token }
+      expect(response).to redirect_to(detail_path)
+    ensure
+      ActionController::Base.allow_forgery_protection = original
     end
   end
 end

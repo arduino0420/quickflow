@@ -25,3 +25,8 @@ local:
 #   service: Mirror
 #   primary: local
 #   mirrors: [ amazon, google, microsoft ]
+
+# Used only by the explicit demo:seed task; never the default application service.
+demo_seed:
+  service: Disk
+  root: <%= Rails.root.join("tmp", "demo-seed-#{ENV.fetch('QUICKFLOW_DEMO_ISOLATION_ID', 'disabled')}") %>

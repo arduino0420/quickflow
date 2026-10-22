@@ -4,11 +4,13 @@ class SessionsController < ApplicationController
 
   def create
     credentials = params.require(:session).permit(:user_id, :password)
-    teacher = Teacher.find_by(user_id: credentials[:user_id])
+    identity = AuthenticationThrottle.identifier(credentials[:user_id])
+    teacher = Teacher.find_by(user_id: identity)
 
-    if teacher&.authenticate(credentials[:password])
+    if authenticate_with_limit(teacher, role: :teacher, identity: identity, password: credentials[:password])
       reset_session
       session[:teacher_id] = teacher.id
+      session[:credential_proof] = CredentialSession.issue(teacher)
       redirect_to assignments_path, status: :see_other
     else
       flash.now[:alert] = "ユーザーIDまたはパスワードが正しくありません。"

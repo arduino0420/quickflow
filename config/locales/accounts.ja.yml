@@ -1,6 +1,22 @@
 ja:
   activerecord:
     attributes:
+      assignment:
+        title: 小テスト名
+        point_per_question: 1問あたりの点数
+        material_file: 教材PDF
+      submission:
+        assignment: 小テスト
+        student: 生徒
+        student_id: 生徒
+        status: 提出状態
+        submitted_at: 提出日時
+        answer_file: 答案PDF
+      admin:
+        school: 学校
+        user_id: 管理者ID
+        password: パスワード
+        password_confirmation: パスワード（確認）
       student:
         classroom: クラス
         attendance_number: 出席番号

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
-    <title><%= content_for(:title) || "Quickflow" %></title>
+    <title><%= content_for(:title) || "QuickFlow" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Quickflow">
@@ -23,7 +23,7 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
+  <body class="<%= "app-shell" unless content_for?(:hide_footer) %>">
     <header class="app-header <%= "app-header--auth" if [ "sessions", "student_sessions" ].include?(controller_name) %> <%= "app-header--with-actions" if content_for?(:header_actions) %>">
       <div class="app-header-inner">
         <% if current_teacher && !current_student %>
@@ -40,8 +40,10 @@
     </header>
     <main class="app-main <%= "app-main--compact" if [ "sessions", "student_sessions" ].include?(controller_name) %>">
       <div class="page-card">
+        <%= render "shared/guest" %>
         <%= yield %>
       </div>
     </main>
+    <%= render "shared/footer" unless content_for?(:hide_footer) %>
   </body>
 </html>

@@ -1,7 +1,7 @@
 RSpec.shared_context "AI grading records" do
   let(:school) { School.create!(school_code: "AI#{SecureRandom.hex(4)}") }
   let(:teacher) { Teacher.create!(school: school, user_id: "teacher-#{SecureRandom.hex(4)}", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "式の計算", point_per_question: 5)
@@ -14,6 +14,7 @@ RSpec.shared_context "AI grading records" do
       reading_status: "readable", reading_reason: "明確に読める" }
   end
   let(:submission) do
+    assignment.assignment_classrooms.find_or_create_by!(classroom: classroom)
     Submission.create!(assignment: assignment, student: student, submitted_at: Time.current,
       extracted_text: JSON.generate(problems: [ problem ]))
   end

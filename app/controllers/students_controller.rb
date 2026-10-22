@@ -15,6 +15,10 @@ class StudentsController < ApplicationController
     end
 
     @student.classroom = @classrooms.find(classroom_id)
+    if (message = PasswordPolicy.message_for(@student.password, role: :student))
+      @student.errors.add(:password, message)
+      return render :new, status: :unprocessable_entity
+    end
     if @student.save
       redirect_to new_student_path, notice: "生徒アカウントを登録しました。ログイン情報は本人に安全に伝えてください。", status: :see_other
     else

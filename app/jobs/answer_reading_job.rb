@@ -4,10 +4,10 @@ class AnswerReadingJob < ApplicationJob
 
   queue_as :default
 
-  def perform(submission)
+  def perform(submission, generation = 0)
     ready = false
     submission.with_lock do
-      next if submission.completed? || submission.failed?
+      next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
 
       begin
         submission.update!(status: :grading)
@@ -25,25 +25,27 @@ class AnswerReadingJob < ApplicationJob
         end
         ready = true
       rescue StandardError => error
-        submission.update!(status: :failed)
+        submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed?
         Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{error.class}")
       end
     end
 
-    enqueue_grading(submission) if ready
+    enqueue_grading(submission, generation) if ready
   rescue StandardError => e
-    submission.with_lock { submission.update!(status: :failed) unless submission.completed? || submission.failed? }
+    submission.with_lock do
+      submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
+    end
     Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{e.class}")
   end
 
   private
 
-  def enqueue_grading(submission)
+  def enqueue_grading(submission, generation)
     submission.with_lock do
-      next if submission.completed? || submission.failed?
+      next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
 
       begin
-        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission)
+        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
       rescue StandardError => error
         submission.update!(status: :failed) unless submission.completed? || submission.failed?
         Rails.logger.error("AnswerReadingJob grading enqueue failed: submission_id=#{submission.id} #{error.class}")

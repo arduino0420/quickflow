@@ -1,3 +1,4 @@
+<% content_for :title, "小テスト配信 | QuickFlow" %>
 <h1>小テスト配信</h1>
 
 <%= link_to "配信済み小テスト", assignments_path %>
@@ -27,7 +28,7 @@
   </div>
   <div>
     <%= form.label :material_file, "教材ファイル（必須）" %>
-    <%= form.file_field :material_file %>
+    <%= form.file_field :material_file, accept: ".pdf,application/pdf" %>
   </div>
   <p>入力エラーが表示された場合は、教材ファイルを再選択してください。</p>
   <fieldset>

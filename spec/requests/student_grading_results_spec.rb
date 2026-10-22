@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Student grading results", type: :request do
   let(:school) { School.create!(school_code: "RESULTS") }
   let(:teacher) { Teacher.create!(school: school, user_id: "results-teacher", password: "password123") }
-  let(:classroom) { Classroom.create!(school: school, teacher: teacher, grade: 1, class_number: 1) }
+  let(:classroom) { Classroom.create!(school: school, teachers: [ teacher ], grade: 1, class_number: 1) }
   let(:student) { Student.create!(classroom: classroom, attendance_number: 1, password: "password123") }
   let(:assignment) do
     item = Assignment.create!(teacher: teacher, title: "結果を確認する小テスト", point_per_question: 5)
@@ -39,13 +39,15 @@ RSpec.describe "Student grading results", type: :request do
 
   def result_for(item = submission, question: nil, position: 1, judgment: :correct, teacher_judgment: nil, **details)
     question ||= question_for(position: position)
-    item.grading_results.create!(question: question, student_answer: "本人の解答", ai_judgment: judgment,
+    result = item.grading_results.build(question: question, student_answer: "本人の解答", ai_judgment: judgment,
       teacher_judgment: teacher_judgment, ai_model_name: "test-model", prompt_version: "v1",
       graded_at: Time.current, **details)
+    result.save!(validate: question.assignment_id == item.assignment_id) # Preserve historical-corruption defenses.
+    result
   end
 
   { nil => "未提出", submitted: "採点待ち", grading: "採点中", completed: "採点完了", failed: "採点失敗" }.each do |state, label|
-    it "shows #{label} with one action leading to the unified detail page" do
+    it "shows #{label} with one action leading to handwriting or existing results" do
       assignment
       if state
         result_for
@@ -58,13 +60,15 @@ RSpec.describe "Student grading results", type: :request do
       if state == :completed
         expect(list_row.text).to include("5点")
         expect(list_row.at_css("a[href='#{result_path}']")).to be_present
+      elsif state.nil?
+        expect(list_row.at_css(".student-card-score").text).to eq("")
       else
-        expect(list_row.text).to include("—")
+        expect(list_row.at_css(".student-card-score").text).to eq("")
         expect(list_row.text).not_to include("0点")
       end
       expect(list_row[:class].split.include?("assignment-card--submitted")).to eq(!state.nil?)
       expect(list_row.css("a").size).to eq(1)
-      expect(list_row.at_css("a")[:href]).to eq(result_path)
+      expect(list_row.at_css("a")[:href]).to eq(state ? result_path : student_assignment_pdf_preview_path(assignment))
       expect(list_row.at_css("a")[:class]).to include("assignment-card-link")
       expect(list_row.css("a a, a button")).to be_empty
       expect(list_row.text).not_to include("採点状態：", "現在の点数：", "採点結果を見る", "詳細")
@@ -117,9 +121,9 @@ RSpec.describe "Student grading results", type: :request do
     fields = document.css("article").first.css("dt, dd").map(&:text).each_slice(2).to_h
     expect(fields).to eq("AIが読み取ったあなたの回答" => "3", "正答" => "2",
       "フィードバック" => "足し算が違います。\n計算を確認しましょう。")
-    expect(response.body).to include("教師による確認が必要です。", "必要な場合は先生に申告してください。")
+    expect(response.body).to include("教師による確認が必要です。先生に申告してください。")
     expect(document.at_css("#student-score").text).to eq("現在の点数：5点（暫定）")
-    expect(response.body).to include("未確認の問題は加点していません。")
+    expect(response.body).not_to include("要確認が残るため、現在の得点は暫定です。", "未確認の問題は加点していません。")
     expect(document.css("form, select")).to be_empty
   end
 
@@ -127,14 +131,14 @@ RSpec.describe "Student grading results", type: :request do
     result_for(judgment: :needs_review)
     login
     get student_assignments_path
-    expect(list_row.at_css(".student-card-score").text).to eq("—")
+    expect(list_row.at_css(".student-card-score").text).to eq("0点")
     expect(list_row[:class].split).to include("assignment-card--submitted")
     expect(list_row.at_css("a")[:href]).to eq(result_path)
     expect(response.body).not_to include("要確認が残る得点は暫定です。未確認の問題は加点していません。")
     get result_path
 
     expect(document.at_css("#student-score").text).to eq("現在の点数：0点（暫定）")
-    expect(response.body).to include("現在の得点は暫定です。", "未確認の問題は加点していません。")
+    expect(response.body).not_to include("現在の得点は暫定です。", "未確認の問題は加点していません。")
   end
 
   it "hides obsolete incorrect explanations after the teacher marks an answer correct" do
@@ -171,7 +175,7 @@ RSpec.describe "Student grading results", type: :request do
       expect(document.at_css("#student-score").text).to eq("現在の点数：#{original_score}")
 
       post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
-      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => teacher_value } }
+      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => teacher_value }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       expect(response).to have_http_status(:see_other)
       login
       get result_path
@@ -181,12 +185,12 @@ RSpec.describe "Student grading results", type: :request do
       expect(list_row.text).to include("#{corrected_score}")
 
       post login_path, params: { session: { user_id: teacher.user_id, password: "password123" } }
-      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "" } }
+      patch assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
       login
       get result_path
       expect(document.at_css("#student-score").text).to eq("現在の点数：#{original_score}")
       get student_assignments_path
-      expect(list_row.at_css(".student-card-score").text).to eq(ai == :needs_review ? "—" : original_score)
+      expect(list_row.at_css(".student-card-score").text).to eq(ai == :correct ? "5点" : "0点")
     end
   end
 
@@ -221,7 +225,7 @@ RSpec.describe "Student grading results", type: :request do
       end
       login
       get student_assignments_path
-      expect(list_row.at_css(".student-card-score").text).to eq("—")
+      expect(list_row.at_css(".student-card-score").text).to eq("")
       expect(list_row.at_css("a[href='#{result_path}']")).to be_present
       get result_path
 
@@ -256,7 +260,7 @@ RSpec.describe "Student grading results", type: :request do
     result_for(other_submission, judgment: :incorrect, student_answer: "他人だけの解答")
     login
     get student_assignments_path
-    expect(list_row.at_css(".student-card-score").text).to eq("—")
+    expect(list_row.at_css(".student-card-score").text).to eq("")
     get result_student_assignment_path(assignment)
 
     expect(response).to redirect_to(student_assignment_path(assignment))
@@ -272,7 +276,7 @@ RSpec.describe "Student grading results", type: :request do
       login
       get student_assignment_path(assignment), headers: { "Turbo-Frame" => "grading-status" }
       expect(document.at_css("#grading-status [data-controller='grading-status']")).to be_present
-      expect(document.at_css("#grading-status a").text).to eq("状態を更新")
+      expect(document.css("#grading-status a, #grading-status button")).to be_empty
 
       submission.update!(status: state)
       get student_assignment_path(assignment), headers: { "Turbo-Frame" => "grading-status" }
@@ -402,12 +406,12 @@ RSpec.describe "Student grading results", type: :request do
     original = records.map { |record| record.reload.attributes }
     login
     [ :patch, :put ].each do |method|
-      public_send(method, assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" } })
+      public_send(method, assignment_submission_path(assignment, submission), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } })
       expect(response).to redirect_to(login_path)
       public_send(method, student_assignment_path(assignment), params: { teacher_judgment: "correct", score: 100 })
       expect(response).to have_http_status(:not_found)
     end
-    post result_student_assignment_path(assignment), params: { judgments: { result.id.to_s => "correct" } }
+    post result_student_assignment_path(assignment), params: { judgments: { result.id.to_s => "correct" }, original_final_judgments: { result.id.to_s => result.reload.final_judgment } }
     expect(response).to have_http_status(:not_found)
     expect(records.map { |record| record.reload.attributes }).to eq(original)
   end

@@ -30,8 +30,33 @@ RSpec.describe QuestionGenerator, type: :model do
     expect(question.position).to eq(1)
     expect(responses).to have_received(:create).once.with(hash_including(model: "configured-generator-model"))
     expect(generator.call(assignment).map(&:id)).to eq(questions.map(&:id))
-    expect(files).to have_received(:create).once
+    expect(files).to have_received(:create).once.with(hash_including(
+      purpose: "user_data", expires_after: { anchor: "created_at", seconds: 3600 }))
+    expect(responses).to have_received(:create).with(hash_including(store: false))
     expect(responses).to have_received(:create).once
+  end
+
+  it "schedules external file cleanup after successful generation" do
+    expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
+    expect(generator.call(assignment).size).to eq(1)
+    expect(assignment.material_file).to be_attached
+  end
+
+  it "schedules cleanup after a timed-out response and retains the material" do
+    allow(responses).to receive(:create).and_raise(Timeout::Error, "PRIVATE MATERIAL")
+    expect(AiFileCleanupJob).to receive(:schedule).with("file-material")
+
+    expect { generator.call(assignment) }.to raise_error(Timeout::Error, "PRIVATE MATERIAL")
+    expect(assignment.material_file).to be_attached
+  end
+
+  it "keeps saved questions when cleanup enqueue is rejected" do
+    allow(AiFileCleanupJob).to receive(:perform_later).and_return(false)
+    allow(Rails.logger).to receive(:error)
+
+    expect(generator.call(assignment).size).to eq(1)
+    expect(Rails.logger).to have_received(:error).with(/AI file cleanup failed: file_id=file-material reason=enqueue_rejected/)
+    expect(assignment.questions.count).to eq(1)
   end
 
   it "reuses persisted questions without constructing a client or needing the PDF" do

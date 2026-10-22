@@ -1,0 +1,7 @@
+<div class="admin-account-identity">
+  <p>学校コード: <strong><%= @school.school_code %></strong> / 生徒ID: <strong><%= @student.id %></strong></p>
+  <p>対象: <strong><%= @student.classroom.grade %>年 <%= @student.classroom.class_number %>組 <%= @student.attendance_number %>番</strong></p>
+</div>
+<% if @student.errors.any? %>
+  <div role="alert"><ul><% @student.errors.full_messages.each do |message| %><li><%= message %></li><% end %></ul></div>
+<% end %>
