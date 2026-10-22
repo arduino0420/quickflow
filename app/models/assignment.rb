@@ -1,4 +1,8 @@
 class Assignment < ApplicationRecord
+  belongs_to :current_question_generation_request, class_name: "QuestionGenerationRequest", optional: true
+  has_many :question_generation_requests
+  validate :generation_request_belongs_to_assignment
+
   belongs_to :teacher
   has_many :answer_drafts
   has_many :submissions
@@ -21,6 +25,12 @@ class Assignment < ApplicationRecord
 
   def reviewable_grading_results
     GradingResult.where(submission: reviewable_submissions, question: questions)
+  end
+
+  def generation_request_belongs_to_assignment
+    if current_question_generation_request && current_question_generation_request.assignment_id != id
+      errors.add(:current_question_generation_request, "must belong to this assignment")
+    end
   end
 
   validates :title, presence: true

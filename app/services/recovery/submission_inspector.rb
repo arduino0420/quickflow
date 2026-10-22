@@ -29,6 +29,7 @@ module Recovery
         status: submission.status, submitted_at: submission.submitted_at&.iso8601,
         updated_at: submission.updated_at.iso8601, observed_at: observed_at.iso8601,
         answer_pdf: answer_pdf, material_pdf: material_pdf,
+        question_generation: generation_state(assignment),
         reading: reading, questions: questions, question_count: question_ids.size,
         result_count: results.size, result_question_ids_match: matching,
         teacher_judgment_present: results.any? { |result| result.teacher_judgment_before_type_cast.present? },
@@ -39,6 +40,16 @@ module Recovery
     end
 
     private
+
+    def generation_state(assignment)
+      request = assignment.question_generation_requests.find_by(id: assignment.current_question_generation_request_id)
+      return { state: "legacy_unknown" } unless request
+
+      { request_id: request.id, state: request.state, input_matches: request.selected_input?(assignment),
+        created_at: request.created_at.iso8601, started_at: request.started_at&.iso8601,
+        finished_at: request.finished_at&.iso8601, failure_code: request.failure_code,
+        notice: "経過時間だけでは処理停止を確定できません。DBの配信意図とキュー登録は別々の確定です。" }
+    end
 
     def attachment_state(attachment)
       { attachment_record: attachment.present?, blob_record: attachment&.blob.present? }

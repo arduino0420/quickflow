@@ -1,14 +1,40 @@
 class QuestionGenerator
   PROMPT_VERSION = "question-generation-v1"
 
-  def initialize(client: nil, model: AiClient.model(:question_generation))
+  def initialize(client: nil, model: nil)
     @client = client
     @model = model
   end
 
-  def call(assignment, material_blob_id: nil)
+  attr_reader :request, :claim_token
+
+  def call(assignment, material_blob_id: nil, request_id: nil)
+    @request = @claim_token = nil
+    assignment.reload
+    begin
+      questions = saved_questions(assignment)
+      return questions if questions.any?
+    rescue RuntimeError, JSON::ParserError => error
+      saved_error = error
+    end
+
+    @request = assignment.question_generation_requests.find_by(id: request_id || assignment.current_question_generation_request_id)
+    raise "Previous question generation failed; automatic reattempt is disabled" if @request&.state == "failed"
+    raise saved_error if saved_error && !@request
+    raise "Question generation history is unknown; automatic regeneration is disabled" unless @request
+    return unless @request.selected_input?(assignment)
+    return if !material_blob_id.nil? && material_blob_id != @request.material_blob_id
+
+    @claim_token = @request.claim!
+    return unless @claim_token
+
+    @model = @request.model
     # Serialize generation without blocking the foreign-key check on new submissions.
     assignment.with_lock("FOR NO KEY UPDATE") do
+      @request.reload
+      next unless @request.owned?(assignment, @claim_token)
+      raise saved_error if saved_error
+
       if material_blob_id && assignment.material_file.blob&.id != material_blob_id
         raise "Material PDF has changed; automatic regeneration is disabled"
       end
@@ -36,7 +62,7 @@ class QuestionGenerator
           validate!(data)
 
           generated_at = Time.current
-          data.fetch("questions").each_with_index.map do |question, index|
+          questions = data.fetch("questions").each_with_index.map do |question, index|
             assignment.questions.create!(
               question_label: question.fetch("question_label"), position: index + 1,
               question_text: question.fetch("question_text"), correct_answer: question.fetch("correct_answer"),
@@ -46,9 +72,12 @@ class QuestionGenerator
               answer_generation_prompt_version: PROMPT_VERSION, answer_generated_at: generated_at
             )
           end
+          @request.reload
+          raise "Question generation input is stale" unless @request.owned?(assignment.reload, @claim_token)
+
+          @request.update!(state: "succeeded", finished_at: Time.current)
+          questions
         rescue StandardError
-          # Use the existing cache rather than guessing an answer or adding a database column.
-          record_failure(assignment)
           log_failure(assignment, response)
           raise
         ensure
@@ -56,6 +85,10 @@ class QuestionGenerator
         end
       end
     end
+  rescue StandardError
+    # The API-spanning transaction has rolled back before this independent write.
+    @request&.fail!(token: @claim_token) if @claim_token
+    raise
   end
 
   # Read-only path for grading: never constructs a client or generates missing answers.
@@ -66,11 +99,9 @@ class QuestionGenerator
   end
 
   def failed?(assignment)
-    Rails.cache.read(failure_key(assignment))
-  end
-
-  def record_failure(assignment)
-    Rails.cache.write(failure_key(assignment), true)
+    assignment.reload
+    selected = assignment.question_generation_requests.find_by(id: assignment.current_question_generation_request_id)
+    selected && selected.material_blob_id == assignment.material_file.blob&.id && selected.state == "failed"
   end
 
   private
@@ -111,10 +142,6 @@ class QuestionGenerator
       item.respond_to?(:content) && item.content&.any? { |content| content.type.to_s == "refusal" }
     end
     raise "Question generation response was refused" if refused
-  end
-
-  def failure_key(assignment)
-    [ "question-generation-failure", assignment.id, assignment.material_file.blob&.id, @model, PROMPT_VERSION ]
   end
 
   def validate_saved_questions!(assignment, questions)

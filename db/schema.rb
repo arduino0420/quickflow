@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_21_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -83,6 +83,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_000000) do
     t.datetime "published_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "current_question_generation_request_id"
+    t.index ["current_question_generation_request_id"], name: "index_assignments_on_current_generation_request"
     t.index ["teacher_id"], name: "index_assignments_on_teacher_id"
   end
 
@@ -122,6 +124,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_000000) do
     t.index ["question_id"], name: "index_grading_results_on_question_id"
     t.index ["submission_id", "question_id"], name: "index_grading_results_on_submission_id_and_question_id", unique: true
     t.index ["submission_id"], name: "index_grading_results_on_submission_id"
+  end
+
+  create_table "question_generation_requests", force: :cascade do |t|
+    t.bigint "assignment_id", null: false
+    t.bigint "material_blob_id", null: false
+    t.string "model", null: false
+    t.string "prompt_version", null: false
+    t.string "state", default: "pending", null: false
+    t.string "claim_token"
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.string "failure_code"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "material_blob_id", "model", "prompt_version"], name: "index_question_generation_requests_on_input_scope", unique: true
+    t.index ["assignment_id"], name: "index_question_generation_requests_on_assignment_id"
   end
 
   create_table "questions", force: :cascade do |t|
@@ -195,11 +213,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_000000) do
   add_foreign_key "answer_drafts", "students"
   add_foreign_key "assignment_classrooms", "assignments"
   add_foreign_key "assignment_classrooms", "classrooms"
+  add_foreign_key "assignments", "question_generation_requests", column: "current_question_generation_request_id"
   add_foreign_key "assignments", "teachers"
   add_foreign_key "classrooms", "schools"
   add_foreign_key "classrooms", "teachers"
   add_foreign_key "grading_results", "questions"
   add_foreign_key "grading_results", "submissions"
+  add_foreign_key "question_generation_requests", "assignments"
   add_foreign_key "questions", "assignments"
   add_foreign_key "students", "classrooms"
   add_foreign_key "submissions", "assignments"

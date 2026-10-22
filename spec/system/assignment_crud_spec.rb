@@ -21,7 +21,7 @@ RSpec.describe "Assignment CRUD in Chrome", type: :system do
     assignment = distribute(title: "複数クラス配信", classrooms: @rooms.first(2))
     expect(assignment.classrooms).to match_array(@rooms.first(2))
     expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")))
-    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id).once
+    expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).once
     click_link "配信済み小テスト"
     click_link assignment.title
     expect(page).to have_css(".distributed-classrooms li", count: 2)

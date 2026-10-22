@@ -328,7 +328,8 @@ RSpec.describe "Student submissions", type: :request do
         instance_double(OpenAI::Models::Responses::Response, output_text: JSON.generate(data), model: "stub-model",
           status: "completed", output: [], error: nil, incomplete_details: nil)
       end
-      QuestionGenerationJob.perform_now(assignment, assignment.material_file.blob.id)
+      request = QuestionGenerationRequest.select_for_distribution!(assignment)
+      QuestionGenerationJob.perform_now(assignment, assignment.material_file.blob.id, request_id: request.id)
       question_id = assignment.questions.sole.id
       expect_any_instance_of(QuestionGenerator).not_to receive(:call)
       login
