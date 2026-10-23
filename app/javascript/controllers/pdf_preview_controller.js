@@ -26,6 +26,7 @@ export default class extends Controller {
     this.statesByCanvas = new WeakMap()
     this.touchIds = new Set()
     this.multiTouch = false
+    this.inputPointerType = null
     this.tool = "pen"
     this.eraserSize = "medium"
     this.revision = 0
@@ -41,7 +42,7 @@ export default class extends Controller {
     if (this.inkTouchListeners.has(canvas)) return
     const listener = event => this.preventStylusGesture(event)
     this.inkTouchListeners.set(canvas, listener)
-    for (const type of ["touchstart", "touchend"]) {
+    for (const type of ["touchstart", "touchmove", "touchend"]) {
       canvas.addEventListener(type, listener, { passive: false })
     }
   }
@@ -49,11 +50,18 @@ export default class extends Controller {
   inkTargetDisconnected(canvas) {
     const listener = this.inkTouchListeners?.get(canvas)
     if (!listener) return
-    for (const type of ["touchstart", "touchend"]) canvas.removeEventListener(type, listener)
+    for (const type of ["touchstart", "touchmove", "touchend"]) canvas.removeEventListener(type, listener)
     this.inkTouchListeners.delete(canvas)
   }
 
   preventStylusGesture(event) {
+    // A resting palm must not turn an active, positively identified pen into a pinch.
+    if (event.cancelable && this.inputPointerType === "pen" && this.inputState?.ink.stroke &&
+        event.currentTarget === this.inputState.inkCanvas && event.changedTouches.length > 0 &&
+        ["touchstart", "touchmove", "touchend"].includes(event.type)) {
+      event.preventDefault()
+      return
+    }
     // Unknown touch types and finger gestures retain their native behavior.
     if (!event.cancelable || event.changedTouches.length !== 1 ||
         event.changedTouches[0].touchType !== "stylus") return
@@ -350,6 +358,10 @@ export default class extends Controller {
       return
     }
     if (event.pointerType === "touch") {
+      if (this.inputPointerType === "pen" && this.inputState?.ink.stroke) {
+        this.inputDiagnostics?.record("controller", event, "palm-ignored")
+        return
+      }
       this.touchIds ||= new Set()
       this.touchIds.add(event.pointerId)
       if (this.touchIds.size > 1) {
@@ -373,15 +385,18 @@ export default class extends Controller {
     }
     // Keep native selection out of the ink surface even while drawing is unavailable.
     if (event.cancelable) event.preventDefault()
-    if (this.multiTouch) { this.inputDiagnostics?.record("controller", event, "pinch-active"); return }
+    if (this.multiTouch && event.pointerType !== "pen") { this.inputDiagnostics?.record("controller", event, "pinch-active"); return }
     if (!this.draftEditable) { this.inputDiagnostics?.record("controller", event, "draft-not-editable"); return }
     if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) {
       this.inputDiagnostics?.record("controller", event, this.inputState ? "input-busy" : "viewport-mismatch")
       return
     }
+    // Only an explicit pen can supersede contacts already classified as a finger gesture.
+    if (event.pointerType === "pen") this.multiTouch = false
     this.finishInput()
     if (state.ink.start(event)) {
       this.inputState = state
+      this.inputPointerType = event.pointerType
       this.inputDiagnostics?.record("controller", event, "stroke-accepted")
       this.showDraftStatus(this.draft?.failed ? this.draft.failureMessage : "未保存",
         !!this.draft?.failed && !this.draft.blocked && !this.draft.saveBlocked)
@@ -444,7 +459,10 @@ export default class extends Controller {
       this.inkFrame = null
     }
     state.ink.end(event)
-    if (drawing) this.inputState = null
+    if (drawing) {
+      this.inputState = null
+      this.inputPointerType = null
+    }
     if (event.pointerId === this.touch?.id) this.touch = null
     if (state.inkCanvas.hasPointerCapture(event.pointerId)) state.inkCanvas.releasePointerCapture(event.pointerId)
     this.inputDiagnostics?.record("controller", event, drawing ? "stroke-ended" : "end-without-matching-stroke")
@@ -462,6 +480,7 @@ export default class extends Controller {
     const pointerId = state?.ink.pointerId
     const touch = this.touch
     this.inputState = null
+    this.inputPointerType = null
     this.touch = null
     state?.ink.end()
     if (pointerId != null && state.inkCanvas.hasPointerCapture(pointerId)) state.inkCanvas.releasePointerCapture(pointerId)
