@@ -1,4 +1,7 @@
 .home-page { text-align: center; padding-top: clamp(2rem, 10vh, 6rem); }
-.home-page .app-brand { font-size: clamp(2.5rem, 8vw, 3.5rem); line-height: 1.7; }
+.home-page .app-brand { font-size: clamp(3.5rem, 12vw, 6rem); line-height: 1.2; }
 .home-login-options { display: grid; gap: 1rem; margin-top: 2rem; }
 .home-login-options .button { min-height: 3.5rem; }
+
+.home-login-options .button:disabled { opacity: 1; }
+.home-guest-status { color: var(--color-muted); font-size: 0.875rem; }
