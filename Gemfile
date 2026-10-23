@@ -45,6 +45,9 @@ gem "thruster", require: false
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 2.2"
+# image_processing 2.x makes both existing backends optional; keep lazy loading.
+gem "ruby-vips", "2.3.0", require: false
+gem "mini_magick", "5.4.0", require: false
 
 # Ruby 4 requires an explicit dependency for the macOS child-memory watchdog.
 gem "fiddle", "~> 1.1", require: false
