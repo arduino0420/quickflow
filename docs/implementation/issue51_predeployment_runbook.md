@@ -1,6 +1,6 @@
 # #51 / #99 配備前監査・最小運用手順（未実行の運用案）
 
-監査日: 2026-10-22 UTC。ソース基準: [main 5b5689c9bda13e286b24592e6a49c822ef50b146](https://github.com/arduino0420/quickflow/commit/5b5689c9bda13e286b24592e6a49c822ef50b146)。
+コード更新日: 2026-10-23 UTC。ソース基準: [main 9704b30fa90867a359d11a8ccf0cff78520aa5d2](https://github.com/arduino0420/quickflow/commit/9704b30fa90867a359d11a8ccf0cff78520aa5d2)。公開観測日は下記の2026-10-22のまま。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 本PRは文書のみ。学校アプリの設定変更、AWS/SSH、認証、本番DB/Storage/Queue操作、AI実通信、デモ公開、復元は行っていない。元checkoutの14未コミット項目は読み取り確認のみ。全作業は新規task専用cloneで実施した。
 
@@ -8,10 +8,10 @@
 
 | 対象 | 証拠・判断 |
 | --- | --- |
-| 現行source | 上記main。#47の永続台帳を含む。実稼働版とは未照合 |
+| 現行source | 上記main。#47永続台帳、PR123/#46 claim、PR122/qpdf、PR127 Secure Cookie、PR125/#49集約、PR128/83を含む。PR23はVips同等性/Mac test portability未完のためdeferred/draft。実稼働版とは未照合 |
 | 歴史的owner handoff | URL `https://13-231-93-159.sslip.io`、commit `a35f2ea54ed10953592283edc73b08321701fbbe`、image `quickflow:pr87-a35f2ea`。現在の稼働identityとは未照合 |
 | 公開経路 | 以下の6回のbounded GET/HEADのみ。Caddy応答は確認。EC2 instance、image digest、DB接続先、mount、workerは未確認 |
-| CI | [main CI 39763418691](https://github.com/arduino0420/quickflow/actions/runs/39763418691)の1,882例/失敗0・4ジョブ成功は#47/#88の完了記録。提出対象headのChecksは改めて確認する |
+| CI | [main CI39876600200](https://github.com/arduino0420/quickflow/actions/runs/39876600200)は親タスク確認で2,034例/失敗0・4ジョブ成功。提出対象headのChecksは別確認 |
 | デモ | [production demo](issue93_production_demo.md)は独立profile。公開URL・実インフラは未確認。学校アプリURLからデモ稼働を推測しない |
 
 ### 公開HTTP観測（2026-10-22 11:02:03–04 UTC）
@@ -29,7 +29,7 @@ curlの標準CA/hostname検証を有効にし、connect timeout 5秒、全体15�
 
 HTTPS応答は `via: 1.1 Caddy`。3ログイン応答は `_quickflow_session` に Path=/、HttpOnly、SameSite=Laxを返したが **Secureなし**、Domainなし。Cookie値は保存・掲載しない。ログイン3画面と/upにはnosniff、SAMEORIGIN、strict-origin-when-cross-origin、X-XSS-Protection:0。今回の全HTTPS応答にHSTSはなかった。教師/生徒はprivate, must-revalidate、管理者はprivate, no-store。証明書issuer/期限/chain詳細は採取しておらず、TLS検証成功と区別する。version識別情報は採取していない。404やCookieの原因を特定したとは扱わない。この結果は新mainの主要機能・実ユーザーフローを検証しない。
 
-別code-only taskが通常productionのSecure Cookie修正を準備中（PR/source identityはまだ本監査で未確認）。現在のCookie key・development・分離demoの挙動を保持する予定で、force_ssl/HSTS/Host/proxyの変更とは別。merge/配備/公開応答でのSecure再検証が済むまでは**live未解決**。この文書はコード修正済み・live改善済みと扱わない。
+[PR127](https://github.com/arduino0420/quickflow/pull/127)の通常production Secure Cookieは上記mainへmerge済み。`_quickflow_session`、HttpOnly、SameSite=Lax、Path=/を保持し、demoのhost cookieを別設定とする。[設定spec](../../spec/configuration/session_cookie_spec.rb)が証拠。force_ssl/HSTS/Host/proxyの変更ではない。上記の古い公開応答と矛盾せず、**配備と公開Cookie再検証は未確認**。
 
 ## 現行コード監査
 
@@ -37,15 +37,15 @@ HTTPS応答は `via: 1.1 Caddy`。3ログイン応答は `_quickflow_session` �
 
 | 根拠 | 所見・次に必要な証拠 |
 | --- | --- |
-| [production.rb](../../config/environments/production.rb) | 通常profileのassume_ssl/force_ssl/Host例はコメント。外部TLS終端、forwarded headers、HTTP ingress、session secure設定を全体で検証してから変更案を別承認。公開CookieのSecure欠如は解決/再検証が必要 |
+| [production.rb](../../config/environments/production.rb) | 通常profileのassume_ssl/force_ssl/Host例はコメント。外部TLS終端、forwarded headers、HTTP ingress、Secure=trueはコード確認済み。終端を含む全体で検証し、追加設定変更案は別承認。公開CookieのSecure欠如は解決/再検証が必要 |
 | [deploy.yml](../../config/deploy.yml) | server `192.168.0.1`、proxy SSLは雛形。Kamalが実デプロイ経路とは断定しない。storage volumeは`quickflow_storage:/rails/storage`の宣言のみ |
-| [storage.yml](../../config/storage.yml)、[database.yml](../../config/database.yml) | 通常productionはDisk `storage/`、primary/cache/queue/cableのPostgreSQL接続。実URL上書き、別host/volume、容量・永続性・backup保管先は不明。DB dumpにはPDFが入らない |
+| [storage.yml](../../config/storage.yml)、[database.yml](../../config/database.yml) | 通常productionはDisk `storage/`、primary/cache/queue/cableのPostgreSQL接続。実URL上書き、別host/volume、容量・永続性・backup保管先は不明。会話中のパスを実mount証拠に置き換えない。DB dumpにはPDFが入らない |
 | [puma.rb](../../config/puma.rb)、[queue.yml](../../config/queue.yml) | SOLID_QUEUE_IN_PUMAが存在するとplugin起動（文字列falseも存在する）。Kamal例はtrue、worker既定1 process×3 threads、dispatcher 1秒。実supervisor/heartbeat/通知先は未確認 |
 | [filter_parameter_logging.rb](../../config/initializers/filter_parameter_logging.rb)、app/jobs | password/token/key、PDF/答案/下書き等のfilter。jobエラーはID/class中心。全ログやproxy/失敗queue payloadの無漏えい証明ではない。STDOUT/info既定、debug切替・保管期間・アクセス権は要確認 |
 | [Dockerfile](../../Dockerfile)、[docker-entrypoint](../../bin/docker-entrypoint) | 通常CMDでdb:prepareが自動実行される。liveで盲目的に起動しない。entrypointを含む実起動経路と承認済みmigration計画を先に確定。秘密値・master.key・環境変数全量を表示しない |
 | [production demo](issue93_production_demo.md)、[demo_puma.rb](../../config/demo_puma.rb) | 独立DB/secret/storage/manifest/roles。直接TLSのみ、forwarded headers拒否、trusted proxiesなし、exact Host、Secure/HttpOnly/Strictのhost cookie、readonly business state、reject jobs/null cache。通常学校アプリにそのまま転用しない |
 
-## 後日、明示承認されたアクセスで採取する読み取り証拠
+## release gate: 後日、明示承認されたアクセスで採取する読み取り証拠
 
 以下は**未実行**。接続対象・権限・出力先を確認し、read-only DB role/transactionを使う。秘密値・答案・学校名を報告に出さない。
 
@@ -133,17 +133,24 @@ SQL
 
 新規task専用cluster/storageに架空学校・架空PDFだけを作り、別の新規空clusterへdump+archiveから復元する。上記manifest/checksum/SQL/FK/添付・読み取り表示・stubbed AIのSystem Specで照合し、成否を証跡化する。実学校backupを持ち込まない。本タスクでは演習自体も未実行。合成演習成功は実インフラbackupの復元成功を意味しない。
 
-最終refresh: 2026-10-22 11:05 UTC、origin/mainは5b5689c（#41 Selenium 4.51.0更新を統合）。#47の実装と運用設定に差分なし。GitHub fetchでPR122/123はopen、draft、merged=falseを確認。取得head: PR122 `93f2bdc57be0ef95fee0e146ffca458ea611e0b3`、PR123 `165000f8929e4eef1d003e592e9e4e3b28c77e2a`。下記の未マージ条件を維持する。
+コードrefresh: 2026-10-23、上記mainを通常mergeで統合。primaryは17表（14アプリ＋3ActiveStorage）、具象ApplicationRecord14、別DBはcache1/queue13/cable1表。[schema](../../db/schema.rb)と各別DB schemaを静的照合。PR124の図は別タスクが担当し、本PRで複製/編集しない。
+
+### migration / imageの差分確認
+
+[#47 migration](../../db/migrate/20261022100000_create_question_generation_requests.rb)は台帳とAssignment pointer/FK/index、[#46 migration](../../db/migrate/20261022110000_add_processing_claim_to_submissions.rb)はnullable stage/token/claimed_atを追加する。後者はdefault/backfillなし。過去のmigration（processing_generation等）も実稼働schema_migrationsと最終imageを照合して未適用分を確定する。適用済みとは推測しない。
+
+最終imageはRuby4.0.6、Rails8.1.4、PostgreSQL client/libvips、[checksum-pinned qpdf12.4.2 installer](../../bin/install-qpdf)、[Dockerfile](../../Dockerfile)・Gemfile.lock（Mac watchdog用fiddleを含む）を照合する。qpdf installerはLinux/macOS x86_64/ARM64に対応するが全architectureの実行済み証明ではない。実target architectureでfixtureを確認。qpdf exit0/3を受入、限定されたfatal diagnosticは422、runtime/未知失敗は503。入力書換え・完全PDF適合性・暗号化PDF手書きexport対応の保証ではない。PR23のVips化を採用済みとしない。
+
 
 ## release / cutover / rollback checklist（すべて未実行）
 
 - [ ] ownerのAWS配備承認、最終target commit/image digest/CI全4ジョブと変更migration一覧を固定。設定案はstagingで検証。アプリ機能維持を確認。
-- [ ] #47: [永続台帳仕様](issue47_durable_question_generation.md)と追加migrationを含む。旧web/job登録元を止め、旧generation jobの実行終了・旧queue/Questions/教材状態を調査。旧形式Jobは新コードでAIを開始しない。legacy_unknownを未試行として再送しない。pending/enqueue空白、running中断は自動再実行/age takeover禁止。
-- [ ] #46: [PR123](https://github.com/arduino0420/quickflow/pull/123)は監査時draft/未マージ。実merge後のmigration・nullable reading/grading claim・fence仕様を再読し、web/worker全体を整合切替。NULL backfill/replay禁止。active/new claimがある間は旧workerへrollbackしない。
-- [ ] PDF: [PR122](https://github.com/arduino0420/quickflow/pull/122)のqpdfは監査時draft/未マージ。現行main Dockerfileにqpdfなし。mergeされた場合に限り実際のinstaller/checksum/CPU architectureを確認し、最終imageのqpdf 12.4.2とfixture preflight、missing runtimeの503をoffline/stagingで検証する。古いimage/未検証ARMへの切替を避ける。通常PDF/warning PDF/pdf-lib生成PDF、保存失敗境界、draft保持を再確認。
-- [ ] 上記backupと復元証拠、old process drainを確認後、承認済みmigrationだけを実行して整合したweb/workerへ切替。liveで盲目的db:prepare/db:seed、queue purge、demo auto-rebaselineは禁止。
+- [ ] #47: [永続台帳仕様](issue47_durable_question_generation.md)と追加migrationを含む。同文書のAPI中ロック境界の歴史は、merge済み#46の[現行claim仕様](issue46_ai_claims.md)で更新されている。旧web/job登録元を止め、旧generation jobの実行終了・旧queue/Questions/教材状態を調査。旧形式Jobは新コードでAIを開始しない。legacy_unknownを未試行として再送しない。pending/enqueue空白、running中断は自動再実行/age takeover禁止。
+- [ ] #46: [PR123](https://github.com/arduino0420/quickflow/pull/123)はmerge済み。[claim protocol](issue46_ai_claims.md)の短transaction→snapshot→lock外AI/PDF→fresh fence/atomic finalizeをweb/worker全体で整合切替。NULL backfill/replay禁止。active/new claimがある間は旧workerへrollbackしない。
+- [ ] PDF: [PR122](https://github.com/arduino0420/quickflow/pull/122)のqpdfはmerge済み。実際のinstaller/checksum/CPU architectureを確認し、最終imageのqpdf 12.4.2とfixture preflight、missing runtimeの503をoffline/stagingで検証する。古いimage/未検証ARMへの切替を避ける。通常PDF/warning PDF/pdf-lib生成PDF、保存失敗境界、draft保持を再確認。
+- [ ] 上記backupと復元証拠、old process drainと曖昧なlegacy/queued/running workの個別reconciliationを確認後、承認済みmigrationだけを実行して整合したweb/workerへ切替。liveで盲目的db:prepare/db:seed、queue purge、demo auto-rebaselineは禁止。
 - [ ] `/up`、ログイン、TLS/cookie/host、mount、worker heartbeat/backlogを比較。合成データの主要フロー/異常系は隔離stagingで行う。#99の教師配信→結果修正→Excel、生徒PDF→保存→提出→結果、管理者管理、無効入力/回線断/二重送信/AI失敗の証拠は未実施項目を残す。live認証・変更・AIは別承認。
 - [ ] root/login異常、Secure未解決、schema mismatch、missing PDF、権限逸脱、heartbeat消失/滞留増加/予期せぬAI、claim不整合なら新規受付を止め調査。実ログ/DB evidenceで原因判断し、失敗queueや台帳を消さない。
-- [ ] rollbackはまず新規write/job/recoveryを停止。旧imageのschema/台帳/claim互換性、queued/running jobと世代を確認。安全を証明できなければmaintenanceを維持しforward fix。新claimを旧workerに処理させない、列/台帳を削除しない。DB+PDF復元は新規書込を失う可能性があるためRPO差分を提示して別承認。学校データと分離デモを混ぜず、manifest不一致はfail closedのまま調査。
+- [ ] rollbackはまず新規write/job/recoveryを停止。旧imageのschema/台帳/claim互換性、queued/running jobと世代を確認。webだけ/imageだけのrollbackは有効な手順ではない。旧web/worker/job登録元の混在禁止。安全を証明できなければmaintenanceを維持しforward fix。新claimを旧workerに処理させない、列/台帳を削除しない。DB+PDF復元は新規書込を失う可能性があるためRPO差分を提示して別承認。学校データと分離デモを混ぜず、manifest不一致はfail closedのまま調査。
 
 #51/#99は文書追加だけでcloseしない。実環境の未知項目、backup/restore実証、提出対象CI、公開動作の不足が残る。
