@@ -14,9 +14,11 @@ RSpec.describe "Screen audit", type: :system do
   end
 
   def audit(name, path:, title:)
-    expect(page).to have_css("h1", count: 1)
+    # Non-Turbo submissions replace the document. Both old and new pages have
+    # an h1, so wait for the destination before querying visible DOM nodes.
     expect(page).to have_current_path(path)
     expect(page).to have_title(title, exact: true)
+    expect(page).to have_css("h1", count: 1)
     [ 320, 390, 768, 1280 ].each do |width|
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
       expect(page.evaluate_script("innerWidth")).to eq(width)
