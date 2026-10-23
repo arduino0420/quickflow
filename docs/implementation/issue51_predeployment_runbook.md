@@ -1,12 +1,20 @@
 # #51 / #99 運用監査・配備実績と最小運用案
 
-コード更新日: 2026-10-23 UTC。ソース基準: [main 9704b30fa90867a359d11a8ccf0cff78520aa5d2](https://github.com/arduino0420/quickflow/commit/9704b30fa90867a359d11a8ccf0cff78520aa5d2)。公開観測日は下記の2026-10-22のまま。
+更新日: 2026-10-23 UTC。最終稼働基準: [main1adb1530](https://github.com/arduino0420/quickflow/commit/1adb1530bfde72b1e9c1c9bce711b6a015ece062)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
-本PRは文書のみ。学校アプリの設定変更、AWS/SSH、認証、本番DB/Storage/Queue操作、AI実通信、デモ公開、復元は行っていない。元checkoutの14未コミット項目は読み取り確認のみ。全作業は新規task専用cloneで実施した。
+今回のPRは文書のみ。以下の運用実績は別途明示承認を受けた作業の記録で、この文書変更が再配備・本番操作を実行するものではない。元checkoutの14未コミット項目を保護し、task専用cloneで編集した。
 
-## 最新状態（2026-10-23、ローカル追補草案・未commit）
+## 最新状態（2026-10-23、配備後の確認済み記録）
 
-本追補は以下の実施済み証拠を統合する文書変更のみ。新たな設定・配備・demo公開は行わない。以下に残る「未確認」「未実行」は初回監査/手順作成当時の履歴で、現在状態はこの節を優先する。配備前の推測と実測を混ぜない。
+以下は実行担当の観測と所有者報告を分けた記録。初回監査/手順案の「未実行」は当時の履歴であり、この節を現在状態として参照する。
+
+- **最新の通常/ゲスト稼働版:** source `1adb1530bfde72b1e9c1c9bce711b6a015ece062`、app image `sha256:77c3ea0a189c6ff41ff4d61d87c177df8894e00d59c35a2a49d205f07934863a`。主系[CI39942867222](https://github.com/arduino0420/quickflow/actions/runs/39942867222)全4ジョブ成功、2,039例/失敗0。PR130/131/132を含み、PR23は未merge close。今回の文書commitは稼働imageに含まれない。
+- **最新の通常web切替:** 12:45:27–12:46:42 UTC、約75秒。受付maintenance→queue/claim/transaction静止を連続3回確認→旧workerを強制終了せず正常停止→新web/worker→公開再開。047ba388からのアプリ差分はトップ/guest導線・採点待機表示のみ。DB移行・seed・DB巻戻し・AIテストなし。migration20本/最新20261022110000とstorage mountは継続。以前の整合backup/復元実証・旧image・復旧設定を保持した。この切替で新しいbackupや全レコード/添付checksumの再照合を実施したとは記載しない。
+- **最新の公開確認:** [通常トップ](https://13-231-93-159.sslip.io/)と/up、教師/生徒/管理者loginは200。3loginのCookieはSecure/HttpOnly/SameSite=Lax/Path=/。Caddy設定はmaintenance前と一致。旧worker停止、新Supervisor(fork)/Worker/Dispatcher/Scheduler各1の最近heartbeat、ready/claimed/failed/blocked/scheduledと処理claimは観測時0。永久に0や負荷耐性の保証ではない。
+- **最新のChrome確認:** 大きいQuickFlowロゴ、元の説明2文、教師→生徒→ゲストの同色ボタン、教師/生徒の既存login遷移、ゲスト別hostへの遷移を確認。公開CSSは丸1.1rem/上下移動10px、reduced-motionを保持し、不要な更新案内はpartialから除去。実AIを動かす採点中状態は再実行していない。過去の合成表示試験と今回の配布asset確認を区別する。
+- **公開guest:** [閲覧専用入口](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/)を同一server上に分離公開。通常Chromeで3役と教師/生徒の答案PDF描画を確認しsession終了。詳細と制限は下記。学校の通常ログインでguestを有効化したものではない。
+
+### 以前の保全・移行と認証付き主要フロー
 
 - **実行担当の配備記録:** source `047ba388c662944f0584159d9fa3437195e57434`、image `sha256:c9910bed75a12d59eb59c6312acd2156c4d5469dbb9d2f040d0435870f0c960f`。Ruby4.0.6/Rails8.1.4/qpdf12.4.2。CI [39886322221](https://github.com/arduino0420/quickflow/actions/runs/39886322221)全4ジョブ成功、2,034例/失敗0。PR23は含まない。このローカル文書差分は稼働imageに含まれない。
 - **実行担当の保全/配備記録:** DB4接続とPDFの整合backup、同一サーバーの隔離復元でschema/migration/集計/FK/sequence/添付checksumを照合。復元26blob、隔離artifact約117MB、検証containerは停止。直前の別backupを保持して旧worker全終了後にreview済みadditive migration2本を適用（18→20、最新20261022110000）。既存値/PDFとvolume継続を公開前照合。一時503は03:33:54–03:34:34 UTC、約40秒。seed/reset/legacy replay/claim backfill/down migrationなし。古いDBの上書き復元や旧worker混在は禁止。
@@ -20,26 +28,23 @@
 
 | 項目 | 現状と提出前の最小判断案 | 将来推奨/追加権限が必要な操作 |
 | --- | --- | --- |
-| TLS/Cookie/Host | 有効TLSとSecure Cookieの確認結果を採用。HSTSなし、Rails Host allowlist未追加を明示し、現状継続か別変更か所有者が決定。#51は監査結果/必要変更の明示がDoD | HSTS/Host変更は局所検証・別review/配備承認後。HSTS自体をDPro原文の追加必須条件にしない |
+| TLS/Cookie/Host | 有効TLSとSecure Cookieの確認結果を採用。HSTSなし、Rails Host allowlist未追加を明示し、#51は監査結果/必要変更の明示がDoDで、未実装HSTS/Host強化の導入そのものを追加完了条件にしない | HSTS/Host変更は局所検証・別review/配備承認後。HSTS自体をDPro原文の追加必須条件にしない |
 | Job/容量 | 所有者が授業/審査前後に処理エラーと空き容量を手動確認する方針は合意済み。具体的な読み取り候補は既存手順のheartbeat、failed、ready/claimed滞留、空き容量。failed>0、heartbeat2分超停止、ready/claimedが15分超継続、空き容量10GiB未満を要調査とする技術的な暫定推奨（この数値は所有者未承認）。本文/生徒情報/引数は出力しない | 自動通知は未設定。現時点は所有者が確認/連絡を受ける手動運用案。外部通知先・自動化/有料サービスを導入するなら別承認 |
 | Backup/復旧 | 既存の整合backup/復元実証を採用。合意済みの目安は重要変更前と週1回、保持方針は直近2回＋復元確認済み版。自動削除しない。これは取得・保持の方針であり、定期実行の自動化や今回のbackup取得・整理を意味しない | 同一サーバー喪失には備えきれない限界を説明し、所有者がこの当面方針に合意。off-host暗号化copyは推奨だが新しい保存先/権限/費用/実データ移送の承認前に行わない |
 | 切戻し/ログ | reviewed drain/reconciliation/migration手順とstate-aware recoveryを採用。新しいaccepted writes後の旧image単独復帰/旧DB上書きは禁止。認証情報、答案、raw job argsは公開ログ/Issueへ出さない | 障害時の判断担当/連絡方法を決める。破壊的復元はその時点のデータ保護・個別承認が必要 |
 
-手動頻度/backup目安/保持/自動削除なし/同一server限界/有料監視・自動化なしは合意済み。詳細閾値とHost/HSTSの変更要否は技術提案・判断残件。自動監視導入済み・定期backup実施済みとは記載しない。実測/rollback証拠と監査判断を整理し、任意upgradeを追加の卒業条件にしない。
+手動頻度/backup目安/保持/自動削除なし/同一server限界/有料監視・自動化なしは合意済み。詳細閾値とHost/HSTS強化は未導入の技術提案で、承認済み設定や必須の追加導入とは扱わない。自動監視導入済み・定期backup実施済みとは記載しない。実測/rollback証拠と監査判断を整理し、任意upgradeを追加の卒業条件にしない。
 
-### Guest評価導線の最小案（未公開・未実行）
+### 公開Guest評価導線（同一server・架空データ専用）
 
-DPro原文確認記録では管理者/一般ユーザーguest機能が必要。独立demoサーバーの公開という文言はない。一方、実装済みguestは通常本番OFFで、個別テストアカウントはguestの代替証拠にならない。安全に審査できる入口は残件。[実装済みprofile](issue93_production_demo.md)、[Profile](../../lib/demo/profile.rb)、[TransportBoundary](../../lib/demo/transport_boundary.rb)、[demo-web](../../bin/demo-web)の契約を維持する。
+[DPro curriculum3027](https://diver.diveintocode.jp/curriculums/3027)の機能要件は「管理者と一般ユーザそれぞれのゲストログイン機能を実装すること」（2026-10-23の認証済み原文確認）。読み取り専用で十分とは明記されておらず、書込/配信/AI実行もguest要件として明記されていない。管理者・教師・生徒の閲覧を最小実装とした工学的判断であり、公式合格の保証ではない。独立した別serverはDProの要件ではない。
 
-1. **候補URL/経路:** 既存サーバーを再利用し、`https://qfd-<新規隔離ID先頭16hex>.<既存のIP解決ドメイン>/` の別hostを候補にする（正確なhostは未生成）。通常学校hostは変更しない。既存Caddyの別virtual hostからdemo Pumaの宣言済みloopback高位portへ**検証付きHTTPS**で接続する案。ProfileはPumaの`ssl://127.0.0.1:<port>`だけを許し、HTTPや全interface bindへの変更はしない。公開443とPuma高位portは異なってよく、Hostは許可hostそのものを保持する。
-2. **まだ成立を実証していない重要条件:** demoはTLS接続でもForwarded/X-Forwarded/X-Real-IP等が一つあれば400。Caddyが通常付ける全転送headerを除去し、Host維持、upstream SNI/CA検証、ingress body/rate/concurrency制限を満たせることを、公開前に隔離環境で確認する。`tls_insecure_skip_verify`、trusted proxy拡大、ブラウザ警告回避は使わない。Puma用の有効な証明書/keyを所定control pathに安全供給する具体的方法は未確定（既存certの無断copy/権限拡大をしない）。現在のschool reverse proxyをそのまま転用したり、HTTP upstreamへ落とすだけでは成立しない。共有raw-peer throttleが全訪問者に効く制限も保持する。
-3. **データ/権限:** 現行imageを新たな独立demo identityで使用。学校DBや保管PDF、学校credentialをmount/接続しない。fresh専用PG18 cluster・独立DB/runtime/provision role・独立session secret・専用storage/manifestを作る必要がある。現在の復元検証コピーは実データなのでdemoに転用しない。明示`demo:provision`だけで架空初期業務データを作り、runtimeは業務/ActiveStorage/metadata SELECTのみ、auth throttle/nonceだけ限定DML。旧manifestをauto-rebaselineしない。runtimeへprovision credential/学校master key/AWS/OpenAI secretを渡さない。
-4. **OS/network:** seeded storage/manifest/targetはruntimeからOS-level readonly、書込み可能領域を限定、0worker、Queue/Cache/Cable接続なし、外部egress拒否。必要通信はdemoのloopback TLS/独立PGだけ。webとfresh PGは独立network namespaceを候補とする。ただし、Dockerの通常port publishはnamespace内loopback bindへ直接到達できず、既存Caddyからそのまま接続できると仮定しない。TLSを保つ限定的なnamespace境界接続を既存toolingで構成できるか、または隔離されたproxyを同じnamespaceに置く必要があるかは未解決。proxy/relay追加も具体化・review・承認前には実装しない。これは公開案の明示的な実現性gateであり、動作確認済みの構成図ではない。共有学校network/DBを安易に使わない。既存imageにはwebとPG実行資産があるが、fresh cluster初期化は非root所有者・所定data_directory/system_identifier照合が必要で、ローカルsmoke harnessを本番へそのまま実行しない。
-5. **容量/費用/影響:** 既存サーバー・既存image利用なら新規AWSサービスやimage pullは不要という候補であり、無料保証ではない（既存compute/disk/通信を消費）。過去backup実行時の安全gateは空き10GiB/available memory1GiB以上、隔離復元は512MiB/0.5CPU・約117MBだった。しかし新しいweb＋fresh PG＋TLS/provisionのpeak余力は未測定で、復元実績をdemo容量保証にしない。候補上限はweb512MiB/0.5CPU＋PG512MiB/0.5CPU、disk2GiB以内、1組/低concurrencyから。学校本番に十分な余力を残せる最新capacityとpeak測定が必要。不足なら起動せず再提案（自動resize/新課金なし）。所有者の限定read承認後の再試行1回で、総memory4,001,198,080byte（約3.73GiB）、available1,994,518,528byte（約1.86GiB）、swap0、空きdisk23,930,421,248byte（約22.29GiB）、CPU2を確認。これは瞬間値であり、学校アプリのpeak余力/継続性能を保証しない。候補web+PGの合計上限1GiBを単純に差し引くとavailableは約0.86GiBに留まり、provision/TLS/学校peak分は未測定。disk2GiB案は空きの範囲内だが、同時read/write負荷・memory余裕を実測せず公開へ進めない。資源不足であるとの断定もせず、限定負荷の隔離検証を次の判断材料とする。
-6. **必要な個別合意/承認:** 公開host/URL、証明書と限定key供給、独立DB roles/secret作成、readonly mounts/egress制御、既存Caddyへの別host追加とreload、resource上限/監視/停止方法。これは公開アクセスを新設する操作なので具体的構成を確定してaction-time approval後に実施する。現時点は実行可能性の提案で、公開準備完了ではない。学校サービスの停止は原則不要という目標で、Caddy変更/余力の検証なしに無影響を保証しない。
-7. **受入/復帰:** 標準CAによるTLS、管理者/教師/生徒guest開始、scope/readonly/有効期限/logout、通常login拒否、no-AI/job/egress、manifest不変を実配置で確認。停止はdemo入口とdemo processだけを対象とし学校サービス/データを保持。既存guest権限の15分期限も扱う。新たな学校機能やAI体験demoは作らない。
-
-したがって「今すぐ既存設定だけで安全な公開guestがある」とは言えない。最小の次工程はTLS/header/networkとcapacityを局所確認し、具体的構成・影響を示して承認を得ること。guest実装済みという技術証拠と公開評価可能性を分ける。
+- **実構成:** 通常学校hostと別の上記public guest host。既存Caddy→専用gateway→Pumaは両区間TLS/CA/hostname検証、Host維持、転送header除去。専用PGはnamespace loopback限定。worker/AIなし。専用DB/roles/session鍵/storage/manifestで学校DB/PDF/credentialsや実データ復元コピーを使用しない。[Profile](../../lib/demo/profile.rb)/[TransportBoundary](../../lib/demo/transport_boundary.rb)/[demo-web](../../bin/demo-web)のguardを保持した。
+- **検証:** fresh cluster identity、DB grantsとmanifestを確認。業務/ActiveStorageはSELECT、auth nonce/throttleだけ限定DML、runtimeのstorage/controlはread-only。3役login/logout・旧cookie失効・他校404・変更系403・正しいCSRF付き異なるOrigin422・偽造転送header400・PDF/Excel形式識別が成功。wrong Hostの空200はapp本文/session非配信の確認に限定し、明示的HTTP拒否とは呼ばない。HTTP確認後manifest一致。
+- **network:** 専用internal bridgeにhost IPv4/IPv6アドレスなし、guest default routeなし。承認された専用bridgeだけIPv6を無効化し、元値/限定rollbackをprivate運用記録に保管。限定宛先（host SSH、logical gateway HTTPS、既存Caddy管理API）への接続不可、Caddyから許可guest TLS経路へ到達、専用PGへnamespace外から到達不可を確認。これは全宛先/全port網羅のnetwork scanではない。Caddyの一時peer接続は試験後に元と一致、公開時は意図したpeerだけを接続した。
+- **資源:** PG384MiB/0.5CPU＋web384MiB/0.25CPU＋gateway96MiB/0.25CPU、合計864MiB/1CPU ceiling。初期化もこの合計内で逐次実行。通常本番の上限ではない。upstream `max_conns_per_host:2` は接続数であり、同時HTTP要求/HTTP2 streamが2本までという保証ではない。既存throttle/64KiB body制限を維持。heavy build/負荷試験/新server/有料AIなし。通常/guest同居のピーク負荷は未測定で、影響ゼロや無償運用を保証しない。
+- **証明書:** public TLSは既存の有効・規約同意済みLet’s Encrypt default accountを再利用し、issuerを限定。新規ACME account/新規規約同意なし。内部CA/keyは独立生成、OS trust/firewallの変更なし。公開hostnameは証明書発行/透明性ログに現れ得る。
+- **停止/復旧:** 異常時はguestだけ停止、追加したguest routeと通常トップ導線だけを戻し、通常サービスを維持する。同時変更があれば全設定を旧snapshotへ上書きせず自分の差分だけを扱う。DB/fixtures/鍵/旧image/evidenceは削除せず保持。guestはrestart:noで自動再起動設定を追加していない。host再起動等の後は専用bridgeの無address/IPv6設定・peer・容量・TLSを再確認してから手動開始し、停止中のguest公開入口の可用性を保証しない。全server共通sysctl/firewallへ広げない。
 
 ## 初回監査の履歴（以下の未確認は当時の状態）
 
@@ -192,4 +197,4 @@ SQL
 - [ ] root/login異常、Secure未解決、schema mismatch、missing PDF、権限逸脱、heartbeat消失/滞留増加/予期せぬAI、claim不整合なら新規受付を止め調査。実ログ/DB evidenceで原因判断し、失敗queueや台帳を消さない。
 - [ ] rollbackはまず新規write/job/recoveryを停止。旧imageのschema/台帳/claim互換性、queued/running jobと世代を確認。webだけ/imageだけのrollbackは有効な手順ではない。旧web/worker/job登録元の混在禁止。安全を証明できなければmaintenanceを維持しforward fix。新claimを旧workerに処理させない、列/台帳を削除しない。DB+PDF復元は新規書込を失う可能性があるためRPO差分を提示して別承認。学校データと分離デモを混ぜず、manifest不一致はfail closedのまま調査。
 
-#51/#99は文書追加だけでcloseしない。実環境の未知項目、backup/restore実証、提出対象CI、公開動作の不足が残る。
+#51の監査DoDは上記の実測、整合backup/隔離復元、手動運用方針、公開前確認と復旧条件の証拠で判断する。文書追加だけを実行証拠としない。#99は主要フロー・異常系の既存証拠と今回の限定公開確認、所有者報告、未検証範囲を分けて判断する。本人の提出/通知/学校合格は別条件である。
