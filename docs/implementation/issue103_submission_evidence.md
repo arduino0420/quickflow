@@ -47,11 +47,11 @@
 | System Spec1: ログイン機能のテスト | #96 role×operation表 | [footer_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/footer_spec.rb)、[authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb)（Chrome）、guestのdriver区別は機能3参照 | 既存証拠＋最終配備acd22fb9全suite成功／提出対象変更時は再確認 |
 | System Spec2: 各モデルのCRUD機能のテスト | #97モデル別C/R/U/D表 | `spec/system/assignment_crud_spec.rb`、[quiz_grading_workflow_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/quiz_grading_workflow_spec.rb)、[student_pdf_preview_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/student_pdf_preview_spec.rb) 等。Request/Serviceのみのセルは別分類。A2参照 | 限定証拠あり／最終モデル・機能照合待ち |
 | System Spec3: アクセス制限のテスト | #96拒否/許可表 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の未認証・role・学校・作成者・配信範囲拒否と正例。Cancancan注記はA4参照 | 既存証拠＋最終配備acd22fb9全suite成功／提出対象変更時は再確認 |
-| System Spec4: 全System Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/39942867222) | 過去の関連成功・失敗/診断は#95/#96/#97に限定記録。基準suiteは全Systemを含んで成功。区分単独の件数は本文から推定しない | 配備1adb1530全suite成功／公開guestを含む限定証拠は下記 |
+| System Spec4: 全System Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40027128404) | 過去の関連成功・失敗/診断は#95/#96/#97に限定記録。基準suiteは全Systemを含んで成功。区分単独の件数は本文から推定しない | 配備acd22fb9全suite成功／公開guestを含む限定証拠は下記 |
 | Model Spec1: すべての宣言済みvalidationのテスト | #98モデル別validation表、追加台帳差分 | `spec/models/*` の対応表と[追加台帳8例](https://github.com/arduino0420/quickflow/blob/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7/spec/models/question_generation_request_spec.rb)。A3参照 | 既存監査＋追加台帳8例成功／これだけで全宣言の網羅を断定しない |
 | Model Spec2: 使用scopeのテスト | #98 explicit scope/enum記録 | [models/assignment_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/models/assignment_spec.rb): `distributed_to_school`、[models/grading_result_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/models/grading_result_spec.rb): `pending_review`。基準sourceの明示scopeはこの2件。enum生成scopeは既存mapping検証を参照 | 限定証拠あり／最終scope棚卸し待ち |
 | Model Spec3: 成功・失敗の両方をテスト | #98各行の正例/負例 | 空・境界・重複・別学校/クラス・更新拒否と状態不変・正例。追加台帳の正例/負例は最終確認 | 限定証拠あり／最終照合待ち |
-| Model Spec4: 全Model Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/39942867222) | #98のmodel+PasswordPolicy393例/0失敗は過去の限定範囲。基準suiteは全Modelを含んで成功。区分単独の件数は本文から推定しない | 配備1adb1530全suite成功／公開guestを含む限定証拠は下記 |
+| Model Spec4: 全Model Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40027128404) | #98のmodel+PasswordPolicy393例/0失敗は過去の限定範囲。基準suiteは全Modelを含んで成功。区分単独の件数は本文から推定しない | 配備acd22fb9全suite成功／公開guestを含む限定証拠は下記 |
 
 ### 適用判断（要件本文を変更しない）
 
@@ -78,7 +78,7 @@
 
 公開guestは[runbookの実構成](issue51_predeployment_runbook.md#公開guest評価導線同一server架空データ専用)のとおり確認済み。個別架空アカウントによる学校本番の試験と、独立guestの証拠を混ぜない。原文の管理者/一般ユーザーguestは必須であるが、read-only十分との明記はなく、別serverも要件ではない。工学的最小解釈と学校の合格判定を区別する。
 
-### 最新の公開切替・guest・表示確認（2026-10-23）
+### 前版1adb1530の公開確認（履歴）（2026-10-23）
 
 - 通常/guestのsourceは上記1adb1530、app image `sha256:77c3ea0a189c6ff41ff4d61d87c177df8894e00d59c35a2a49d205f07934863a`。[通常app](https://13-231-93-159.sslip.io/)から[guest入口](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/)へ遷移を確認。12:45:27–12:46:42 UTCの約75秒maintenanceで、queue/claim静止3回→旧worker正常停止→新web/worker→再開。DB移行・seed・データrollbackなし。migration/同一storage mount継続、旧image/backup保持。詳細は[運用記録](issue51_predeployment_runbook.md#最新状態2026-10-23配備後の確認済み記録)。
 - 実行担当の通常Chrome確認: 大きいロゴ、元の説明2文、教師/生徒/guestの同色・指定順のボタン、既存2login画面とguest遷移。公開CSSは丸1.1rem/移動10px・reduced-motion保持、不要案内除去。実AIを使う採点中状態は再実行せず、過去の24例/失敗0の合成表示証拠と、今回のserved asset/partial確認を区別する。
