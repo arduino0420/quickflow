@@ -149,7 +149,7 @@ SQL
 - [ ] #46: [PR123](https://github.com/arduino0420/quickflow/pull/123)はmerge済み。[claim protocol](issue46_ai_claims.md)の短transaction→snapshot→lock外AI/PDF→fresh fence/atomic finalizeをweb/worker全体で整合切替。NULL backfill/replay禁止。active/new claimがある間は旧workerへrollbackしない。
 - [ ] PDF: [PR122](https://github.com/arduino0420/quickflow/pull/122)のqpdfはmerge済み。実際のinstaller/checksum/CPU architectureを確認し、最終imageのqpdf 12.4.2とfixture preflight、missing runtimeの503をoffline/stagingで検証する。古いimage/未検証ARMへの切替を避ける。通常PDF/warning PDF/pdf-lib生成PDF、保存失敗境界、draft保持を再確認。
 - [ ] 上記backupと復元証拠、old process drainと曖昧なlegacy/queued/running workの個別reconciliationを確認後、承認済みmigrationだけを実行して整合したweb/workerへ切替。liveで盲目的db:prepare/db:seed、queue purge、demo auto-rebaselineは禁止。
-- [ ] `/up`、ログイン、TLS/cookie/host、mount、worker heartbeat/backlogを比較。合成データの主要フロー/異常系は隔離stagingで行う。#99の教師配信→結果修正→Excel、生徒PDF→保存→提出→結果、管理者管理、無効入力/回線断/二重送信/AI失敗の証拠は未実施項目を残す。live認証・変更・AIは別承認。
+- [ ] `/up`、ログイン、TLS/cookie/host、mount、worker heartbeat/backlogを比較。合成データの主要フロー/異常系は隔離stagingで行う。#99の[限定合成QA](issue103_submission_evidence.md#99-合成フローの追加証拠2026-10-23)で教師配信/修正/Excel、生徒保存/提出/結果、管理者管理、offline/重複/権限/AI失敗を補足。標準Chromeのadmin手動確認とPDF描画を含むがSeleniumの-32000と旧headless空欄の原因は未解決。公開実環境・実AI・全page/browser/実機は未検証のまま。live認証・変更・AIは別承認。
 - [ ] root/login異常、Secure未解決、schema mismatch、missing PDF、権限逸脱、heartbeat消失/滞留増加/予期せぬAI、claim不整合なら新規受付を止め調査。実ログ/DB evidenceで原因判断し、失敗queueや台帳を消さない。
 - [ ] rollbackはまず新規write/job/recoveryを停止。旧imageのschema/台帳/claim互換性、queued/running jobと世代を確認。webだけ/imageだけのrollbackは有効な手順ではない。旧web/worker/job登録元の混在禁止。安全を証明できなければmaintenanceを維持しforward fix。新claimを旧workerに処理させない、列/台帳を削除しない。DB+PDF復元は新規書込を失う可能性があるためRPO差分を提示して別承認。学校データと分離デモを混ぜず、manifest不一致はfail closedのまま調査。
 

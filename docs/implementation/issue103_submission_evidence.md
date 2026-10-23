@@ -9,7 +9,7 @@
 
 コード照合基準: [main 9704b30](https://github.com/arduino0420/quickflow/commit/9704b30fa90867a359d11a8ccf0cff78520aa5d2)（2026-10-23）。親タスク確認の[main CI39876600200](https://github.com/arduino0420/quickflow/actions/runs/39876600200)は全4ジョブ成功、RSpec 2,034例・失敗0。これはSystem/Modelを含むsuite全体の件数で、各区分単独の件数ではない。実行定義は[CI](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/.github/workflows/ci.yml)（Ubuntu、Ruby4.0.6、PostgreSQL service、Chrome System、AI stub）を参照。本タスクはコード/資料の読取照合のみでテストや配備を実行していない。文書最終headのCIと提出時mainは確定後に追記する。
 
-状態「実装・既存試験証拠あり」は指定sourceと過去監査/上記CIの範囲。**merged / deployed / submitted / 学校での受入**を別々に扱う。全39項目合格や公開実機検証済みとはしない。画像は架空データの既存Chrome証拠であり実端末・実学校の受入証拠ではない。
+状態「実装・既存試験証拠あり」は指定sourceと過去監査/上記CIの範囲。**merged / deployed / submitted / 学校での受入**を別々に扱う。全39項目合格や公開実機検証済みとはしない。画像は架空データのChrome証拠（#95と下記#99）であり実端末・実学校の受入証拠ではない。
 
 | 要件 | 対応する実装・資料 | テストや画面の証拠 | 状態 |
 | --- | --- | --- | --- |
@@ -20,7 +20,7 @@
 | 開発5: 独自404/500ページ | #90（既存#103が参照） | [404](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/public/404.html)・[500](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/public/500.html)、[error_pages spec](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/requests/error_pages_spec.rb)。意図的live500は行わない | コード/Request証拠あり／公開エラー画面の再確認は未実施 |
 | 開発6: モデルとDBのvalidation | [#98](issue98_model_spec_audit.md)、db/schema.rb | #98モデル別表・Database agreement。NOT NULL/unique/FKとモデル側検証の区別、追加台帳差分は後段A3 | 限定証拠あり／最終schema照合待ち |
 | 開発7: メッセージ表示 | [#94](issue94_japanese_errors.md)、[日本語エラーSystem](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/japanese_error_layout_spec.rb)、#95 | #95参照のJapanese error layout、authentication_ui、各保存/失敗画面。通知全種類の網羅は未確定 | 限定証拠あり／最終確認待ち |
-| 開発8: 利用中に例外が発生しない | #99、#51の主要フローと障害対応 | 基準main CIは上記。主要フロー実機・公開環境チェックは未実施。ローカル成功だけで例外なしとはしない | 公開主要フロー未検証 |
+| 開発8: 利用中に例外が発生しない | #99、#51の主要フローと障害対応 | 基準main CIは上記。主要フロー実機・公開環境チェックは未実施。ローカル成功だけで例外なしとはしない | 合成主要フロー証拠あり／公開主要フロー未検証 |
 | 開発9: seedで各テーブルの初期データをそれぞれ5件以上 | [#92](issue92_safe_demo_seed.md)、[#93](issue93_production_demo.md)、明示的demo seed | #93 Technical acceptance: 12業務表各5件以上・正規PDF10添付。全物理表5件の証明ではない。A1参照 | 限定証拠あり／最終棚卸し・適用判断記録待ち |
 | 開発10: CRUD機能 | [#97 CRUD表](issue97_crud_system_audit.md) | direct/indirect CRUDと機能なしを区別したモデル別表。Chrome、Request/Serviceを区別。A2参照 | 限定証拠あり／最終機能照合待ち |
 | デザイン1: 分かりやすいページタイトル・説明 | #95全HTML画面title | #95の23画面・27状態・320/390/768/1280px、期待exact title/path/h1 | 限定証拠あり／最終照合待ち |
@@ -63,7 +63,25 @@
 
 ### 配備・提出・学校受入の残件
 
-上記コード/CIの照合と公開環境を分ける。配備image digest・実SHA・DB/mount/worker・TLS/Cookie・主要フロー・隔離ゲストURLは未検証。実タブレット/学校利用者の受入も未実施。#99の別タスクが同じアプリコードで合成フロー証拠を準備中であり、本版はまだその結果を取り込んでいない。
+上記コード/CIの照合と公開環境を分ける。配備image digest・実SHA・DB/mount/worker・TLS/Cookie・主要フロー・隔離ゲストURLは未検証。実タブレット/学校利用者の受入も未実施。下記#99合成QAを取り込んだが、公開実環境の確認とは区別する。
+
+### #99 合成フローの追加証拠（2026-10-23）
+
+別QAタスクから受領したZIP version3（SHA-256 `16d4b368fb8a5c37fce8e11553c7d2a9ccab33816b4642e6109dc4b019be8bf6`）を検証し、選択画像だけを[issue99-evidence](issue99-evidence/)へ収録した。private log・credential・ローカルパス・内部taskメモは収録しない。本タスクが再実行した証拠ではない。対象は[exact02a8237](https://github.com/arduino0420/quickflow/commit/02a823714eb5d627927318ddf544215117b6a38a)、アプリ/config/schema/lockは9704b30と差分なし。PR23は除外。
+
+Ruby4.0.6/Rails8.1.4/PG18.6、macOS x86_64、Chrome155.0.8059.86/ChromeDriver155.0.8059.84、専用loopback DB/storage、架空PDF/アカウント、typed AI doublesで検証。実AIは呼ばず、全suite再実行なし。対象14 unique examplesが成功。全試行では17 executions中14成功・3失敗で、初回2失敗はcheckout-local qpdf不足による503、前提を整えて同じ2例が成功した。残るSelenium失敗は下段のとおり保持する。親確認のmain CI2034/0とは別の限定検証である。
+
+| 確認範囲 | 実在するsourceと成功証拠 | 制限 |
+| --- | --- | --- |
+| 教師配信→読取/採点→教師修正→生徒結果→実Excel download | [quiz_grading_workflow_spec](https://github.com/arduino0420/quickflow/blob/02a823714eb5d627927318ddf544215117b6a38a/spec/system/quiz_grading_workflow_spec.rb)、[配信](issue99-evidence/01-teacher-distribution.png)、[結果5点](issue99-evidence/03-student-reviewed-result.png)、[成績/Excel](issue99-evidence/04-teacher-grades-excel.png)。未提出blankと採点完了0、訂正後5を区別 | 実AI数学精度や本番performanceの証明ではない |
+| 手書き/消しゴム・保存/再読込・offline retry/leave警告・複数page提出 | [student_pdf_preview_spec](https://github.com/arduino0420/quickflow/blob/02a823714eb5d627927318ddf544215117b6a38a/spec/system/student_pdf_preview_spec.rb)、[保存筆跡](issue99-evidence/02-student-saved-handwriting.png)。座標/消去位置/元text/3pageを確認 | 実端末pen、全browser、実回線断は未確認 |
+| AI失敗/復旧・二重提出/古いform・認可拒否 | 上記workflowと[authentication_access_spec](https://github.com/arduino0420/quickflow/blob/02a823714eb5d627927318ddf544215117b6a38a/spec/system/authentication_access_spec.rb)。stub outageでfailed/結果なし、既存recovery flag off/on、古いformによる置換拒否・既存PDF保持、学校/teacher/student境界を確認 | 専用の時限AI遅延測定・実provider障害ではない |
+| 管理者password resetとfilter保持 | [admin_account_management_spec](https://github.com/arduino0420/quickflow/blob/02a823714eb5d627927318ddf544215117b6a38a/spec/system/admin_account_management_spec.rb)、[完了一覧](issue99-evidence/07-admin-account-management.png)。2対象の変更後passwordを実認証確認 | 架空専用dataのみ |
+| 管理者番号変更・cancel・未使用生徒削除 | 別の1回の標準Chrome手動CUA確認。[preview](issue99-evidence/09-admin-attendance-preview.jpg)時点ではDB不変、確定後1→3、削除cancelでは保持、[削除後](issue99-evidence/11-admin-confirmed-deletion.jpg)は指定架空生徒1人だけ不在。PATCH/DELETE各1回303、他data保持を読取照合 | 自動例をgreenへ読み替えない。下記instrumentation限界を保持 |
+| 教師iframeの架空PDF描画 | 1回の標準Chrome手動確認、[画像12](issue99-evidence/12-teacher-native-pdf-rendered.jpg)。200/application-pdf/inline、4698byte、fixture/response同一SHA256 `530f34ed5ced53574d5beda84604736f1137030af5d22bfa3872050a0a21b3a0`。1pageの矩形/斜線がfixtureと一致 | 全pageの視覚監査ではない。旧headless画像05の空欄原因は不明で成功例に使わない |
+| Excel順序・未提出と0点・card表示 | [classroom_grade_exporter_spec](https://github.com/arduino0420/quickflow/blob/02a823714eb5d627927318ddf544215117b6a38a/spec/services/classroom_grade_exporter_spec.rb)、[assignment_exports_spec](https://github.com/arduino0420/quickflow/blob/02a823714eb5d627927318ddf544215117b6a38a/spec/requests/assignment_exports_spec.rb)。出席順/欠番/40行、blankと数値を確認。task限定card確認は未提出white/bold・提出済gray/normal | 複数classを組み合わせた順序は今回新規検証していない |
+
+保持する自動化限界：`admin_account_management_spec.rb`の番号変更→削除例はChromeDriver inspector `-32000: Node with given id does not belong to the document`。preview POST200後、PATCH/DELETE前に観測が失敗した。原因をアプリ不良またはreadiness不足と断定しない。上記手動確認は実際の合成フローを補足するが、元のSelenium例成功や根因解決を意味しない。追加の自動green rerunが必要なら別途診断/レビューする。この記録から#99をcloseしない。
 
 ### 設計資料・WBSの確認済み状態（2026-10-23）
 
@@ -87,4 +105,4 @@
 
 #102の実DoDは現行資料の整合、差分/対象外/今後の課題、通知内容の準備であり、**実送信を技術資料のclosure条件へ追加しない**。上記artifact/link確認と親レビュー後に#102の完了判断材料とする。このタスクはIssueをcloseしない。
 
-#101/#103に残る本人のDPro再投稿・メンター通知・提出URL入力と完了画面確認は未完了。要件定義課題合格の本人確認も別。#51/#99/#101/#103/#88は配備/公開確認や人間の手続きが残り、文書や技術Issue完了だけでcloseしない。#105は既存画像と簡潔な話順を用意したが、新しい合成QA画像は未受領、独立した発表成果物の受入も未確認であり、完全完了としない。
+#101/#103に残る本人のDPro再投稿・メンター通知・提出URL入力と完了画面確認は未完了。要件定義課題合格の本人確認も別。#51/#99/#101/#103/#88は配備/公開確認や人間の手続きが残り、文書や技術Issue完了だけでcloseしない。#105の実DoDは初学者ガイドと短時間の作品資料、実装との差異/機密露出なし。READMEの3ロール操作/失敗対処・選択済み合成画像と、日本語5枚の[編集PPTX](../presentation/quickflow-overview-ja.pptx)・[閲覧PDF](../presentation/quickflow-overview-ja.pdf)を収録。親タスクが最終pixelと構造/layoutを確認済み、本タスクも5枚/話者ノート/公開文言/秘密値不在を照合した。PDFは画像ベースで検索/編集不可、PPTXは編集可能。実導入効果/他ICTより優位という実証や利用者ヒアリングはしていない。#105はこの成果物と親レビューで完了判断できる資料として用意し、本タスクからcloseしない。
