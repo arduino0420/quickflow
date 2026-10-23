@@ -1,0 +1,1132 @@
+{
+  "baseline_commit": "9704b30fa90867a359d11a8ccf0cff78520aa5d2",
+  "schema_sha256": "79dcdb8ecc6dfbda30301cf3000434bd2939e947e4463ccc677c318b1099c884",
+  "routes_sha256": "10552053490bbcc9ab63e03ab2d846cecf3bc0ea61f5237d4b1c345f8a5ebe9f",
+  "schema_version": "2026_10_22_110000",
+  "inventory": {
+    "primary_tables": 17,
+    "primary_columns_including_primary_keys": 128,
+    "primary_active_storage_tables": 3,
+    "primary_application_tables": 14,
+    "concrete_application_record_models": 14,
+    "model_files": {
+      "Admin": "app/models/admin.rb",
+      "AnswerDraft": "app/models/answer_draft.rb",
+      "Assignment": "app/models/assignment.rb",
+      "AssignmentClassroom": "app/models/assignment_classroom.rb",
+      "AuthenticationAttemptBucket": "app/models/authentication_attempt_bucket.rb",
+      "Classroom": "app/models/classroom.rb",
+      "GradingResult": "app/models/grading_result.rb",
+      "Question": "app/models/question.rb",
+      "QuestionGenerationRequest": "app/models/question_generation_request.rb",
+      "School": "app/models/school.rb",
+      "Student": "app/models/student.rb",
+      "Submission": "app/models/submission.rb",
+      "Teacher": "app/models/teacher.rb",
+      "TeacherClassroom": "app/models/teacher_classroom.rb"
+    },
+    "framework_store_tables": {
+      "cache": [
+        "solid_cache_entries"
+      ],
+      "queue": [
+        "solid_queue_blocked_executions",
+        "solid_queue_claimed_executions",
+        "solid_queue_failed_executions",
+        "solid_queue_jobs",
+        "solid_queue_pauses",
+        "solid_queue_processes",
+        "solid_queue_ready_executions",
+        "solid_queue_recurring_executions",
+        "solid_queue_recurring_tasks",
+        "solid_queue_scheduled_executions",
+        "solid_queue_semaphores",
+        "solid_queue_batches",
+        "solid_queue_batch_executions"
+      ],
+      "cable": [
+        "solid_cable_messages"
+      ]
+    },
+    "framework_store_table_counts": {
+      "cache": 1,
+      "queue": 13,
+      "cable": 1
+    }
+  },
+  "screen_baseline_commit": "1404453a24dce4f3661a7c6aee7fc570e8f6b683",
+  "tables": {
+    "active_storage_attachments": {
+      "label": "添付",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "record_type",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "record_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "blob_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "record_type",
+          "record_id",
+          "name",
+          "blob_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "blob_id",
+          "references": "active_storage_blobs.id"
+        }
+      ]
+    },
+    "active_storage_blobs": {
+      "label": "ファイル情報",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "filename",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "content_type",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "metadata",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "service_name",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "byte_size",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "checksum",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "key"
+        ]
+      ],
+      "foreign_keys": []
+    },
+    "active_storage_variant_records": {
+      "label": "派生画像",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "blob_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "variation_digest",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "blob_id",
+          "variation_digest"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "blob_id",
+          "references": "active_storage_blobs.id"
+        }
+      ]
+    },
+    "admins": {
+      "label": "管理者",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "school_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "user_id",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "password_digest",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "user_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "school_id",
+          "references": "schools.id"
+        }
+      ]
+    },
+    "answer_drafts": {
+      "label": "答案下書き",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "student_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "assignment_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "material_fingerprint",
+          "type": "string",
+          "nullable": false,
+          "options": "limit: 64, null: false"
+        },
+        {
+          "name": "format_version",
+          "type": "integer",
+          "nullable": false,
+          "options": "default: 1, null: false"
+        },
+        {
+          "name": "page_data",
+          "type": "jsonb",
+          "nullable": false,
+          "options": "default: [], null: false"
+        },
+        {
+          "name": "lock_version",
+          "type": "integer",
+          "nullable": false,
+          "options": "default: 0, null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "student_id",
+          "assignment_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "assignment_id",
+          "references": "assignments.id"
+        },
+        {
+          "column": "student_id",
+          "references": "students.id"
+        }
+      ]
+    },
+    "assignment_classrooms": {
+      "label": "配信先",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "assignment_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "classroom_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "assignment_id",
+          "classroom_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "assignment_id",
+          "references": "assignments.id"
+        },
+        {
+          "column": "classroom_id",
+          "references": "classrooms.id"
+        }
+      ]
+    },
+    "assignments": {
+      "label": "小テスト・配信",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "teacher_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "point_per_question",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "published_at",
+          "type": "datetime",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "current_question_generation_request_id",
+          "type": "bigint",
+          "nullable": true,
+          "options": ""
+        }
+      ],
+      "unique_indexes": [],
+      "foreign_keys": [
+        {
+          "column": "current_question_generation_request_id",
+          "references": "question_generation_requests.id"
+        },
+        {
+          "column": "teacher_id",
+          "references": "teachers.id"
+        }
+      ]
+    },
+    "authentication_attempt_buckets": {
+      "label": "認証制限・ゲスト有効期限",
+      "columns": [
+        {
+          "name": "key_digest",
+          "type": "string(64)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [],
+      "foreign_keys": []
+    },
+    "classrooms": {
+      "label": "クラス",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "school_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "teacher_id",
+          "type": "bigint",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "grade",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "class_number",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "school_id",
+          "grade",
+          "class_number"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "school_id",
+          "references": "schools.id"
+        },
+        {
+          "column": "teacher_id",
+          "references": "teachers.id"
+        }
+      ]
+    },
+    "grading_results": {
+      "label": "採点結果",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "submission_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "question_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "student_answer",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "reading_confidence",
+          "type": "integer",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "ai_judgment",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "teacher_judgment",
+          "type": "integer",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "error_point",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "feedback",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "review_reason",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "ai_model_name",
+          "type": "string",
+          "nullable": false,
+          "options": "limit: 255, null: false"
+        },
+        {
+          "name": "prompt_version",
+          "type": "string",
+          "nullable": false,
+          "options": "limit: 50, null: false"
+        },
+        {
+          "name": "graded_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "submission_id",
+          "question_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "question_id",
+          "references": "questions.id"
+        },
+        {
+          "column": "submission_id",
+          "references": "submissions.id"
+        }
+      ]
+    },
+    "question_generation_requests": {
+      "label": "正答生成要求",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "assignment_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "material_blob_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "prompt_version",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "nullable": false,
+          "options": "default: \"pending\", null: false"
+        },
+        {
+          "name": "claim_token",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "started_at",
+          "type": "datetime",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "finished_at",
+          "type": "datetime",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "failure_code",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "assignment_id",
+          "material_blob_id",
+          "model",
+          "prompt_version"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "assignment_id",
+          "references": "assignments.id"
+        }
+      ]
+    },
+    "questions": {
+      "label": "設問・正答",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "assignment_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "question_label",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "question_text",
+          "type": "text",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "correct_answer",
+          "type": "text",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "grading_rule",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "answer_generation_model",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "answer_generation_prompt_version",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "answer_generated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "assignment_id",
+          "position"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "assignment_id",
+          "references": "assignments.id"
+        }
+      ]
+    },
+    "schools": {
+      "label": "学校",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "school_code",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "school_code"
+        ]
+      ],
+      "foreign_keys": []
+    },
+    "students": {
+      "label": "生徒",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "classroom_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "attendance_number",
+          "type": "integer",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "password_digest",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "classroom_id",
+          "attendance_number"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "classroom_id",
+          "references": "classrooms.id"
+        }
+      ]
+    },
+    "submissions": {
+      "label": "提出答案",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "assignment_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "student_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "nullable": false,
+          "options": "default: 0, null: false"
+        },
+        {
+          "name": "submitted_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "extracted_text",
+          "type": "text",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "processing_generation",
+          "type": "integer",
+          "nullable": false,
+          "options": "default: 0, null: false"
+        },
+        {
+          "name": "processing_claim_stage",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "processing_claim_token",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "processing_claimed_at",
+          "type": "datetime",
+          "nullable": true,
+          "options": ""
+        }
+      ],
+      "unique_indexes": [
+        [
+          "assignment_id",
+          "student_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "assignment_id",
+          "references": "assignments.id"
+        },
+        {
+          "column": "student_id",
+          "references": "students.id"
+        }
+      ]
+    },
+    "teacher_classrooms": {
+      "label": "担当クラス",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "teacher_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "classroom_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "teacher_id",
+          "classroom_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "classroom_id",
+          "references": "classrooms.id"
+        },
+        {
+          "column": "teacher_id",
+          "references": "teachers.id"
+        }
+      ]
+    },
+    "teachers": {
+      "label": "教師",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "school_id",
+          "type": "bigint",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "user_id",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "password_digest",
+          "type": "string",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false,
+          "options": "null: false"
+        }
+      ],
+      "unique_indexes": [
+        [
+          "user_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "column": "school_id",
+          "references": "schools.id"
+        }
+      ]
+    }
+  },
+  "model_only_constraints": [
+    "same school for teacher_classrooms / assignment_classrooms",
+    "submission assignment distributed to student classroom",
+    "grading_result question belongs to submission assignment",
+    "Assignment current request belongs to same assignment"
+  ],
+  "not_database_foreign_keys": [
+    "question_generation_requests.material_blob_id",
+    "active_storage_attachments.record_type + record_id"
+  ],
+  "issue46_refresh": "verified merged schema: processing_claim_stage/string, processing_claim_token/string, processing_claimed_at/datetime; all nullable, no default/index/FK added; internal protocol only"
+}

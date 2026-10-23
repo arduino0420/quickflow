@@ -1,0 +1,67 @@
+{
+  "result": "passed",
+  "baseline_commit": "9704b30fa90867a359d11a8ccf0cff78520aa5d2",
+  "schema_version": "2026_10_22_110000",
+  "inventory": {
+    "primary_tables": 17,
+    "primary_columns_including_primary_keys": 128,
+    "primary_active_storage_tables": 3,
+    "primary_application_tables": 14,
+    "concrete_application_record_models": 14,
+    "model_files": {
+      "Admin": "app/models/admin.rb",
+      "AnswerDraft": "app/models/answer_draft.rb",
+      "Assignment": "app/models/assignment.rb",
+      "AssignmentClassroom": "app/models/assignment_classroom.rb",
+      "AuthenticationAttemptBucket": "app/models/authentication_attempt_bucket.rb",
+      "Classroom": "app/models/classroom.rb",
+      "GradingResult": "app/models/grading_result.rb",
+      "Question": "app/models/question.rb",
+      "QuestionGenerationRequest": "app/models/question_generation_request.rb",
+      "School": "app/models/school.rb",
+      "Student": "app/models/student.rb",
+      "Submission": "app/models/submission.rb",
+      "Teacher": "app/models/teacher.rb",
+      "TeacherClassroom": "app/models/teacher_classroom.rb"
+    },
+    "framework_store_tables": {
+      "cache": [
+        "solid_cache_entries"
+      ],
+      "queue": [
+        "solid_queue_blocked_executions",
+        "solid_queue_claimed_executions",
+        "solid_queue_failed_executions",
+        "solid_queue_jobs",
+        "solid_queue_pauses",
+        "solid_queue_processes",
+        "solid_queue_ready_executions",
+        "solid_queue_recurring_executions",
+        "solid_queue_recurring_tasks",
+        "solid_queue_scheduled_executions",
+        "solid_queue_semaphores",
+        "solid_queue_batches",
+        "solid_queue_batch_executions"
+      ],
+      "cable": [
+        "solid_cable_messages"
+      ]
+    },
+    "framework_store_table_counts": {
+      "cache": 1,
+      "queue": 13,
+      "cable": 1
+    }
+  },
+  "tables": 17,
+  "foreign_keys": 21,
+  "unique_indexes": 15,
+  "artifact_sha256": {
+    "docs/er_diagram.png": "ac32b68e415a8847bfb2ad9f61ef8c8581ff7c82aecfd371aac89b616231c655",
+    "docs/screen_transition.png": "fc2fccd83e0ab6c7ae607158791314c0541fef16f12a92deda58f4db9d10c132",
+    "docs/design/er_diagram.svg": "ca3e239359495fdded9c76b15aae8ead4590a81c33ef401198ef42318dfa8590",
+    "docs/design/screen_transition.svg": "d6c880bcb7f638fe11205af66305d3dac77eaa22bbc52a80937bdd7962e9767d",
+    "docs/design/constraints.json": "c2a36d641e387b8b7673a4d555a34fb05d4e9166b3f4b1c4d77640182107bb73",
+    "docs/design/schema_reference.md": "369c4734fc6b560193363793f62fe2449f135c63fdefca1f4ebd0dda4691ca1d"
+  }
+}
