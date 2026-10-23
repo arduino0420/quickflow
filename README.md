@@ -8,9 +8,9 @@
 
 ## 現在の実装と検証範囲
 
-機能の照合基準は [main@cd97d361](https://github.com/arduino0420/quickflow/commit/cd97d361eb18b74b85275730e36c300ee47f17d9)（2026-10-22）。[main CI 39756657910](https://github.com/arduino0420/quickflow/actions/runs/39756657910)はtest・lint・scan_ruby・scan_jsが成功、RSpec 1,839件・失敗0件です。これは提出時点の公開動作や卒業合格を保証するものではありません。最終レビュー前にmain `5c1a4ad8599fced886465494032cf313bfec56b5`（#39のthruster lock更新と#119の教師PDF保存失敗処理）を通常mergeで統合しました。本ドキュメントPRの最終head CIはPRのChecksで別途確認します。
+コードの照合基準は [main@9704b30](https://github.com/arduino0420/quickflow/commit/9704b30fa90867a359d11a8ccf0cff78520aa5d2)（2026-10-23）。親タスク確認の[main CI39876600200](https://github.com/arduino0420/quickflow/actions/runs/39876600200)は4ジョブ成功、全RSpec 2,034件・失敗0件です。本ドキュメント最終headのCIは別途確認します。[必須39項目と証拠](docs/implementation/issue103_submission_evidence.md)は実装・試験と、配備・本人の提出・学校受入を分けて記録しています。これは公開動作や卒業合格の証明ではありません。
 
-ゲストの技術実装は完了していますが、**外部公開は未実施**です。既存AWS環境の配備コミット・URL・現在の健康状態はこの作業では確認していません。EC2/Caddyによる既存環境と、未配備のmain・独立デモprofileを同一視しません。[本番確認 #99](https://github.com/arduino0420/quickflow/issues/99)・[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)で提出用URL、HTTPS、`/up`、ログイン画面、DB/PDFのバックアップと復元、ワーカー監視の実証が必要です。`/up`はRails起動確認であり、AI・DB・キュー全体の健全性を保証しません。
+ゲストの技術実装は完了していますが、**外部公開は未実施**です。[2026-10-22の限定公開観測](docs/implementation/issue51_predeployment_runbook.md)ではroot404、3ログインと/upが200、TLS検証成功でした。CookieにSecureがなくHSTSも観測されていません。PR127のコード修正はmerge済みですが、配備と公開応答での修正確認は未実施。現在の稼働commit/image・DB・storage mountは未検証です。EC2/Caddyによる既存環境と、未配備のmain・独立デモprofileを同一視しません。[本番確認 #99](https://github.com/arduino0420/quickflow/issues/99)・[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)で提出用URL、HTTPS、`/up`、ログイン画面、DB/PDFのバックアップと復元、ワーカー監視の実証が必要です。`/up`はRails起動確認であり、AI・DB・キュー全体の健全性を保証しません。
 
 ## ロール別の利用方法
 
@@ -24,7 +24,48 @@
 
 PDFは複数ページ・黒ペン/消しゴムに対応し、下書きは再ログイン後も復元します。自動保存だけでは正式提出になりません。未保存の筆跡は通信断のまま画面を閉じると失われる場合があります。従来PDFアップロードも詳細画面に残ります。答案PDFは25MiB、提出HTTP本文は32MiBまでです。
 
-AIは「正解・不正解・要確認」を保存し、教師が修正できます。要確認は得点に加算せず、技術的失敗は採点完了と区別します。教師の採点再開ボタンは既定OFFで、世代・PDF・保存結果・未完了Jobを確認する運用条件があります。[採点・復旧・外部ファイル保持の詳細](docs/implementation/operations_details.md)を確認してください。#47/#48等の進行中の変更を完了済みとは扱いません。
+AIは「正解・不正解・要確認」を保存し、教師が修正できます。要確認は得点に加算せず、技術的失敗は採点完了と区別します。教師の採点再開ボタンは既定OFFで、世代・PDF・保存結果・未完了Jobを確認する運用条件があります。[採点・復旧・外部ファイル保持の詳細](docs/implementation/operations_details.md)を確認してください。#47永続要求台帳・#46短いclaim・#48 qpdf・#49成績取得集約はコードに統合済みですが、本番反映の証拠ではありません。
+
+### 初めて使う方へ（架空データでの説明）
+
+冒頭の[3画面画像](docs/implementation/issue95-evidence/flow-390.jpg)は既存の架空データのChrome検証です。実学校・実本番のスクリーンショットではありません。
+
+1. 教師はログイン後、PDF教材・1問の点数・配信先を確認して配信します。正答生成は非同期です。結果を待つ間に再配信すると別課題になるため、連打せず状態を確認します。
+2. 生徒は配信された小テストを開き、PDFに黒ペンで書き込みます。保存状態を確認し、「提出する」で正式提出します。自動保存は提出とは別です。通信断で未保存なら画面を閉じず、復旧後の保存状態を確認します。
+3. 教師は成績一覧から答案を開き、AIの「要確認」や誤判定を教師判定で修正します。生徒は結果を確認し、教師は配信クラスを確認してExcelを出力します。AIは正確性の保証や教師判断の代替ではありません。
+4. 管理者は自校の教師・生徒を管理します。所属変更/削除/パスワード再設定では確認画面と対象を確かめます。通常利用者へ管理操作を渡しません。
+
+PDF拒否や503では案内を読み、別のPDFを無闇に再送しません。暗号化PDFの手書きexportは未対応です。採点失敗/停止は教師から運用担当者へ連絡し、PDF/既存結果を保持します。経過時間だけで停止を断定せず、再実行・queue削除をしません。[詳細運用・外部AI保持の制限](docs/implementation/operations_details.md)と[配備前runbook](docs/implementation/issue51_predeployment_runbook.md)を参照してください。実学校導入時は権限・データ取扱い・backup/監視・利用者説明と受入を別途確認します。
+
+#### 架空データの確認画面（2026-10-23）
+
+[検証source・成功範囲・失敗履歴と制限](docs/implementation/issue103_submission_evidence.md#99-合成フローの追加証拠2026-10-23)を参照してください。exact02a8237の専用ローカル環境、AI doubleを使った画像です。画像内の学校コード・IDは使い捨ての架空値で、ログイン情報として使用しません。
+
+![生徒の保存済み手書き（架空の幾何学模様）](docs/implementation/issue99-evidence/02-student-saved-handwriting.png)
+
+生徒は保存状態を確認してから提出します。合成確認では筆跡と消しゴムの位置が再読込後にも復元され、offline時の未保存筆跡と後のretryも確認しました。実機ペンの保証ではありません。
+
+![教師の答案PDF表示と最終判定（架空PDF・標準Chrome）](docs/implementation/issue99-evidence/12-teacher-native-pdf-rendered.jpg)
+
+教師は左の答案と右の正答/判定を見比べ、必要な問題の最終判定を変えて「保存」します。PDFは幾何学的fixtureであり実生徒の答案ではありません。標準Chromeでの1page描画を確認した画像12を使用し、旧headless空欄画像を表示成功の例にしていません。
+
+![訂正後の成績とExcel出力（架空データ）](docs/implementation/issue99-evidence/04-teacher-grades-excel.png)
+
+教師の修正後の5点と未提出の空欄を、画面と実際にdownloadしたExcelで区別して確認しました。結果を生徒画面でも確認しています。
+
+![管理者の変更内容preview（未確定・架空生徒）](docs/implementation/issue99-evidence/09-admin-attendance-preview.jpg)
+
+管理者は対象と変更後の番号を確認します。previewだけでは保存されません。確定には再認証とチェックが必要です。削除も確認画面でcancelでき、確定後は戻せません。今回の手動確認は未使用の架空生徒だけを対象とし、元のSelenium観測エラーを解決済みとはしていません。
+
+### 作品説明の短い話順（#105・任意資料）
+
+- **課題と価値**：PDF教材を起点に、配布・採点・転記と返却待ちを減らす構想。実際の削減時間や学校導入効果は未測定です。
+- **3画面で説明**：上記架空画像で、生徒の手書き/保存→AIの補助判定→教師修正/Excelを示します。通常のPDF教材、曖昧な筆跡の要確認、教師の最終判断という設計を説明し、他ICTより優れるという未検証の比較はしません。
+- **技術の理由**：Rails/PostgreSQLで学校・配信・答案の関係と認可、PDF.js/pdf-libで手書き、OpenAIで読取/判定支援、Solid Queueで非同期、caxlsxでExcel、Docker/CIで配備物と回帰試験を扱います。AWS EC2は既存運用方針であり最新コードの稼働確認は保留です。
+- **信頼性と限界**：durable台帳とfenced claim、qpdf境界、学校間認可、教師判定保持を既存コード/テストから説明します。AI誤判定、料金/送信データ、通信断の未保存筆跡、暗号化PDF、公開デモ未配備・実端末未確認を隠しません。
+- **残る作業**：実環境配備承認、復元実証、公開HTTPS/Cookie/job確認、人間の設計再投稿/通知/提出、学校受入。利用者ヒアリングは未実施で、行うなら同意と匿名化が必要です。
+
+これは既存画像と資料を使う簡潔な話順です。下記リンクの発表資料と合わせて使い、公開デモの実演済みとは案内しません。#105の任意資料は必須39項目の完了判定と分けます。下記合成QA画像と、日本語5枚・約3分の[編集可能PPTX](docs/presentation/quickflow-overview-ja.pptx)／[閲覧PDF](docs/presentation/quickflow-overview-ja.pdf)を用意しました。PDFは高解像度画像の閲覧用で、検索/編集には向きません。PPTXには話者ノートがあります。資料の公開・実演・学校受入やDPro提出を実施したという意味ではありません。
 
 ### 閲覧専用ゲスト
 
@@ -122,4 +163,4 @@ DBと添付PDFは別々に保存されるため、整合したバックアップ
 - [画面・架空スクリーンショット監査](docs/implementation/issue95_screen_audit.md) / [Model Spec監査](docs/implementation/issue98_model_spec_audit.md) / [認証System監査](docs/implementation/issue96_authentication_system_audit.md) / [CRUD System監査](docs/implementation/issue97_crud_system_audit.md)
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
-設計画像と外部設計資料はschema安定後の#101/#102で照合・更新します。この作業では外部資料を編集せず、現行schemaに完全同期したとは宣言しません。Windows/Chromebook実機、実通信断、実答案サイズ分布、実AIの数学的正確性、公開環境での主要フロー確認は別途必要です。
+[PR124](https://github.com/arduino0420/quickflow/pull/124)の図をmain02a8237から統合済みです。親タスクで外部設計Sheetはコード9704b30へ同期、Macで更新範囲の可読性とWhimsical17フレームを確認し、WBSのmilestoneも更新済みです。[差分説明と通知用本文案](docs/implementation/issue103_submission_evidence.md)を用意しました。本人によるDPro再投稿・変更通知・最終提出は未完了です。Windows/Chromebook実機、実通信断、実答案サイズ分布、実AIの数学的正確性、公開環境での主要フロー確認は別途必要です。
