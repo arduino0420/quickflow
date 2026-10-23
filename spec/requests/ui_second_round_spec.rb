@@ -76,7 +76,7 @@ RSpec.describe "Second-round UI improvements", type: :request do
   end
 
   [ :submitted, :grading ].each do |state|
-    it "keeps automatic refresh and a reload hint without an action button for #{state}" do
+    it "keeps automatic refresh without an action button or obsolete reload hint for #{state}" do
       submission.update!(status: state)
       student_login
       get student_assignment_path(assignment)
@@ -84,7 +84,7 @@ RSpec.describe "Second-round UI improvements", type: :request do
       expect(frame.at_css("[data-controller='grading-status']")).to be_present
       expect(frame.css("a, button, input[type='submit']")).to be_empty
       expect(frame.text).not_to include("採点結果を見る", "結果を確認する", "10秒")
-      expect(frame.text).to include("このページを開き直してください。")
+      expect(frame.text).not_to include("このページを開き直してください。")
     end
   end
 
