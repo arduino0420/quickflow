@@ -55,7 +55,7 @@ PDFの本文も架空サンプルであることを明示しています。画�
 
 ![標準Chromeで表示した生徒guestの答案PDFと採点結果。架空の得点10点と正解表示](docs/screenshots/student-result.jpg)
 
-手書きの編集画面は閲覧専用guestでは操作できません。[隔離した合成試験での保存済み筆跡画像](docs/implementation/issue99-evidence/02-student-saved-handwriting.png)と[保存・再読込の検証記録](docs/implementation/issue103_submission_evidence.md)を別に残しています。現在の編集画面を新たに撮影したものとは扱いません。
+手書きの編集画面は閲覧専用guestでは操作できません。[過去の合成入力試験画像（黒い線）](docs/implementation/issue99-evidence/02-student-saved-handwriting.png)と[保存・再読込の検証記録](docs/implementation/issue103_submission_evidence.md)を別に残しています。この旧画像は試験用タイトルと黒い線を示すもので、保存状態の表示は撮影範囲外です。保存・復元の成立は検証記録を参照し、現在の編集画面を撮り直した画像とは区別してください。
 
 ### 利用時の注意
 
@@ -170,11 +170,13 @@ DBと添付PDFは整合したバックアップと復元確認が必要です。
 DB上の削除、物理PDFの非同期削除、外部OpenAI Fileの期限・非同期cleanupは別の処理です。404や `store: false` だけで外部保持ゼロを保証しません。[外部ファイル保持と安全な復旧手順](docs/implementation/operations_details.md)を確認してください。
 
 - [チェックシート](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=1475280975) / [カタログ](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=0) / [テーブル定義](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=524149616)
-- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図](docs/er_diagram.png) / [画面遷移図](docs/screen_transition.png)
+- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図（9704b30基準）](docs/er_diagram.png) / [画面遷移図（生成時点の履歴）](docs/screen_transition.png)
 - [図の編集元・実装照合・全カラムと制約](docs/design/README.md)
 - [画面・架空スクリーンショット監査](docs/implementation/issue95_screen_audit.md) / [Model Spec監査](docs/implementation/issue98_model_spec_audit.md) / [認証System監査](docs/implementation/issue96_authentication_system_audit.md) / [CRUD System監査](docs/implementation/issue97_crud_system_audit.md)
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
+
+生成済みの画面遷移図には「公開ゲストURL未確認」という当時の注記が残っています。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中に記載したschema基準の資料です。
 
 原本ワイヤーフレームのトップと採点表示は現行仕様へ更新済みです。[差分と通知用本文](docs/implementation/issue103_submission_evidence.md)を用意しています。審査者からの閲覧確認と、DProへの修正版再投稿・変更通知・最終提出は本人が行います。
 
