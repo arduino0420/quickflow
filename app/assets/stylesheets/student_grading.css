@@ -1,8 +1,8 @@
 /* Only the student's detail-page result panel uses these styles. */
 .student-grading-panel .student-grading-waiting { padding: 1.25rem; margin: 1rem 0; background: var(--color-background); border: 1px solid var(--color-soft-border); border-radius: var(--radius); }
 .student-grading-panel .student-grading-waiting p { margin: 0.75rem 0 0; }
-.student-grading-panel .student-grading-waiting__dots { display: flex; align-items: center; gap: 0.65rem; height: 1.75rem; }
-.student-grading-panel .student-grading-waiting__dot { display: block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--color-primary); opacity: 0.5; animation: student-grading-pulse 1.8s cubic-bezier(0.45, 0, 0.55, 1) 3; }
+.student-grading-panel .student-grading-waiting__dots { display: flex; align-items: center; gap: 0.85rem; height: 2.75rem; }
+.student-grading-panel .student-grading-waiting__dot { display: block; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--color-primary); opacity: 0.5; animation: student-grading-pulse 1.8s cubic-bezier(0.45, 0, 0.55, 1) 3; }
 .student-grading-panel .student-grading-waiting__dot:nth-child(2) { animation-delay: 0.15s; }
 .student-grading-panel .student-grading-waiting__dot:nth-child(3) { animation-delay: 0.3s; }
 .student-grading-panel[data-grading-presentation-paused="true"] .student-grading-waiting__dot { animation: none; }
@@ -10,7 +10,7 @@
 .student-grading-panel .student-result-enter { animation: student-result-reveal 480ms cubic-bezier(0.22, 0.61, 0.36, 1) both; animation-delay: var(--student-result-delay, 0ms); }
 @keyframes student-grading-pulse {
   0%, 100% { opacity: 0.5; transform: translateY(0); }
-  50% { opacity: 0.85; transform: translateY(-4px); }
+  50% { opacity: 0.85; transform: translateY(-10px); }
 }
 @keyframes student-result-reveal {
   from { opacity: 0; transform: translateY(18px); }
