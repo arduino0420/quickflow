@@ -1,6 +1,6 @@
 # #103 必須39項目の証跡対応（提出未完了）
 
-39行表は認証済み原文の確認記録・既存草案とcode/testを照合したもの。guestの該当1文は2026-10-23に実行担当も認証済み原文で確認した。課題全体の再読や公式合格判定とは区別し、追加メンター解釈承認をゲートにしない。
+39行表は原文確認記録・既存草案とcode/testを照合したもの。2026-10-23に実行担当も認証済み原文の第8節（10/12/4/5/4/4の39項目）、第9節（提出方法）、設計変更時の再投稿/通知の注記を再確認し、要件の意味と対応表を照合した。課題全体の再読や公式合格判定とは区別し、追加メンター解釈承認をゲートにしない。
 
 
 ### 原文との対応・証拠の基準
@@ -20,7 +20,7 @@
 | 開発5: 独自404/500ページ | #90（既存#103が参照） | [404](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/public/404.html)・[500](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/public/500.html)、[error_pages spec](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/requests/error_pages_spec.rb)。意図的live500は行わない | コード/Request証拠あり／公開エラー画面の再確認は未実施 |
 | 開発6: モデルとDBのvalidation | [#98](issue98_model_spec_audit.md)、db/schema.rb | #98モデル別表・Database agreement。NOT NULL/unique/FKとモデル側検証の区別、追加台帳差分は後段A3 | 限定証拠あり／最終schema照合待ち |
 | 開発7: メッセージ表示 | [#94](issue94_japanese_errors.md)、[日本語エラーSystem](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/japanese_error_layout_spec.rb)、#95 | #95参照のJapanese error layout、authentication_ui、各保存/失敗画面。通知全種類の網羅は未確定 | 限定証拠あり／最終確認待ち |
-| 開発8: 利用中に例外が発生しない | #99、#51の主要フローと障害対応 | 基準main CIは上記。下記の認証付き本番架空フローと所有者の実AI成功報告を分離して参照。全操作で例外が起きない保証ではない | 合成・本番限定フローと公開guest確認済み／全操作保証ではない |
+| 開発8: 利用中に例外が発生しない | #99、#51の主要フローと障害対応 | 基準main CIは上記。下記の認証付き本番架空フローと所有者の実AI成功報告を分離して参照。全操作で例外が起きない保証ではない | 既存限定証拠あり／Chromebook実機の筆記失敗報告を調査中 |
 | 開発9: seedで各テーブルの初期データをそれぞれ5件以上 | [#92](issue92_safe_demo_seed.md)、[#93](issue93_production_demo.md)、明示的demo seed | #93 Technical acceptance: 12業務表各5件以上・正規PDF10添付。全物理表5件の証明ではない。A1参照 | 限定証拠あり／最終棚卸し・適用判断記録待ち |
 | 開発10: CRUD機能 | [#97 CRUD表](issue97_crud_system_audit.md) | direct/indirect CRUDと機能なしを区別したモデル別表。Chrome、Request/Serviceを区別。A2参照 | 限定証拠あり／最終機能照合待ち |
 | デザイン1: 分かりやすいページタイトル・説明 | #95全HTML画面title | #95の23画面・27状態・320/390/768/1280px、期待exact title/path/h1 | 限定証拠あり／最終照合待ち |
@@ -85,6 +85,12 @@
 - 公開guestの3役login/表示/終了、教師と生徒の答案PDFの実描画を通常Chromeで確認。専用架空DB/storage/鍵、readonly業務権限とmanifest、別host/namespace、両段厳密TLS、Origin/他校/書込/転送header拒否、PDF/Excel形式確認を記録。64KiB body制限とupstream接続上限2を維持するが、厳密な同時要求数2ではない。864MiB/1CPU ceiling、0worker/AI、新serverなし。全PDF/全browser/ピーク負荷/実学校受入の証明ではない。
 - 通常root/up/3loginとguestは200、通常sessionはSecure/HttpOnly/Lax/Path=/。新Supervisor(fork)/Worker/Dispatcher/Scheduler各1の最近heartbeat、観測時queue5分類/active claim0。通常Caddy設定はmaintenance前と一致、guestは既存Let’s Encrypt account/同意済みtermsを再利用。HSTS未設定・Rails Host強化未追加の監査結果は保持し、課題にない追加必須項目としない。
 - 所有者の以前の「通常UX・実AI配信/提出/採点は問題なし」という報告は上表の出典のまま。今回の担当による実AI再試験、全精度検証、卒業合格へ読み替えない。#99のコメント追記は以前のtool target ambiguityによる拒否のまま未投稿で、別routeで再投稿していない。この独立して承認済みのrepo文書更新は、拒否されたコメントの投稿成功とは扱わない。
+
+### その後の実機報告とペン修正候補（2026-10-23）
+
+所有者から、Lenovo500e Chromebook Gen4s (Light)付属ペンが指と同じ挙動で書けなかったと追加報告を受領した。以前の通常UX成功報告より後の実利用上の残件であり、開発8/#99を全操作完了とは扱わない。正確なSKU・ChromeOS版・実機のpointerType/cancel記録は未取得。製品familyにはpenの構成違いがあるため、型名だけで機器故障/対応規格を断定しない。
+
+別途、現行controllerで「2点のtouch接触が残ると明示的penもpinchとして拒否」「筆記中の2点touchが線を終了」を合成イベントで再現した。修正候補は明示的penだけを優先し、筆記中のpalmによるnative gestureをink面だけで抑止する。touchをpenへ変換せず、通常の指スクロール/ピンチ、read-only・viewport guard、保存/提出処理は維持する。実機報告の根因と同一とは未確認。修正の公開状態はPR/配備記録で確認し、ソフトウェア試験から実機解消を推測しない。付属ペンが実際にtouchとして通知されている場合は、この修正の対象ではない。既存の入力診断を使い、座標/答案/認証情報を共有せずpointer種別・取消・拒否理由の集計を確認する必要がある。
 
 ### #99 合成フローの追加証拠（2026-10-23）
 
