@@ -6,6 +6,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   before do
     Selenium::WebDriver.logger.level = :warn
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    page.current_window.resize_to(1280, 900)
     page.driver.browser.execute_cdp("Browser.setDownloadBehavior", behavior: "deny")
     school = School.create!(school_code: "PDFSYS")
     teacher = Teacher.create!(school: school, user_id: "pdf-system", password: "password123")
