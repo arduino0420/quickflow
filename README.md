@@ -1,83 +1,93 @@
 # QuickFlow
 
-中学校数学の「式の計算」の小テストを、PDF配信から手書き解答・採点・成績出力まで支援するRailsアプリです。教師の採点・転記負担と、生徒への返却の遅れを減らすことを目指します。普段のPDF教材を使い、AIの判定と教師の最終判定を分け、判読が難しい答案を「要確認」として残す点が特徴です。
+中学校数学の小テストを、PDF教材の配信から手書き解答・採点・成績出力まで支援するRailsアプリです。教師の採点や転記の負担を減らし、生徒へ結果を返すまでの時間を短くすることを目指しています。
 
-![教師の成績一覧・答案確認・生徒のPDF手書き画面（架空データ）](docs/implementation/issue95-evidence/flow-390.jpg)
+AIによる判定をそのまま確定せず、読みにくい答案は「要確認」として残し、教師が最終判定を確認・修正できる設計です。
 
-画像は[Issue #95の実Chrome監査](docs/implementation/issue95_screen_audit.md)で撮影した架空データです。長文・空状態の試験を含み、AIの実行結果や本番画面ではありません。現行ビューと導線を照合して再利用しています。
+**[公開アプリ](https://13-231-93-159.sslip.io/) · [閲覧専用ゲスト](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/) · [必須39項目の対応表](docs/implementation/issue103_submission_evidence.md)**
 
-## 現在の実装と検証範囲
+![QuickFlowの公開トップ。教師・生徒のログインと閲覧専用ゲストの入口](docs/screenshots/home.jpg)
 
-コードの照合基準は [main@9704b30](https://github.com/arduino0420/quickflow/commit/9704b30fa90867a359d11a8ccf0cff78520aa5d2)（2026-10-23）。親タスク確認の[main CI39876600200](https://github.com/arduino0420/quickflow/actions/runs/39876600200)は4ジョブ成功、全RSpec 2,034件・失敗0件です。本ドキュメント最終headのCIは別途確認します。[必須39項目と証拠](docs/implementation/issue103_submission_evidence.md)は実装・試験と、配備・本人の提出・学校受入を分けて記録しています。これは公開動作や卒業合格の証明ではありません。
+## 主な機能
 
-ゲストの技術実装は完了していますが、**外部公開は未実施**です。[2026-10-22の限定公開観測](docs/implementation/issue51_predeployment_runbook.md)ではroot404、3ログインと/upが200、TLS検証成功でした。CookieにSecureがなくHSTSも観測されていません。PR127のコード修正はmerge済みですが、配備と公開応答での修正確認は未実施。現在の稼働commit/image・DB・storage mountは未検証です。EC2/Caddyによる既存環境と、未配備のmain・独立デモprofileを同一視しません。[本番確認 #99](https://github.com/arduino0420/quickflow/issues/99)・[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)で提出用URL、HTTPS、`/up`、ログイン画面、DB/PDFのバックアップと復元、ワーカー監視の実証が必要です。`/up`はRails起動確認であり、AI・DB・キュー全体の健全性を保証しません。
-
-## ロール別の利用方法
-
-| ロール・入口 | 主な操作 |
+| 利用者 | できること |
 | --- | --- |
-| 教師 `/login` | 教師IDとパスワードでログイン。PDF・点数・配信先クラスを登録し、成績一覧→答案詳細でAI判定を確認/修正。得点は再計算され、単一/全配信クラスのExcelを出力。小テスト名変更・所有する小テスト削除、担当クラスの生徒登録も可能 |
-| 生徒 `/student/login` | 学校コード・学年・クラス・出席番号・パスワードでログイン。未提出小テスト→PDFへ手書き→自動保存→「提出する」→採点結果を確認。通常の選択肢は1〜3年・1〜10組・1〜40番 |
-| 管理者 `/admin/login` | 管理者IDとパスワードでログイン。自校の教師登録/担当・パスワード変更、生徒一覧/登録/所属編集/パスワード再設定/条件付き削除。重要な生徒操作は確認と管理者再認証が必要 |
+| 教師 | PDF教材の配信、答案とAI判定の確認、最終判定の修正、得点集計、クラス別のExcel出力 |
+| 生徒 | 配信されたPDFへの手書き、下書きの自動保存・復元、正式提出、答案と採点結果の確認 |
+| 管理者 | 自校の教師・生徒の登録や所属管理、パスワード再設定、条件を満たす生徒の削除 |
 
-公開サインアップはありません。教師/管理者の初期登録は所属と権限を確認した運用担当者が行います。学校コードだけで所属を証明できません。管理者15文字以上、教師は英字と数字を含む半角英数字10文字以上（各72バイト以下）、生徒は半角数字8桁で、弱い反復・語句/連番を拒否します。登録入口/運用タスクとパスワード変更で適用し、既存パスワードの一括変更はしません。パスワード変更後の旧セッションは次の認証確認で失効します。[登録・移行・削除の詳細と安全手順](docs/implementation/operations_details.md)を参照してください。
+学校・担当クラス・配信先・作成者に応じてアクセスを制限します。公開サインアップはなく、教師・管理者の初期登録は運用担当者が行います。通常の入口は教師 `/login`、生徒 `/student/login`、管理者 `/admin/login` です。[登録・認証・管理操作の詳細](docs/implementation/operations_details.md)を参照してください。
 
-PDFは複数ページ・黒ペン/消しゴムに対応し、下書きは再ログイン後も復元します。自動保存だけでは正式提出になりません。未保存の筆跡は通信断のまま画面を閉じると失われる場合があります。従来PDFアップロードも詳細画面に残ります。答案PDFは25MiB、提出HTTP本文は32MiBまでです。
+## ゲストで画面を見る
 
-AIは「正解・不正解・要確認」を保存し、教師が修正できます。要確認は得点に加算せず、技術的失敗は採点完了と区別します。教師の採点再開ボタンは既定OFFで、世代・PDF・保存結果・未完了Jobを確認する運用条件があります。[採点・復旧・外部ファイル保持の詳細](docs/implementation/operations_details.md)を確認してください。#47永続要求台帳・#46短いclaim・#48 qpdf・#49成績取得集約はコードに統合済みですが、本番反映の証拠ではありません。
+公開トップの「ゲストとしてログインする」から、管理者・教師・生徒の役割を選べます。パスワードの入力は不要です。
 
-### 初めて使う方へ（架空データでの説明）
+- 学校本番とは別のDB・保存領域を使う、架空データ専用の閲覧環境です。
+- 成績一覧、答案PDF、採点結果、管理画面を確認できます。
+- 登録・編集・削除・手書き・提出・実AI採点はできません。画面の判定と得点は用意したサンプルです。
+- セッションは15分で終了します。役割の切替やログアウトで以前のセッションは失効します。
 
-冒頭の[3画面画像](docs/implementation/issue95-evidence/flow-390.jpg)は既存の架空データのChrome検証です。実学校・実本番のスクリーンショットではありません。
+ゲストは通常アカウントの代わりではありません。実生徒のデータや学校用の認証情報を入力しないでください。[分離構成と運用条件](docs/implementation/issue51_predeployment_runbook.md#公開guest評価導線同一server架空データ専用)を公開記録にまとめています。
 
-1. 教師はログイン後、PDF教材・1問の点数・配信先を確認して配信します。正答生成は非同期です。結果を待つ間に再配信すると別課題になるため、連打せず状態を確認します。
-2. 生徒は配信された小テストを開き、PDFに黒ペンで書き込みます。保存状態を確認し、「提出する」で正式提出します。自動保存は提出とは別です。通信断で未保存なら画面を閉じず、復旧後の保存状態を確認します。
-3. 教師は成績一覧から答案を開き、AIの「要確認」や誤判定を教師判定で修正します。生徒は結果を確認し、教師は配信クラスを確認してExcelを出力します。AIは正確性の保証や教師判断の代替ではありません。
-4. 管理者は自校の教師・生徒を管理します。所属変更/削除/パスワード再設定では確認画面と対象を確かめます。通常利用者へ管理操作を渡しません。
+## 使い方と画面
 
-PDF拒否や503では案内を読み、別のPDFを無闇に再送しません。暗号化PDFの手書きexportは未対応です。採点失敗/停止は教師から運用担当者へ連絡し、PDF/既存結果を保持します。経過時間だけで停止を断定せず、再実行・queue削除をしません。[詳細運用・外部AI保持の制限](docs/implementation/operations_details.md)と[配備前runbook](docs/implementation/issue51_predeployment_runbook.md)を参照してください。実学校導入時は権限・データ取扱い・backup/監視・利用者説明と受入を別途確認します。
+以下は稼働版 `acd22fb9` の実画面を撮影したスクリーンショットです（2026-10-23 UTC）。トップ以外は公開guestの架空データで、実生徒の答案や実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。
 
-#### 架空データの確認画面（2026-10-23）
+### 1. 教師がPDF教材を配信し、成績を確認する
 
-[検証source・成功範囲・失敗履歴と制限](docs/implementation/issue103_submission_evidence.md#99-合成フローの追加証拠2026-10-23)を参照してください。exact02a8237の専用ローカル環境、AI doubleを使った画像です。画像内の学校コード・IDは使い捨ての架空値で、ログイン情報として使用しません。
+通常利用では、PDF教材・1問の点数・配信先クラスを確認して小テストを配信します。正答生成は非同期で進むため、状態を確認しながら待ちます。成績一覧では、採点済みの得点と未提出を区別できます。
 
-![生徒の保存済み手書き（架空の幾何学模様）](docs/implementation/issue99-evidence/02-student-saved-handwriting.png)
+![教師guestの小テスト詳細と成績一覧。架空の採点済み10点と未提出を区別](docs/screenshots/teacher-grades.jpg)
 
-生徒は保存状態を確認してから提出します。合成確認では筆跡と消しゴムの位置が再読込後にも復元され、offline時の未保存筆跡と後のretryも確認しました。実機ペンの保証ではありません。
+この画像は閲覧専用guestです。通常教師の配信・編集・Excel出力などの操作ボタンをすべて表示したものではありません。
 
-![教師の答案PDF表示と最終判定（架空PDF・標準Chrome）](docs/implementation/issue99-evidence/12-teacher-native-pdf-rendered.jpg)
+### 2. 教師が答案と判定を見比べる
 
-教師は左の答案と右の正答/判定を見比べ、必要な問題の最終判定を変えて「保存」します。PDFは幾何学的fixtureであり実生徒の答案ではありません。標準Chromeでの1page描画を確認した画像12を使用し、旧headless空欄画像を表示成功の例にしていません。
+答案PDFと問題ごとの結果を並べて確認できます。通常利用では、教師が最終判定を修正すると得点が再計算され、配信クラスを選んでExcelを出力できます。
 
-![訂正後の成績とExcel出力（架空データ）](docs/implementation/issue99-evidence/04-teacher-grades-excel.png)
+![標準Chromeで表示した教師guestの答案PDFと判定。架空の3x+2x、サンプル回答5x、最終判定は正解](docs/screenshots/teacher-answer.jpg)
 
-教師の修正後の5点と未提出の空欄を、画面と実際にdownloadしたExcelで区別して確認しました。結果を生徒画面でも確認しています。
+PDFの本文も架空サンプルであることを明示しています。画像中の「AI読み取り」は表示項目名であり、この撮影でAIを実行したものではありません。
 
-![管理者の変更内容preview（未確定・架空生徒）](docs/implementation/issue99-evidence/09-admin-attendance-preview.jpg)
+### 3. 生徒が答案と結果を確認する
 
-管理者は対象と変更後の番号を確認します。previewだけでは保存されません。確定には再認証とチェックが必要です。削除も確認画面でcancelでき、確定後は戻せません。今回の手動確認は未使用の架空生徒だけを対象とし、元のSelenium観測エラーを解決済みとはしていません。
+通常利用の流れは「PDFに手書き → 保存状態を確認 →『提出する』で正式提出 → 採点結果を確認」です。自動保存だけでは提出されません。採点では「正解・不正解・要確認」を区別し、要確認は得点に加算しません。
 
-### 作品説明の短い話順（#105・任意資料）
+![標準Chromeで表示した生徒guestの答案PDFと採点結果。架空の得点10点と正解表示](docs/screenshots/student-result.jpg)
 
-- **課題と価値**：PDF教材を起点に、配布・採点・転記と返却待ちを減らす構想。実際の削減時間や学校導入効果は未測定です。
-- **3画面で説明**：上記架空画像で、生徒の手書き/保存→AIの補助判定→教師修正/Excelを示します。通常のPDF教材、曖昧な筆跡の要確認、教師の最終判断という設計を説明し、他ICTより優れるという未検証の比較はしません。
-- **技術の理由**：Rails/PostgreSQLで学校・配信・答案の関係と認可、PDF.js/pdf-libで手書き、OpenAIで読取/判定支援、Solid Queueで非同期、caxlsxでExcel、Docker/CIで配備物と回帰試験を扱います。AWS EC2は既存運用方針であり最新コードの稼働確認は保留です。
-- **信頼性と限界**：durable台帳とfenced claim、qpdf境界、学校間認可、教師判定保持を既存コード/テストから説明します。AI誤判定、料金/送信データ、通信断の未保存筆跡、暗号化PDF、公開デモ未配備・実端末未確認を隠しません。
-- **残る作業**：実環境配備承認、復元実証、公開HTTPS/Cookie/job確認、人間の設計再投稿/通知/提出、学校受入。利用者ヒアリングは未実施で、行うなら同意と匿名化が必要です。
+手書きの編集画面は閲覧専用guestでは操作できません。[過去の合成入力試験画像（黒い線）](docs/implementation/issue99-evidence/02-student-saved-handwriting.png)と[保存・再読込の検証記録](docs/implementation/issue103_submission_evidence.md)を別に残しています。この旧画像は試験用タイトルと黒い線を示すもので、保存状態の表示は撮影範囲外です。保存・復元の成立は検証記録を参照し、現在の編集画面を撮り直した画像とは区別してください。
 
-これは既存画像と資料を使う簡潔な話順です。下記リンクの発表資料と合わせて使い、公開デモの実演済みとは案内しません。#105の任意資料は必須39項目の完了判定と分けます。下記合成QA画像と、日本語5枚・約3分の[編集可能PPTX](docs/presentation/quickflow-overview-ja.pptx)／[閲覧PDF](docs/presentation/quickflow-overview-ja.pdf)を用意しました。PDFは高解像度画像の閲覧用で、検索/編集には向きません。PPTXには話者ノートがあります。資料の公開・実演・学校受入やDPro提出を実施したという意味ではありません。
+### 利用時の注意
 
-### 閲覧専用ゲスト
+- 黒ペン・消しゴムと複数ページに対応します。通信断で未保存のまま画面を閉じると、筆跡が失われる場合があります。画面を閉じず、復旧後の保存状態を確認してください。
+- 従来のPDFアップロードも利用できます。答案PDFは25MiB、提出HTTP本文は32MiBまでです。暗号化PDFの手書きexportには対応していません。
+- AIは教師の判断を補助します。誤判定や読み取りの不確かさを前提に、答案と結果を確認してください。技術的な失敗は採点完了と区別します。
+- 採点失敗や停止の疑いがある場合は、教師から運用担当者へ連絡します。経過時間だけで再実行したり、queueやPDFを削除したりしないでください。
 
-対応する隔離デモで入口を有効にすると、ホームの管理者/教師/生徒ゲストボタンから開始できます（`POST /guest/:role`、通常環境はOFF）。15分で期限切れとなり、切替/ログアウトで旧cookieを失効します。架空の登録済みデータだけを閲覧し、教師は成績/Excel/答案、生徒は自分の課題/教材/結果、管理者は自校一覧を確認できます。登録・編集・削除・手書き提出・AI呼出し・Job実行は許可しません。手書きや実AIを体験できる公開デモという案内ではありません。
-
-[初期test profileの履歴](docs/implementation/issue93_read_only_guest.md)と[production-mode profile・公開前条件](docs/implementation/issue93_production_demo.md)を参照してください。testサーバーをインターネットへ公開しないでください。実公開のDNS/TLS、OSによる読み取り専用mount、proxy/egress制御、公開Chromeの確認は未実施です。12業務表と正規添付の初期データ検証と、全物理表に5行あるという主張は異なります。
+[採点の復旧・外部AIへの送信と保持・管理操作の注意](docs/implementation/operations_details.md)を参照してください。パスワードの条件、登録方法、再認証・削除の手順も同文書にまとめています。
 
 ## 技術構成
 
-Ruby **4.0.6**（`.ruby-version`）、Rails **8.1.4**（`Gemfile.lock`）、PostgreSQL（開発基準18.6）、Puma、Active Record/Active Storage、Hotwire/Importmap、PDF.js/pdf-lib、OpenAI SDK、caxlsx、Solid Queue/Cache/Cableを使用します。DockerfileとKamal設定、GitHub Actions CIがあります。AWS EC2/Caddyは既存配備側の構成であり、リポジトリのKamal設定をそのまま実稼働設定とは扱いません。公開設定の確定・確認は#51/#99の範囲です。
+| 領域 | 使用技術 |
+| --- | --- |
+| アプリケーション | Ruby 4.0.6 / Rails 8.1.4 / Puma / Hotwire・Importmap |
+| データ・非同期処理 | PostgreSQL（開発基準18.6）、Active Record・Active Storage、Solid Queue・Cache・Cable |
+| PDF・成績 | PDF.js / pdf-lib / qpdf 12.4.2 / caxlsx |
+| AI連携 | OpenAI SDK（読取・正答生成・判定支援） |
+| 配備・品質確認 | Docker / AWS EC2・Caddy / GitHub Actions・RSpec |
 
-PDFの読み取り事前確認にはqpdf 12.4.2を使用します。ローカル起動・テストの前に`bin/install-qpdf`を実行してください（curl/unzipが必要）。公式配布物のSHA-256を確認して`vendor/qpdf`内だけに配置し、Docker/CIにも組み込みます。[受入仕様・実行上限・暗号化PDFの制約](docs/implementation/operations_details.md#pdf読み取り事前確認issue-48)を参照してください。
+AI処理には永続要求台帳とclaimによる重複・競合対策を用い、教師の最終判定を保持します。構成と根拠は[設計資料](docs/design/README.md)と[実装・試験の対応表](docs/implementation/issue103_submission_evidence.md)を参照してください。リポジトリのKamal設定を、そのまま実稼働設定とみなさないでください。
+
+PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テスト前に `bin/install-qpdf` を実行してください（curl/unzipが必要）。公式配布物のSHA-256を検証し、`vendor/qpdf` 内だけに配置します。[PDFの受入条件・実行上限](docs/implementation/operations_details.md#pdf読み取り事前確認issue-48)を確認してください。
+
+## 検証状況
+
+- 通常サイトとguestの稼働sourceは [acd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)。[配備版CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)は4ジョブ成功、RSpec 2,049件・失敗0件です。文書更新のheadと稼働sourceは区別しています。
+- TLS・Secure cookie、DB/PDF保全と隔離復元、worker・queue、限定した公開/guestフローを確認し、[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)と[限定フロー検証 #99](https://github.com/arduino0420/quickflow/issues/99)に完了根拠を記録しました。`/up` は起動確認であり、AI・DB・queue全体の健全性を保証しません。
+- 通常の実AI配信・提出・採点、および新版の手書き・保存の成功は所有者からの報告です。担当者によるLenovo実機の独立検証、すべての端末・PDF・実通信障害、AIの数学的正確性を保証するものではありません。
+- 今回の撮影では閲覧だけを行い、実生徒データの変更、答案提出、AI実行はしていません。旧表示試験用の長文画像や失敗履歴は、[検証資料](docs/implementation/issue103_submission_evidence.md)に残しています。
+
+提出準備は[39項目の対応表](docs/implementation/issue103_submission_evidence.md)に集約しています。技術的な確認と、本人によるDPro再投稿・メンター通知・最終提出、学校側の受入判定は分けています。
 
 ## ローカル起動とテスト
 
@@ -153,14 +163,25 @@ bin/importmap audit
 
 RSpecでは実OpenAIクライアントを禁止し、stubを使用します。実APIキーは不要です。demo/load専用の`QUICKFLOW_DEMO_*`、`QUICKFLOW_GUEST_LOGIN`、`QUICKFLOW_HTTP_LOAD_RUN_ID`等を通常テストに引き継がないでください。CIの実行コマンドとOS依存パッケージは[workflow](.github/workflows/ci.yml)が基準です。モデル/リクエストだけなら`bundle exec rspec spec/models spec/requests`でも実行できます。
 
-## データ保護・運用と設計資料
+## 運用・設計資料
 
-DBと添付PDFは別々に保存されるため、整合したバックアップ・復元確認が必要です。公開環境の保存期間・復元手順の確定は#51で保留しています。小テストのDB削除と物理PDFの非同期削除、外部OpenAIの3600秒File期限/非同期cleanupは別のライフサイクルです。404だけでは外部削除済みを保証せず、`store: false`も保持ゼロを保証しません。[監視・個別再確認・安全な復旧手順](docs/implementation/operations_details.md)を省略せず参照してください。
+DBと添付PDFは整合したバックアップと復元確認が必要です。授業・審査前後のエラー/容量確認、重要変更前と週1回を目安にしたバックアップ、保持方針と同一サーバー保管の限界を[運用runbook](docs/implementation/issue51_predeployment_runbook.md)に記録しています。定期実行や有料監視の導入を意味しません。
+
+DB上の削除、物理PDFの非同期削除、外部OpenAI Fileの期限・非同期cleanupは別の処理です。404や `store: false` だけで外部保持ゼロを保証しません。[外部ファイル保持と安全な復旧手順](docs/implementation/operations_details.md)を確認してください。
 
 - [チェックシート](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=1475280975) / [カタログ](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=0) / [テーブル定義](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=524149616)
-- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図](docs/er_diagram.png) / [画面遷移図](docs/screen_transition.png)
+- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図（9704b30基準）](docs/er_diagram.png) / [画面遷移図（生成時点の履歴）](docs/screen_transition.png)
 - [図の編集元・実装照合・全カラムと制約](docs/design/README.md)
 - [画面・架空スクリーンショット監査](docs/implementation/issue95_screen_audit.md) / [Model Spec監査](docs/implementation/issue98_model_spec_audit.md) / [認証System監査](docs/implementation/issue96_authentication_system_audit.md) / [CRUD System監査](docs/implementation/issue97_crud_system_audit.md)
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
-[PR124](https://github.com/arduino0420/quickflow/pull/124)の図をmain02a8237から統合済みです。親タスクで外部設計Sheetはコード9704b30へ同期、Macで更新範囲の可読性とWhimsical17フレームを確認し、WBSのmilestoneも更新済みです。[差分説明と通知用本文案](docs/implementation/issue103_submission_evidence.md)を用意しました。本人によるDPro再投稿・変更通知・最終提出は未完了です。Windows/Chromebook実機、実通信断、実答案サイズ分布、実AIの数学的正確性、公開環境での主要フロー確認は別途必要です。
+
+生成済みの画面遷移図には「公開ゲストURL未確認」という当時の注記が残っています。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中に記載したschema基準の資料です。
+
+原本ワイヤーフレームのトップと採点表示は現行仕様へ更新済みです。[差分と通知用本文](docs/implementation/issue103_submission_evidence.md)を用意しています。審査者からの閲覧確認と、DProへの修正版再投稿・変更通知・最終提出は本人が行います。
+
+## 操作説明・発表資料
+
+「教師が配信 → 生徒が解答・提出 → AIの補助判定を教師が確認 → 結果返却・Excel出力」の順に紹介できます。説明には上の架空画面を使い、ゲストで変更や実AI採点ができるとは案内しないでください。
+
+既存の日本語5枚・約3分の[編集可能PPTX](docs/presentation/quickflow-overview-ja.pptx)と[閲覧用PDF](docs/presentation/quickflow-overview-ja.pdf)もあります。PDFは画像ベース、PPTXには話者ノートがあります。今回のREADME撮影とは別時点の合成資料であり、現在の公開画面はこのREADMEの画像を参照してください。導入効果・削減時間・他ICTより優れるという実証や利用者ヒアリングは行っていません。
