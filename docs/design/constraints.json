@@ -1,7 +1,60 @@
 {
-  "baseline_commit": "1404453a24dce4f3661a7c6aee7fc570e8f6b683",
-  "schema_sha256": "cf96254ce95aa6a1ce0a9918e0e660599c1bcaae1d48e0f602a0035586a39231",
+  "baseline_commit": "9704b30fa90867a359d11a8ccf0cff78520aa5d2",
+  "schema_sha256": "79dcdb8ecc6dfbda30301cf3000434bd2939e947e4463ccc677c318b1099c884",
   "routes_sha256": "10552053490bbcc9ab63e03ab2d846cecf3bc0ea61f5237d4b1c345f8a5ebe9f",
+  "schema_version": "2026_10_22_110000",
+  "inventory": {
+    "primary_tables": 17,
+    "primary_columns_including_primary_keys": 128,
+    "primary_active_storage_tables": 3,
+    "primary_application_tables": 14,
+    "concrete_application_record_models": 14,
+    "model_files": {
+      "Admin": "app/models/admin.rb",
+      "AnswerDraft": "app/models/answer_draft.rb",
+      "Assignment": "app/models/assignment.rb",
+      "AssignmentClassroom": "app/models/assignment_classroom.rb",
+      "AuthenticationAttemptBucket": "app/models/authentication_attempt_bucket.rb",
+      "Classroom": "app/models/classroom.rb",
+      "GradingResult": "app/models/grading_result.rb",
+      "Question": "app/models/question.rb",
+      "QuestionGenerationRequest": "app/models/question_generation_request.rb",
+      "School": "app/models/school.rb",
+      "Student": "app/models/student.rb",
+      "Submission": "app/models/submission.rb",
+      "Teacher": "app/models/teacher.rb",
+      "TeacherClassroom": "app/models/teacher_classroom.rb"
+    },
+    "framework_store_tables": {
+      "cache": [
+        "solid_cache_entries"
+      ],
+      "queue": [
+        "solid_queue_blocked_executions",
+        "solid_queue_claimed_executions",
+        "solid_queue_failed_executions",
+        "solid_queue_jobs",
+        "solid_queue_pauses",
+        "solid_queue_processes",
+        "solid_queue_ready_executions",
+        "solid_queue_recurring_executions",
+        "solid_queue_recurring_tasks",
+        "solid_queue_scheduled_executions",
+        "solid_queue_semaphores",
+        "solid_queue_batches",
+        "solid_queue_batch_executions"
+      ],
+      "cable": [
+        "solid_cable_messages"
+      ]
+    },
+    "framework_store_table_counts": {
+      "cache": 1,
+      "queue": 13,
+      "cable": 1
+    }
+  },
+  "screen_baseline_commit": "1404453a24dce4f3661a7c6aee7fc570e8f6b683",
   "tables": {
     "active_storage_attachments": {
       "label": "添付",
@@ -924,6 +977,24 @@
           "type": "integer",
           "nullable": false,
           "options": "default: 0, null: false"
+        },
+        {
+          "name": "processing_claim_stage",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "processing_claim_token",
+          "type": "string",
+          "nullable": true,
+          "options": ""
+        },
+        {
+          "name": "processing_claimed_at",
+          "type": "datetime",
+          "nullable": true,
+          "options": ""
         }
       ],
       "unique_indexes": [
@@ -1057,5 +1128,5 @@
     "question_generation_requests.material_blob_id",
     "active_storage_attachments.record_type + record_id"
   ],
-  "issue46_refresh": "pending: inspect merged main before final acceptance; no pending Submission claim attributes represented"
+  "issue46_refresh": "verified merged schema: processing_claim_stage/string, processing_claim_token/string, processing_claimed_at/datetime; all nullable, no default/index/FK added; internal protocol only"
 }

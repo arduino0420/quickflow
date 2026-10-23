@@ -1,6 +1,6 @@
 # 現行スキーマの全属性と制約
 
-基準 commit: `1404453a24dce4f3661a7c6aee7fc570e8f6b683`。`db/schema.rb` のみから生成。モデル検証とは区別する。
+基準 commit: `9704b30fa90867a359d11a8ccf0cff78520aa5d2`。`db/schema.rb` のみから生成。モデル検証とは区別する。
 
 NULL 可は明示。`options` は型の長さ・default 等を原文で保持。業務表と ActiveStorage は同一 DB の定義。
 
@@ -248,6 +248,9 @@ DB FK: classroom_id → classrooms.id
 | updated_at | datetime | 不可 | null: false |
 | extracted_text | text | 可 |  |
 | processing_generation | integer | 不可 | default: 0, null: false |
+| processing_claim_stage | string | 可 |  |
+| processing_claim_token | string | 可 |  |
+| processing_claimed_at | datetime | 可 |  |
 
 Unique: assignment_id + student_id
 

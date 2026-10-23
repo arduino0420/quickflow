@@ -20,7 +20,14 @@ assert data['schema_sha256'] == build.digest('db/schema.rb')
 assert data['routes_sha256'] == build.digest('config/routes.rb')
 assert data['tables'] == build.schema(), 'Schema constraints have drifted'
 tables = data['tables']
-assert len(tables) == 17
+assert data['inventory'] == build.inventory(tables)
+assert data['screen_baseline_commit'] == build.SCREEN_BASELINE
+claim_columns = {c['name']:c for c in tables['submissions']['columns']}
+for name, typ in [('processing_claim_stage','string'),('processing_claim_token','string'),('processing_claimed_at','datetime')]:
+    assert claim_columns[name]['type'] == typ and claim_columns[name]['nullable']
+    assert not claim_columns[name]['options']
+    assert not any(f['column']==name for f in tables['submissions']['foreign_keys'])
+    assert not any(name in u for u in tables['submissions']['unique_indexes'])
 assert tables['classrooms']['columns'][2]['name'] == 'teacher_id'
 assert tables['classrooms']['columns'][2]['nullable']
 assert not any(f['column']=='material_blob_id' for f in tables['question_generation_requests']['foreign_keys'])
@@ -48,4 +55,4 @@ for name in ['er_diagram','screen_transition']:
     with Image.open(root/f'docs/{name}.png') as im:
         assert im.size == (int(svg.attrib['width']),int(svg.attrib['height']))
         im.verify()
-print(json.dumps({'result':'passed','baseline_commit':build.BASELINE,'tables':len(tables),'foreign_keys':sum(len(t['foreign_keys']) for t in tables.values()),'unique_indexes':sum(len(t['unique_indexes']) for t in tables.values()),'artifact_sha256':before},indent=2))
+print(json.dumps({'result':'passed','baseline_commit':build.BASELINE,'schema_version':data['schema_version'],'inventory':data['inventory'],'tables':len(tables),'foreign_keys':sum(len(t['foreign_keys']) for t in tables.values()),'unique_indexes':sum(len(t['unique_indexes']) for t in tables.values()),'artifact_sha256':before},indent=2))

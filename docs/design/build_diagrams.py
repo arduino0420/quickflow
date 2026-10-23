@@ -12,7 +12,9 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'docs/design'
 FONT = os.environ.get('DIAGRAM_FONT', '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc')
-BASELINE = '1404453a24dce4f3661a7c6aee7fc570e8f6b683'
+BASELINE = '9704b30fa90867a359d11a8ccf0cff78520aa5d2'
+# Routes and visible UX unchanged; preserve the independently reviewed screen bytes.
+SCREEN_BASELINE = '1404453a24dce4f3661a7c6aee7fc570e8f6b683'
 labels = {'schools':'学校','admins':'管理者','teachers':'教師','classrooms':'クラス','students':'生徒','teacher_classrooms':'担当クラス','assignments':'小テスト・配信','assignment_classrooms':'配信先','answer_drafts':'答案下書き','questions':'設問・正答','submissions':'提出答案','grading_results':'採点結果','question_generation_requests':'正答生成要求','authentication_attempt_buckets':'認証制限・ゲスト有効期限','active_storage_attachments':'添付','active_storage_blobs':'ファイル情報','active_storage_variant_records':'派生画像'}
 def digest(path): return hashlib.sha256((ROOT/path).read_bytes()).hexdigest()
 def schema():
@@ -55,39 +57,39 @@ class Canvas:
         self.im.save(ROOT/f'docs/{name}.png')
         (OUT/f'{name}.svg').write_text(f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.w}" height="{self.h}" viewBox="0 0 {self.w} {self.h}" font-family="Hiragino Sans, Noto Sans CJK JP, sans-serif">'+''.join(self.svg)+'</svg>')
 def er(t):
-    c=Canvas(1660,1740,'QuickFlow ER / 関係と制約','実装基準 '+BASELINE[:12]+'  •  全カラム・型・デフォルト値は schema_reference.md / constraints.json')
+    c=Canvas(1660,1840,'QuickFlow ER / 関係と制約','実装基準 '+BASELINE[:12]+'  •  全カラム・型・デフォルト値は schema_reference.md / constraints.json')
     c.text(40,117,'→ は子の列から親の id への DB FK。必須 = NOT NULL、? = NULL 可。親 1 : 子 0..N（別記を除く）。',20)
     c.text(40,151,'U(...) は DB 複合 Unique。全表の主キーは id、認証制限のみ key_digest。日時列は詳細参照。',20)
     groups=[
       [('schools',['school_code 必須 / U(school_code)']),('teachers',['school_id 必須 → schools','user_id 必須 / U(user_id)','password_digest 必須']),('admins',['school_id 必須 → schools','user_id 必須 / U(user_id)','password_digest 必須'])],
       [('classrooms',['school_id 必須 → schools','teacher_id ? → teachers（旧列）','U(school_id, grade, class_number)']),('teacher_classrooms',['teacher_id 必須 → teachers','classroom_id 必須 → classrooms','U(teacher_id, classroom_id)']),('students',['classroom_id 必須 → classrooms','attendance_number 必須','U(classroom_id, attendance_number)'])],
       [('assignments',['teacher_id 必須 → teachers','published_at ?','current pointer ? → 生成要求','title / point_per_question 必須']),('assignment_classrooms',['assignment_id 必須 → assignments','classroom_id 必須 → classrooms','U(assignment_id, classroom_id)']),('answer_drafts',['student_id 必須 → students','assignment_id 必須 → assignments','U(student_id, assignment_id)','fingerprint / page_data / lock_version'])],
-      [('questions',['assignment_id 必須 → assignments','U(assignment_id, position)','question_text / correct_answer 必須','生成モデル・版・日時 必須']),('submissions',['assignment_id 必須 → assignments','student_id 必須 → students','U(assignment_id, student_id)','status / submitted_at 必須','extracted_text ? / generation 必須']),('grading_results',['submission_id 必須 → submissions','question_id 必須 → questions','U(submission_id, question_id)','AI判定 必須 / 教師判定 ?','読取確度・答案・所見など NULL 可'])]
+      [('questions',['assignment_id 必須 → assignments','U(assignment_id, position)','question_text / correct_answer 必須','生成モデル・版・日時 必須']),('submissions',['assignment_id 必須 → assignments','student_id 必須 → students','U(assignment_id, student_id)','status / submitted_at 必須','extracted_text ? / generation 必須','processing_claim_stage ?','processing_claim_token ?','processing_claimed_at ?']),('grading_results',['submission_id 必須 → submissions','question_id 必須 → questions','U(submission_id, question_id)','AI判定 必須 / 教師判定 ?','読取確度・答案・所見など NULL 可'])]
     ]
     y=205
     for row in groups:
         for i,(name,lines) in enumerate(row):c.card(40+i*540,y,510,name+' / '+labels[name],lines,size=18)
         y+=230
-    c.text(40,1137,'内部処理・認証・ファイル（業務データと分離）',24)
-    c.card(40,1190,650,'question_generation_requests / 正答生成要求',[
+    c.text(40,1237,'内部処理・認証・ファイル（業務データと分離）',24)
+    c.card(40,1290,650,'question_generation_requests / 正答生成要求',[
       'assignment_id 必須 → assignments','material_blob_id 必須：DB FK なし','U(assignment_id, material_blob_id, model, prompt_version)',
       'model / prompt_version / state 必須','claim_token / started_at / finished_at / failure_code ?',
       'assignments.current_question_generation_request_id は NULL 可',
       '同じ assignment の要求かはモデル検証（複合 FK なし）'], '#e8e0fa',17)
-    c.card(720,1190,900,'ActiveStorage / フレームワーク',[
+    c.card(720,1290,900,'ActiveStorage / フレームワーク',[
       'attachments.blob_id 必須 → blobs / variant_records.blob_id 必須 → blobs',
       'attachments: U(record_type, record_id, name, blob_id)',
       'blobs: U(key) / variant_records: U(blob_id, variation_digest)',
       'record_type + record_id は多態参照：業務表への DB FK なし',
       'Assignment.material_file / Submission.answer_file はモデル関連'], '#e8e0fa',18)
-    c.card(720,1440,900,'authentication_attempt_buckets / 認証状態',[
+    c.card(720,1540,900,'authentication_attempt_buckets / 認証状態',[
       'PK key_digest (string 64) / attempts・expires_at 必須',
       '学校・利用者への FK なし。HMAC キー、認証制限・ゲスト期限に使用'], '#e8e0fa',18)
-    c.text(40,1630,'モデル検証：学校一致・配信先所属・採点対象の課題一致は追加の DB FK を意味しない。',21)
-    c.text(40,1670,'担当クラスは teacher_classrooms。classrooms.teacher_id の nullable FK は現行 schema に残存。',21)
+    c.text(40,1730,'モデル検証：学校一致・配信先所属・採点対象の課題一致は追加の DB FK を意味しない。',21)
+    c.text(40,1770,'担当クラスは teacher_classrooms。classrooms.teacher_id の nullable FK は現行 schema に残存。',21)
     c.save('er_diagram')
 def screens():
-    c=Canvas(1660,1800,'QuickFlow 画面遷移 / 実装された操作','実装基準 '+BASELINE[:12]+'  •  矢印は操作または応答。箱内に実ルート／状態を併記。詳細・認可は README.md。')
+    c=Canvas(1660,1800,'QuickFlow 画面遷移 / 実装された操作','実装基準 '+SCREEN_BASELINE[:12]+'  •  矢印は操作または応答。箱内に実ルート／状態を併記。詳細・認可は README.md。')
     c.card(40,115,1580,'公開トップ GET /', ['教師 /login・生徒 /student/login・管理者 /admin/login は別の認証入口。公開 signup / rails_admin はない。'],size=20)
     columns=[
       ('教師',40,'#dceafe',[
@@ -132,8 +134,22 @@ def screens():
     c.text(40,1710,'手書きの競合・教材変更・認証切れ・保存失敗は状態別に案内。読取を新たに再実行する UI はない。',21)
     c.text(40,1750,'PDF内容不正は入力画面で案内。確認処理の利用不可は503、手書きと下書きを保持。',21)
     c.save('screen_transition')
+def inventory(t):
+    models = {}
+    for path in sorted((ROOT/'app/models').glob('*.rb')):
+        match = re.search(r'^class (\w+) < ApplicationRecord', path.read_text(), re.M)
+        if match: models[match.group(1)] = str(path.relative_to(ROOT))
+    stores = {}
+    for name in ('cache', 'queue', 'cable'):
+        path = ROOT/f'db/{name}_schema.rb'
+        stores[name] = re.findall(r'create_table "([^"]+)"', path.read_text())
+    return {'primary_tables':len(t), 'primary_columns_including_primary_keys':sum(len(v['columns']) for v in t.values()),
+        'primary_active_storage_tables':sum(n.startswith('active_storage_') for n in t),
+        'primary_application_tables':sum(not n.startswith('active_storage_') for n in t),
+        'concrete_application_record_models':len(models), 'model_files':models,
+        'framework_store_tables':stores, 'framework_store_table_counts':{k:len(v) for k,v in stores.items()}}
 def details(t):
-    data={'baseline_commit':BASELINE,'schema_sha256':digest('db/schema.rb'),'routes_sha256':digest('config/routes.rb'),'tables':t,'model_only_constraints':['same school for teacher_classrooms / assignment_classrooms','submission assignment distributed to student classroom','grading_result question belongs to submission assignment','Assignment current request belongs to same assignment'],'not_database_foreign_keys':['question_generation_requests.material_blob_id','active_storage_attachments.record_type + record_id'],'issue46_refresh':'pending: inspect merged main before final acceptance; no pending Submission claim attributes represented'}
+    data={'baseline_commit':BASELINE,'schema_sha256':digest('db/schema.rb'),'routes_sha256':digest('config/routes.rb'),'schema_version':re.search(r'define\(version: ([0-9_]+)\)', (ROOT/'db/schema.rb').read_text()).group(1),'inventory':inventory(t),'screen_baseline_commit':SCREEN_BASELINE,'tables':t,'model_only_constraints':['same school for teacher_classrooms / assignment_classrooms','submission assignment distributed to student classroom','grading_result question belongs to submission assignment','Assignment current request belongs to same assignment'],'not_database_foreign_keys':['question_generation_requests.material_blob_id','active_storage_attachments.record_type + record_id'],'issue46_refresh':'verified merged schema: processing_claim_stage/string, processing_claim_token/string, processing_claimed_at/datetime; all nullable, no default/index/FK added; internal protocol only'}
     (OUT/'constraints.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
     lines=['# 現行スキーマの全属性と制約','',f'基準 commit: `{BASELINE}`。`db/schema.rb` のみから生成。モデル検証とは区別する。', '', 'NULL 可は明示。`options` は型の長さ・default 等を原文で保持。業務表と ActiveStorage は同一 DB の定義。']
     for name,v in t.items():

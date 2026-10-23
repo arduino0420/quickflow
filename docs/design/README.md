@@ -1,6 +1,6 @@
 # 実装と設計図の照合（#102 / #101）
 
-基準は main `1404453a24dce4f3661a7c6aee7fc570e8f6b683`。現在のマージ済み実装に対する #102 の部分更新。#46 の未マージ属性を含まない。#46 がマージされた後、実際の schema・関連・復旧条件を確認して追補し、最終受入とする。
+ER・属性の基準は merged main `9704b30fa90867a359d11a8ccf0cff78520aa5d2`。現在の実装に対する #102 の部分更新。マージされた #46 の Submission claim 3属性を実 schema と migration で確認して反映した。画面図はルート・可視 UX に変更がないため、独立レビュー済みの `1404453a24dce4f3661a7c6aee7fc570e8f6b683` 版をバイト単位で維持する。本版はマージ済み実装を対象とし、未マージの変更を含めない。原本資料との最終受入は別途照合する。
 
 - [ER 図](../er_diagram.png) / [編集用 SVG](er_diagram.svg)
 - [画面遷移図](../screen_transition.png) / [編集用 SVG](screen_transition.svg)
@@ -18,6 +18,12 @@ ER は読みやすさを優先した関係・制約一覧型。矢印 `列 → �
 `teacher_classrooms` がモデルの担当関係である。`classrooms.teacher_id` は NULL 可の DB FK として残るが、Classroom の現行モデルには belongs_to :teacher がない。Assignment の current pointer の FK は要求の存在を保証し、同じ課題に属することはモデル検証。`material_blob_id` は必須の識別子だが、ActiveStorage blobs への DB FK はない。
 
 ActiveStorage の多態参照は DB FK ではない。Assignment.material_file と Submission.answer_file はモデル上の添付関連。認証制限表は学校・利用者に FK を持たず、HMAC キーと期限を保持する。`db/cache_schema.rb`、`db/queue_schema.rb`、`db/cable_schema.rb` は運用上の別ストア定義であり、この業務 DB 図に混在させない。
+
+## マージ済み claim 属性と実数の確認
+
+`submissions.processing_claim_stage` (string)、`processing_claim_token` (string)、`processing_claimed_at` (datetime) はすべて NULL 可。default・backfill・Unique index・FK の追加はない。NULL は旧処理の権利不明を意味し、再実行の許可にならない。新規提出と既存の適格な採点復旧で ready を確定し、reading / grading の短い claim・外部処理・再検証を分ける。経過時間による token の奪取や新しい読取再試行 UI はない。根拠は migration `20261022110000`、`SubmissionProcessingClaim`、[マージ済み #46 の実装説明](../implementation/issue46_ai_claims.md)。この資料確認は live migration・デプロイの実施を意味しない。
+
+モデル数・表数・列数は renderer の `inventory()` が現在のファイルから算出し、`constraints.json` / `validation.json` に表名・モデルファイルとともに保存する。`ApplicationRecord` は抽象基底として除き、ActiveStorage の3表はアプリの具象モデル数に含めない。cache / queue / cable は別ストアの表名と個数を別集計する。
 
 ## 画面単位の実装根拠
 
@@ -43,7 +49,7 @@ PDF の内容不正は入力画面または手書き提出のエラーで案内�
 
 原本の合格済み要件からの変更理由・承認経緯は、原本 Sheet と確認記録で確定する必要がある。このリポジトリ調査だけから理由を推測していない。#101 の各画面のワイヤーフレームの配置・PC/タブレット/スマホ表現と共有閲覧確認は原本側で照合する。この遷移図はワイヤーフレームの代替ではない。
 
-#102 は原本 Sheet・テーブル定義との最終一致、#46 マージ後の schema 再確認、提出用説明の原本統合が残る。#101 は原本ワイヤーフレームの最終一致と、人間による DPro 再投稿・メンター通知・実施記録が残る。再投稿・通知済みとは記録しない。
+#102 は原本 Sheet・テーブル定義との最終一致、提出用説明の原本統合が残る。#101 は原本ワイヤーフレームの最終一致と、人間による DPro 再投稿・メンター通知・実施記録が残る。再投稿・通知済みとは記録しない。
 
 ## 再生成
 
@@ -60,6 +66,6 @@ Pillow は公式 PyPI のパッケージを一時環境に導入する。アプ�
 
 ## この版の確認記録
 
-`verify_diagrams.py` が成功：17表・21 FK・15 Unique index、schema/routes のハッシュ、全ローカルリンク、SVG/PNG の寸法と再生成一致を確認。[機械可読の結果](validation.json) に各成果物の SHA-256 を記録する。両 PNG の日本語・文字サイズ・余白・矢印を画像で確認し、カード内テキストの幅超過も renderer で検出する。既存 PNG の公開パスを維持している。
+`verify_diagrams.py` は現行ファイルから計数し、全 claim 属性の型・NULL・制約、schema/routes のハッシュ、全ローカルリンク、SVG/PNG の寸法と再生成一致を確認する。[機械可読の結果](validation.json) に各成果物の SHA-256 を記録する。両 PNG の日本語・文字サイズ・余白・矢印を画像で確認し、カード内テキストの幅超過も renderer で検出する。既存 PNG の公開パスを維持している。
 
 この資料更新のローカル確認で Rails のテストや DB は起動していない。上の spec は追跡用の実在ファイル一覧であり、今回成功したとの主張ではない。リポジトリの GitHub Actions CI 結果は PR の対象 head に付くチェックで確認する。
