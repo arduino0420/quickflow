@@ -5,9 +5,17 @@
 <nav class="home-login-options" aria-label="ログインの選択">
   <%= link_to "教師としてログインする", login_path, class: "button button-secondary" %>
   <%= link_to "生徒としてログインする", student_login_path, class: "button button-secondary" %>
-  <button type="button" class="button button-secondary" disabled aria-describedby="guest-unavailable">ゲストとしてログインする</button>
+  <% if (guest_url = configured_guest_entry_url) %>
+    <%= link_to "ゲストとしてログインする", guest_url, class: "button button-secondary", aria: { describedby: "guest-available" } %>
+  <% else %>
+    <button type="button" class="button button-secondary" disabled aria-describedby="guest-unavailable">ゲストとしてログインする</button>
+  <% end %>
 </nav>
+<% if guest_url %>
+<p id="guest-available" class="home-guest-status">架空データの閲覧専用ゲスト体験へ移動します。</p>
+<% else %>
 <p id="guest-unavailable" class="home-guest-status">ゲスト体験は準備中です。</p>
+<% end %>
 <% else %>
 <p>架空データ専用の閲覧デモです。通常アカウントではログインできません。<%= "現在ゲスト入口は停止中です。" unless Demo::Guest.enabled? %></p>
 <% end %>
@@ -15,7 +23,7 @@
 <% if Demo::Guest.enabled? %>
   <section aria-label="架空データのゲスト体験">
     <h2>架空データを閲覧する</h2>
-    <p>変更・提出・実AI採点はできません。ローカル検証専用です。</p>
+    <p>変更・提出・実AI採点はできません。</p>
     <% { "admin" => "管理者", "teacher" => "教師", "student" => "生徒" }.each do |role, label| %>
       <%= button_to "#{label}ゲストで閲覧", guest_login_path(role: role), method: :post %>
     <% end %>
