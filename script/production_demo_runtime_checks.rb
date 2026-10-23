@@ -25,6 +25,19 @@ end
     denied += 1
   end
 end
+# New nullable processing claims remain synthetic nil business state and are
+# protected by the same runtime table privilege boundary.
+raise "Synthetic claims not nil" if Submission.where.not(processing_claim_stage: nil).exists? ||
+  Submission.where.not(processing_claim_token: nil).exists? || Submission.where.not(processing_claimed_at: nil).exists?
+begin
+  ApplicationRecord.transaction(requires_new: true) do
+    connection.execute("UPDATE submissions SET processing_claim_stage=processing_claim_stage, processing_claim_token=processing_claim_token, processing_claimed_at=processing_claimed_at WHERE false")
+    raise "Runtime processing claim mutation allowed"
+  end
+rescue ActiveRecord::StatementInvalid => error
+  raise unless error.cause.is_a?(PG::InsufficientPrivilege)
+  denied += 1
+end
 # The generation ledger is immutable business state, including its sequence.
 [ "INSERT INTO question_generation_requests (assignment_id, material_blob_id, model, prompt_version, state, created_at, updated_at) SELECT 0, 0, 'probe', 'probe', 'pending', NOW(), NOW() WHERE false",
   "UPDATE question_generation_requests SET state=state WHERE false",

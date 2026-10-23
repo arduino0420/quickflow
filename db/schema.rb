@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -183,6 +183,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_100000) do
     t.datetime "updated_at", null: false
     t.text "extracted_text"
     t.integer "processing_generation", default: 0, null: false
+    t.string "processing_claim_stage"
+    t.string "processing_claim_token"
+    t.datetime "processing_claimed_at"
     t.index ["assignment_id", "student_id"], name: "index_submissions_on_assignment_id_and_student_id", unique: true
     t.index ["student_id"], name: "index_submissions_on_student_id"
   end

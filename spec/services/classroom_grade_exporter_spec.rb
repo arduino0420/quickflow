@@ -5,6 +5,7 @@ require_relative "../support/xlsx_inspection"
 RSpec.describe ClassroomGradeExporter do
   include_context "AI grading records"
   include XlsxInspection
+  include ActiveSupport::Testing::TimeHelpers
 
   let(:questions) { [ create_question(position: 1), create_question(position: 2) ] }
 
@@ -78,6 +79,28 @@ RSpec.describe ClassroomGradeExporter do
 
       expect(item.score).to be_nil
       expect(xlsx_value(export_sheet, "C2")).to be_nil
+    end
+  end
+
+  it "preserves every Excel package entry compared with public per-submission scoring" do
+    create_export_submission(1, judgments: [ :correct, :needs_review ])
+    create_export_submission(2, judgments: [ :incorrect, :incorrect ])
+    create_export_submission(40, status: :failed)
+    freeze_time do
+      batched = described_class.new.call(assignment, classroom)
+      allow_any_instance_of(SubmissionScores).to receive(:call) do |_calculator, items|
+        items.select(&:completed?).to_h { |item| [ item.id, item.score ] }
+      end
+      legacy = described_class.new.call(assignment, classroom)
+      entries = ->(data) do
+        contents = nil
+        Zip::File.open_buffer(StringIO.new(data)) do |archive|
+          contents = archive.entries.to_h { |entry| [ entry.name, archive.read(entry.name) ] }
+        end
+        contents
+      end
+      expect(entries.call(batched)).to eq(entries.call(legacy))
+      expect(batched).to eq(legacy)
     end
   end
 

@@ -1,73 +1,53 @@
-
 class AnswerReadingJob < ApplicationJob
   include DiscardDeletedRecord
 
   queue_as :default
 
   def perform(submission, generation = 0)
-    ready = false
-    submission.with_lock do
-      next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
+    claim = SubmissionProcessingClaim.new(submission, generation, "reading")
+    return unless claim.claim
 
-      begin
-        submission.update!(status: :grading)
-        if submission.extracted_text.blank?
-          result = AnswerReader.new.call(submission)
-          data = JSON.parse(result)
-
-          unless data.is_a?(Hash) && data["problems"].is_a?(Array) &&
-              data["problems"].any? &&
-              data["problems"].all? { |problem| valid_problem?(problem) }
-            raise "Invalid answer reading result"
-          end
-
-          submission.update!(extracted_text: JSON.generate(data))
-        end
-        ready = true
-      rescue StandardError => error
-        submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed?
-        Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{error.class}")
+    captured = claim.submission
+    text = captured.extracted_text
+    if text.blank?
+      result = AnswerReader.new.call(captured)
+      data = JSON.parse(result)
+      unless data.is_a?(Hash) && data["problems"].is_a?(Array) && data["problems"].any? &&
+          data["problems"].all? { |problem| valid_problem?(problem) }
+        raise "Invalid answer reading result"
       end
+      text = JSON.generate(data)
     end
-
-    enqueue_grading(submission, generation) if ready
-  rescue StandardError => e
-    submission.with_lock do
-      submission.update!(status: :failed) if submission.processing_generation == generation && !submission.completed? && !submission.failed?
+    admission = nil
+    claim.finalize(admission_stage: "grading") do |current, owner|
+      current.update!(processing_claim_stage: "ready", extracted_text: text)
+      admission = SubmissionProcessingClaim.ready_admission(owner, current, stage: "grading")
     end
-    Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{e.class}")
+    enqueue_grading(submission.id, generation, admission) if admission
+  rescue StandardError => error
+    claim&.fail
+    Rails.logger.error("AnswerReadingJob failed: submission_id=#{submission.id} #{error.class}")
   end
 
   private
 
-  def enqueue_grading(submission, generation)
-    submission.with_lock do
-      next if submission.processing_generation != generation || submission.completed? || submission.failed? || submission.grading_results.exists?
+  def enqueue_grading(id, generation, admission)
+    return unless admission
 
-      begin
-        raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(submission, generation)
-      rescue StandardError => error
-        submission.update!(status: :failed) unless submission.completed? || submission.failed?
-        Rails.logger.error("AnswerReadingJob grading enqueue failed: submission_id=#{submission.id} #{error.class}")
-      end
-    end
+    current = Submission.find_by(id: id)
+    return unless current
+
+    raise "Could not enqueue answer grading" unless AnswerGradingJob.perform_later(current, generation, admission: admission)
+  rescue StandardError => error
+    SubmissionProcessingClaim.fail_ready(id, generation, snapshot: admission, stage: "grading")
+    Rails.logger.error("AnswerReadingJob grading enqueue failed: submission_id=#{id} #{error.class}")
   end
 
   def valid_problem?(problem)
     return false unless problem.is_a?(Hash)
 
-    required_keys = %w[
-      question_label
-      question_text
-      student_answer
-      reading_status
-      reading_reason
-    ]
-
-    return false unless required_keys.all? { |key| problem.key?(key) }
-
-    %w[readable blank unclear ambiguous unavailable].include?(
-      problem["reading_status"]
-    )
+    required_keys = %w[question_label question_text student_answer reading_status reading_reason]
+    required_keys.all? { |key| problem.key?(key) } &&
+      %w[readable blank unclear ambiguous unavailable].include?(problem["reading_status"])
   end
 end

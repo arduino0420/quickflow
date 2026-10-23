@@ -62,7 +62,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     perform_enqueued_jobs(only: AnswerReadingJob)
     expect(submission.reload).to be_grading
     expect(submission.extracted_text).to include("固定読み取り根拠")
-    expect(AnswerGradingJob).to have_been_enqueued.with(submission, 0).once
+    expect(AnswerGradingJob).to have_been_enqueued.with(submission, 0, admission: kind_of(String)).once
     perform_enqueued_jobs(only: AnswerGradingJob)
   end
 

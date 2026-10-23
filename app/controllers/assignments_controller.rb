@@ -166,9 +166,7 @@ class AssignmentsController < ApplicationController
     @students = Student.where(classroom: @selected_classrooms).joins(:classroom).includes(:classroom)
       .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
     @submissions_by_student_id = @reviewable_submissions.includes(:assignment).index_by(&:student_id)
-    @scores_by_submission_id = @submissions_by_student_id.values.select(&:completed?).to_h do |submission|
-      [ submission.id, submission.score ]
-    end
+    @scores_by_submission_id = SubmissionScores.new.call(@submissions_by_student_id.values)
   end
 
   def enqueue_question_generation
@@ -219,7 +217,14 @@ class AssignmentsController < ApplicationController
       point_per_question: failed_assignment.point_per_question_before_type_cast
     )
     @assignment.errors.copy!(failed_assignment.errors)
-    render :new, status: status || (@material_too_large ? :content_too_large : :unprocessable_entity)
+    status ||= if @material_too_large
+      :content_too_large
+    elsif @material_check_unavailable
+      :service_unavailable
+    else
+      :unprocessable_entity
+    end
+    render :new, status: status
   end
 
   def assignment_params
@@ -246,6 +251,12 @@ class AssignmentsController < ApplicationController
     upload.tempfile.rewind
     pdf = safe_name && Marcel::MimeType.for(upload.tempfile) == "application/pdf"
     @assignment.errors.add(:material_file, "は有効なPDFファイルを選択してください") unless pdf
+    PdfReadabilityValidator.validate!(upload.tempfile) if pdf && @assignment.errors.empty?
+  rescue PdfReadabilityValidator::InvalidPdf
+    @assignment.errors.add(:material_file, "の内容を確認できません。有効なPDFファイルを選択してください")
+  rescue PdfReadabilityValidator::Unavailable
+    @material_check_unavailable = true
+    @assignment.errors.add(:base, "PDFの確認処理を利用できません。時間をおいて、もう一度お試しください。")
   ensure
     upload.tempfile.rewind if upload.is_a?(ActionDispatch::Http::UploadedFile)
   end
