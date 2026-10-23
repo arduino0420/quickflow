@@ -90,7 +90,7 @@ RSpec.describe "PDF preview input isolation" do
       c.pointerDown(event({pointerType:'touch',pointerId:92}));
       assert.equal(c.multiTouch,true); assert.equal(c.touch,null);
       c.pointerMove(event({pointerType:'touch',pointerId:91,clientY:1}));
-      const duringPinch=event(); c.pointerDown(duringPinch);
+      const duringPinch=event({pointerType:'mouse'}); c.pointerDown(duringPinch);
       assert.equal(c.inputState,null); assert.equal(ink.pages.get(1).length,strokes);
       assert.equal(scrolls.length,scrollCount,'two fingers must not trigger manual scrolling');
       c.pointerEnd(event({pointerType:'touch',pointerId:91,type:'pointercancel'}));
@@ -115,7 +115,8 @@ RSpec.describe "PDF preview input isolation" do
       assert.equal(shortStrokes.length,10);
       assert(shortStrokes.every((op,i)=>op.points.length===1+i%2));
       const summary=c.inputDiagnostics.summary();
-      assert.equal(summary.reasons['pinch-active'],1);
+      assert.equal(summary.reasons['pinch-active'] || 0,0,'genuine pen is no longer rejected by palm contacts');
+      assert(c.inputDiagnostics.snapshot().rows.some(row=>row.reason==='pinch-active' && row.pointerType==='mouse'));
       assert.equal(summary.reasons['draft-not-editable'],1);
       assert.equal(summary.reasons['viewport-mismatch'],1);
       assert.equal(summary.accepted,ink.pages.get(1).length,'diagnostics must not change stroke creation');
@@ -160,7 +161,7 @@ RSpec.describe "PDF preview input isolation" do
         return calls;
       };
       c.inkTargetConnected(canvas); c.inkTargetConnected(canvas);
-      assert.equal(added,2);
+      assert.equal(added,3);
       // touchend has no active touches; changedTouches still identifies the pen.
       assert.equal(send('touchstart',[stylus],[stylus]),1);
       assert.equal(send('touchend',[stylus],[]),1);
@@ -183,15 +184,82 @@ RSpec.describe "PDF preview input isolation" do
       assert.equal(send('touchstart',[finger],[finger,finger]),0);
       assert.equal(send('touchend',[finger],[finger]),0);
       c.inkTargetDisconnected(canvas); c.inkTargetDisconnected(canvas);
-      assert.equal(removed,2); assert.equal(listeners.size,0);
+      assert.equal(removed,3); assert.equal(listeners.size,0);
       assert.equal(send('touchstart',[stylus],[stylus]),0);
       c.inkTargetConnected(canvas);
-      assert.equal(added,4);
+      assert.equal(added,6);
       assert.equal(send('touchstart',[stylus],[stylus]),1);
       c.inkTargetDisconnected(canvas);
       assert.equal(c.inkTouchListeners.size,0);
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "-e", script,
+      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+  it "prioritizes genuine pen input over palm contacts without turning fingers into ink" do
+    script = <<~JAVASCRIPT
+      const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+      const PdfInk = vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8')
+        .replace('export const','const').replace('export default class','class')+';PdfInk');
+      const source=fs.readFileSync(process.argv[2],'utf8').replace(/^import .*$/gm,'')
+        .replace('export default class','class Preview');
+      const scrolls=[];
+      const window={devicePixelRatio:1,scrollBy:(...v)=>scrolls.push(v),requestAnimationFrame:()=>1,cancelAnimationFrame(){}};
+      const c=vm.runInNewContext(source+';new Preview()',{Controller:class{},window});
+      const captured=new Set();
+      const canvas={hidden:false,getBoundingClientRect:()=>({left:0,top:0,width:200,height:300}),
+        getContext:()=>new Proxy({},{get:()=>()=>{}}),setPointerCapture:id=>captured.add(id),
+        hasPointerCapture:id=>captured.has(id),releasePointerCapture:id=>captured.delete(id)};
+      const ink=new PdfInk(canvas);
+      ink.setViewport({width:200,height:300,transform:[1,0,0,1,0,0],
+        convertToPdfPoint:(x,y)=>[x,y],convertToViewportPoint:(x,y)=>[x,y]},1);
+      let saves=0;ink.onChange=()=>saves++;
+      const state={inkCanvas:canvas,ink,renderedWidth:200,renderedDpr:1};
+      c.statesByCanvas=new WeakMap([[canvas,state]]);c.containerTarget={clientWidth:200};c.draftEditable=true;
+      c.showCursor=c.showDraftStatus=()=>{};
+      const event=(extra={})=>({type:'pointerdown',currentTarget:canvas,target:canvas,pointerId:1,pointerType:'pen',
+        button:0,buttons:1,clientX:20,clientY:20,cancelable:true,preventDefault(){},...extra});
+      c.pointerDown(event({pointerType:'touch',pointerId:10}));
+      c.pointerDown(event({pointerType:'touch',pointerId:11}));
+      assert.equal(c.multiTouch,true);assert.equal(ink.pages.get(1).length,0);
+      c.pointerDown(event());
+      assert.equal(c.inputState,state,'a real pen must not be rejected as a pinch while the palm rests');
+      assert.equal(c.multiTouch,false);assert.equal(c.touch,null);assert.equal(c.touchIds.size,0);
+      assert(captured.has(1));assert(!captured.has(10));
+      for(const id of [12,13]) {
+        c.pointerDown(event({pointerType:'touch',pointerId:id}));
+        c.pointerMove(event({type:'pointermove',pointerType:'touch',pointerId:id,clientY:5}));
+      }
+      assert.equal(c.inputState,state,'two palm contacts must not end a held pen');
+      assert.equal(saves,0);assert.equal(scrolls.length,0);
+      let prevented=0;
+      c.preventStylusGesture({type:'touchstart',currentTarget:canvas,cancelable:true,
+        changedTouches:[{touchType:'direct'}],touches:[{},{}],preventDefault(){prevented++}});
+      assert.equal(prevented,1,'palm touch gestures on the pen canvas must not cancel native pen input');
+      c.preventStylusGesture({type:'touchstart',currentTarget:{},cancelable:true,
+        changedTouches:[{touchType:'direct'}],touches:[{},{}],preventDefault(){prevented++}});
+      assert.equal(prevented,1,'controls and other canvases keep their native gestures');
+      c.preventStylusGesture({type:'touchmove',currentTarget:canvas,cancelable:true,
+        changedTouches:[{touchType:'direct'}],touches:[{},{}],preventDefault(){prevented++}});
+      assert.equal(prevented,2,'existing palm contacts must not initiate a native pinch during pen input');
+      c.pointerMove(event({type:'pointermove',clientX:50}));
+      c.pointerEnd(event({type:'pointerup',buttons:0,clientX:60}));
+      assert.equal(saves,1);assert.equal(ink.pages.get(1).length,1);
+      assert.equal(ink.pages.get(1)[0].points.length,3);assert.equal(c.inputState,null);
+      for(const id of [10,11,12,13])c.pointerEnd(event({type:'pointerup',pointerType:'touch',pointerId:id}));
+      c.pointerDown(event({pointerType:'touch',pointerId:20}));
+      c.pointerMove(event({type:'pointermove',pointerType:'touch',pointerId:20,clientY:5}));
+      assert.equal(scrolls.length,1);assert.equal(ink.pages.get(1).length,1,'finger remains scroll-only');
+      c.pointerEnd(event({type:'pointerup',pointerType:'touch',pointerId:20}));
+      c.pointerDown(event({pointerType:'touch',pointerId:21}));c.pointerDown(event({pointerType:'touch',pointerId:22}));
+      assert.equal(c.multiTouch,true,'genuine finger pinch remains available when no pen is down');
+      c.pointerEnd(event({type:'pointercancel',pointerType:'touch',pointerId:21}));
+      c.pointerEnd(event({type:'pointercancel',pointerType:'touch',pointerId:22}));
+      c.draftEditable=false;c.pointerDown(event());assert.equal(c.inputState,null);
+      assert.equal(ink.pages.get(1).length,1,'submitted/read-only pages remain non-writing');
+    JAVASCRIPT
+    stdout, stderr, status = Open3.capture3("node", "-e", script,
+      File.expand_path("../../app/javascript/pdf_ink.js", __dir__),
       File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end

@@ -930,7 +930,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
-  it "accepts touch size buttons and ignores extra touch while a pen is down" do
+  it "accepts touch size buttons and ignores two palm contacts while a pen is down" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     [ "消しゴム", "大" ].each do |label|
@@ -951,13 +951,25 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     before = page.evaluate_script("scrollY")
     touch = page.driver.browser.action
     touch.add_pointer_input(:touch, "extra-touch")
-    touch.move_to_location(x + 50, y + 20, device: "extra-touch").pointer_down(:left, device: "extra-touch")
-      .move_to_location(x + 50, y, device: "extra-touch").pointer_up(:left, device: "extra-touch").perform
+    touch.move_to_location(x + 50, y + 20, device: "extra-touch").pointer_down(:left, device: "extra-touch").perform
+    touch = page.driver.browser.action
+    touch.add_pointer_input(:touch, "extra-palm")
+    touch.move_to_location(x + 80, y + 30, device: "extra-palm").pointer_down(:left, device: "extra-palm")
+      .move_to_location(x + 80, y + 10, device: "extra-palm").perform
     expect(page.evaluate_script("scrollY")).to eq(before)
     pen = page.driver.browser.action
     pen.add_pointer_input(:pen, "held-pen")
-    pen.pointer_up(:left, device: "held-pen").perform
-    expect(ink_alpha(0.2, 0.1)).to be > 0
+    pen.move_to_location((rect["x"] + rect["width"] * 0.3).round, y, device: "held-pen")
+      .pointer_up(:left, device: "held-pen").perform
+    %w[extra-touch extra-palm].each do |name|
+      touch = page.driver.browser.action
+      touch.add_pointer_input(:touch, name)
+      touch.pointer_up(:left, device: name).perform
+    end
+    expect(ink_alpha(0.25, 0.1)).to be > 0
+  ensure
+    # A dedicated session keeps native multi-pointer state out of later examples.
+    page.driver.quit
   end
 
   [ [ "pdf_preview_single.pdf", 1 ], [ "pdf_preview_three.pdf", 3 ], [ "pdf_preview_ten.pdf", 10 ] ].each do |filename, count|
@@ -1930,7 +1942,42 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  it "starts real pen ink after two resting touch contacts and restores the saved stroke" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = (rect["x"] + rect["width"] * 0.1).round
+    y = (rect["y"] + rect["height"] * 0.1).round
+    %w[resting-palm-a resting-palm-b].each_with_index do |name, index|
+      touch = page.driver.browser.action
+      touch.add_pointer_input(:touch, name)
+      touch.move_to_location(x + 80 + index * 30, y + 40, device: name).pointer_down(:left, device: name).perform
+    end
+    # Chrome may cancel native touch pointers when it recognizes a pinch. The unit
+    # regression separately covers retained palm contacts; here check actual pen/render/save.
+    pen = page.driver.browser.action
+    pen.add_pointer_input(:pen, "palm-first-pen")
+    pen.move_to_location(x, y, device: "palm-first-pen").pointer_down(:left, device: "palm-first-pen")
+      .move_to_location((rect["x"] + rect["width"] * 0.2).round, y, device: "palm-first-pen")
+      .pointer_up(:left, device: "palm-first-pen").perform
+    %w[resting-palm-a resting-palm-b].each do |name|
+      touch = page.driver.browser.action
+      touch.add_pointer_input(:touch, name)
+      touch.pointer_up(:left, device: name).perform
+    end
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first.fetch("operations").length).to eq(1)
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.15, 0.1)).to be > 0
+  ensure
+    # A dedicated session keeps native multi-pointer state out of later examples.
+    page.driver.quit
+  end
+
   it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do
+    page.current_window.resize_to(1280, 900)
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     bounds = page.evaluate_script(<<~JS)
