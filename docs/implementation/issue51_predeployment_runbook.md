@@ -1,6 +1,6 @@
 # #51 / #99 運用監査・配備実績と最小運用案
 
-更新日: 2026-10-23 UTC。最終稼働基準: [main1adb1530](https://github.com/arduino0420/quickflow/commit/1adb1530bfde72b1e9c1c9bce711b6a015ece062)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
+更新日: 2026-10-23 UTC。最終稼働基準: [mainacd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 今回のPRは文書のみ。以下の運用実績は別途明示承認を受けた作業の記録で、この文書変更が再配備・本番操作を実行するものではない。元checkoutの14未コミット項目を保護し、task専用cloneで編集した。
 
@@ -8,11 +8,13 @@
 
 以下は実行担当の観測と所有者報告を分けた記録。初回監査/手順案の「未実行」は当時の履歴であり、この節を現在状態として参照する。
 
-- **最新の通常/ゲスト稼働版:** source `1adb1530bfde72b1e9c1c9bce711b6a015ece062`、app image `sha256:77c3ea0a189c6ff41ff4d61d87c177df8894e00d59c35a2a49d205f07934863a`。主系[CI39942867222](https://github.com/arduino0420/quickflow/actions/runs/39942867222)全4ジョブ成功、2,039例/失敗0。PR130/131/132を含み、PR23は未merge close。今回の文書commitは稼働imageに含まれない。
-- **最新の通常web切替:** 12:45:27–12:46:42 UTC、約75秒。受付maintenance→queue/claim/transaction静止を連続3回確認→旧workerを強制終了せず正常停止→新web/worker→公開再開。047ba388からのアプリ差分はトップ/guest導線・採点待機表示のみ。DB移行・seed・DB巻戻し・AIテストなし。migration20本/最新20261022110000とstorage mountは継続。以前の整合backup/復元実証・旧image・復旧設定を保持した。この切替で新しいbackupや全レコード/添付checksumの再照合を実施したとは記載しない。
-- **最新の公開確認:** [通常トップ](https://13-231-93-159.sslip.io/)と/up、教師/生徒/管理者loginは200。3loginのCookieはSecure/HttpOnly/SameSite=Lax/Path=/。Caddy設定はmaintenance前と一致。旧worker停止、新Supervisor(fork)/Worker/Dispatcher/Scheduler各1の最近heartbeat、ready/claimed/failed/blocked/scheduledと処理claimは観測時0。永久に0や負荷耐性の保証ではない。
-- **最新のChrome確認:** 大きいQuickFlowロゴ、元の説明2文、教師→生徒→ゲストの同色ボタン、教師/生徒の既存login遷移、ゲスト別hostへの遷移を確認。公開CSSは丸1.1rem/上下移動10px、reduced-motionを保持し、不要な更新案内はpartialから除去。実AIを動かす採点中状態は再実行していない。過去の合成表示試験と今回の配布asset確認を区別する。
-- **公開guest:** [閲覧専用入口](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/)を同一server上に分離公開。通常Chromeで3役と教師/生徒の答案PDF描画を確認しsession終了。詳細と制限は下記。学校の通常ログインでguestを有効化したものではない。
+- **最新の通常/ゲスト稼働版:** source `acd22fb9e9f7241c3e434a147edc09f5f3a13ef7`、app image `sha256:d2d31173a09eaa318677d110684e56185b03d746a94ec4abf4b133506ab24f2e`。[main CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)全4ジョブ成功、2,049例/失敗0。1adb1530からのruntime差分は明示的pen/palm入力処理とcrass1.0.7→1.0.8のみ。DB/schema/設定/保存形式/採点jobは変更なし。PR23は含まない。今回の文書commitは稼働imageに含まれない。
+- **最新の通常web切替:** 2026-10-23 22:02:59–22:04:12 UTC、約73.1秒。maintenance→queue/claim/transaction静止を連続3回確認→旧worker正常停止→新版web/worker→公開再開。migration20本/最新20261022110000、storage mount継続。公開再開前に生徒・提出・採点結果・blob・attachmentの集計一致を確認。全レコード/添付checksumの再照合、新規backup、migration/seed/DB復元を行ったとは記載しない。
+- **最新のguest切替:** 同日22:01:30–22:01:48 UTC、約17.2秒。webだけ更新し、専用DB/鍵/TLS/read-only mountと864MiB/1CPU ceilingを保持。3役HTTP smoke、strict TLS、Origin拒否、read-only・scope、PDF/Excel形式識別、logout成功。現在版の新たなChrome描画確認は行っていない。旧web/imageは停止状態で保持。
+- **最新の通常公開確認:** [通常トップ](https://13-231-93-159.sslip.io/)・/up・3loginは200、Cookie Secure/HttpOnly/SameSite=Lax/Path=/。Caddy設定はmaintenance前と完全一致。新hostnameのSupervisor(fork)/Worker/Dispatcher/Scheduler各1の最近heartbeat。ready/claimed/failed/blocked/scheduledとclaimは観測時0。ソースdigestと配布JSでpen修正を確認し、両runtimeでcrass1.0.8を確認。永久のqueue0、AI精度、実機解消の証拠ではない。
+- **直前版1adb1530のChrome確認（履歴）:** 大きいロゴ、元の説明2文、教師→生徒→ゲストの同色ボタンと遷移、guest3役・教師/生徒のPDF描画を確認。今回の差分でこれらのview/route/CSSは変更していない。採点待機の丸1.1rem/上下10px・reduced-motionと不要案内除去は既存asset/合成表示の証拠で、実AIの再実行ではない。
+- **ペン修正の限界:** [PR134](https://github.com/arduino0420/quickflow/pull/134)の合成pen/palm/finger試験と現在版の入力単体3例成功を再利用。今回、認証付き学校本番で新たに筆記・保存・正式提出はしていない。Lenovo実機のpointerType/根因・解消は未確認。以前の成功した架空筆跡確認と今回の修正配信を区別する。
+- **公開guest:** [閲覧専用入口](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/)は別host/専用架空data。通常学校アカウントをguest化していない。real AIは今回呼んでいない。
 
 ### 以前の保全・移行と認証付き主要フロー
 
