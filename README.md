@@ -45,7 +45,7 @@ PDF拒否や503では案内を読み、別のPDFを無闇に再送しません�
 - **信頼性と限界**：durable台帳とfenced claim、qpdf境界、学校間認可、教師判定保持を既存コード/テストから説明します。AI誤判定、料金/送信データ、通信断の未保存筆跡、暗号化PDF、公開デモ未配備・実端末未確認を隠しません。
 - **残る作業**：実環境配備承認、復元実証、公開HTTPS/Cookie/job確認、人間の設計再投稿/通知/提出、学校受入。利用者ヒアリングは未実施で、行うなら同意と匿名化が必要です。
 
-これは既存画像と資料を使う簡潔な話順であり、公開デモの実演や独立スライド完成とは称しません。#105の任意資料は必須39項目の完了判定と分けます。
+これは既存画像と資料を使う簡潔な話順であり、公開デモの実演や独立スライド完成とは称しません。#105の任意資料は必須39項目の完了判定と分けます。別タスクの合成QA画像は受領待ちで、発表成果物の受入も未確認のため#105完全完了とはしていません。
 
 ### 閲覧専用ゲスト
 
@@ -143,4 +143,4 @@ DBと添付PDFは別々に保存されるため、整合したバックアップ
 - [画面・架空スクリーンショット監査](docs/implementation/issue95_screen_audit.md) / [Model Spec監査](docs/implementation/issue98_model_spec_audit.md) / [認証System監査](docs/implementation/issue96_authentication_system_audit.md) / [CRUD System監査](docs/implementation/issue97_crud_system_audit.md)
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
-設計画像と外部設計資料はschema安定後の#101/#102で照合・更新します。この作業では外部資料を編集せず、現行schemaに完全同期したとは宣言しません。Windows/Chromebook実機、実通信断、実答案サイズ分布、実AIの数学的正確性、公開環境での主要フロー確認は別途必要です。
+[PR124](https://github.com/arduino0420/quickflow/pull/124)の図をmain02a8237から統合済みです。親タスクで外部設計Sheetはコード9704b30へ同期、Macで更新範囲の可読性とWhimsical17フレームを確認し、WBSのmilestoneも更新済みです。[差分説明と通知用本文案](docs/implementation/issue103_submission_evidence.md)を用意しました。本人によるDPro再投稿・変更通知・最終提出は未完了です。Windows/Chromebook実機、実通信断、実答案サイズ分布、実AIの数学的正確性、公開環境での主要フロー確認は別途必要です。

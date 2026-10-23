@@ -133,7 +133,7 @@ SQL
 
 新規task専用cluster/storageに架空学校・架空PDFだけを作り、別の新規空clusterへdump+archiveから復元する。上記manifest/checksum/SQL/FK/添付・読み取り表示・stubbed AIのSystem Specで照合し、成否を証跡化する。実学校backupを持ち込まない。本タスクでは演習自体も未実行。合成演習成功は実インフラbackupの復元成功を意味しない。
 
-コードrefresh: 2026-10-23、上記mainを通常mergeで統合。primaryは17表（14アプリ＋3ActiveStorage）、具象ApplicationRecord14、別DBはcache1/queue13/cable1表。[schema](../../db/schema.rb)と各別DB schemaを静的照合。PR124の図は別タスクが担当し、本PRで複製/編集しない。
+コードrefresh: 2026-10-23、上記mainを通常mergeで統合。primaryは17表（14アプリ＋3ActiveStorage）、具象ApplicationRecord14、別DBはcache1/queue13/cable1表。[schema](../../db/schema.rb)と各別DB schemaを静的照合。PR124の図はmain02a8237へmerge済みで本ブランチへ通常統合。[設計図/検証記録](../design/README.md)を再利用し、図の重複編集はしない。main CI39881045679成功は親タスク確認。
 
 ### migration / imageの差分確認
 
