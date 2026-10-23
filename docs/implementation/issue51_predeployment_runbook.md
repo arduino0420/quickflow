@@ -1,14 +1,53 @@
-# #51 / #99 配備前監査・最小運用手順（未実行の運用案）
+# #51 / #99 運用監査・配備実績と最小運用案
 
 コード更新日: 2026-10-23 UTC。ソース基準: [main 9704b30fa90867a359d11a8ccf0cff78520aa5d2](https://github.com/arduino0420/quickflow/commit/9704b30fa90867a359d11a8ccf0cff78520aa5d2)。公開観測日は下記の2026-10-22のまま。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 本PRは文書のみ。学校アプリの設定変更、AWS/SSH、認証、本番DB/Storage/Queue操作、AI実通信、デモ公開、復元は行っていない。元checkoutの14未コミット項目は読み取り確認のみ。全作業は新規task専用cloneで実施した。
 
+## 最新状態（2026-10-23、ローカル追補草案・未commit）
+
+本追補は以下の実施済み証拠を統合する文書変更のみ。新たな設定・配備・demo公開は行わない。以下に残る「未確認」「未実行」は初回監査/手順作成当時の履歴で、現在状態はこの節を優先する。配備前の推測と実測を混ぜない。
+
+- **実行担当の配備記録:** source `047ba388c662944f0584159d9fa3437195e57434`、image `sha256:c9910bed75a12d59eb59c6312acd2156c4d5469dbb9d2f040d0435870f0c960f`。Ruby4.0.6/Rails8.1.4/qpdf12.4.2。CI [39886322221](https://github.com/arduino0420/quickflow/actions/runs/39886322221)全4ジョブ成功、2,034例/失敗0。PR23は含まない。このローカル文書差分は稼働imageに含まれない。
+- **実行担当の保全/配備記録:** DB4接続とPDFの整合backup、同一サーバーの隔離復元でschema/migration/集計/FK/sequence/添付checksumを照合。復元26blob、隔離artifact約117MB、検証containerは停止。直前の別backupを保持して旧worker全終了後にreview済みadditive migration2本を適用（18→20、最新20261022110000）。既存値/PDFとvolume継続を公開前照合。一時503は03:33:54–03:34:34 UTC、約40秒。seed/reset/legacy replay/claim backfill/down migrationなし。古いDBの上書き復元や旧worker混在は禁止。
+- **実行担当の公開確認:** TLS検証成功、HTTP→HTTPS301、root/up/3role login200。Cookie Secure/HttpOnly/Lax/Path=/。HSTS未設定。通常RailsのHost allowlist/force_ssl/assume_sslは未追加、Caddy終端による現在の構成と区別する。worker heartbeat更新、観測時ready/claimed/failed/blocked/scheduled/未完了0。継続監視やAI精度の証明ではない。
+- **実行担当の認証付き架空データ確認:** 3role login/logout、学校限定一覧、教師からadminの拒否、教師修正0→5、生徒結果5/正解、実Excel download（数値5/未提出blank）、教材PDF表示、管理者編集preview/cancelで元番号維持。通常Chromeで教師iframe答案PDFを描画し、保存済み筆跡を再読込・「保存済み」待機後に再表示。保存PUT200/操作1件というDB証拠と描画を分けて確認。初回の「保存失敗」は復元完了観測不足のため撤回。IAB黒表示の内部原因は未確定。専用架空dataは保持、session終了。実ユーザー答案/削除/通常配信/正式提出/実AIはこの検証で使っていない。画像・限界は[提出証拠](issue103_submission_evidence.md#本番の追加証拠2026-10-23)参照。
+- **所有者報告（担当による再実行・独立観測ではない）:** 通常UXと実AIを使う配信・提出・採点を行い、問題なしとの報告を受領。数学精度全件、全端末/全PDF、provider障害/遅延の保証とは扱わない。
+
+### #51 手動運用方針（所有者合意済み、設定変更なし）
+
+2026-10-23に所有者が承認した範囲は、授業・審査の前後に処理エラーと空き容量を手動確認、重要変更前と週1回を目安にbackup、直近2回と復元確認済み版を保持、自動削除なし、同一サーバー保管の災害限界の認識、有料監視/自動化を当面導入しない、である。以下の詳細閾値やHost/HSTSの選択まで承認済みとはしない。
+
+| 項目 | 現状と提出前の最小判断案 | 将来推奨/追加権限が必要な操作 |
+| --- | --- | --- |
+| TLS/Cookie/Host | 有効TLSとSecure Cookieの確認結果を採用。HSTSなし、Rails Host allowlist未追加を明示し、現状継続か別変更か所有者が決定。#51は監査結果/必要変更の明示がDoD | HSTS/Host変更は局所検証・別review/配備承認後。HSTS自体をDPro原文の追加必須条件にしない |
+| Job/容量 | 所有者が授業/審査前後に処理エラーと空き容量を手動確認する方針は合意済み。具体的な読み取り候補は既存手順のheartbeat、failed、ready/claimed滞留、空き容量。failed>0、heartbeat2分超停止、ready/claimedが15分超継続、空き容量10GiB未満を要調査とする技術的な暫定推奨（この数値は所有者未承認）。本文/生徒情報/引数は出力しない | 自動通知は未設定。現時点は所有者が確認/連絡を受ける手動運用案。外部通知先・自動化/有料サービスを導入するなら別承認 |
+| Backup/復旧 | 既存の整合backup/復元実証を採用。合意済みの目安は重要変更前と週1回、保持方針は直近2回＋復元確認済み版。自動削除しない。これは取得・保持の方針であり、定期実行の自動化や今回のbackup取得・整理を意味しない | 同一サーバー喪失には備えきれない限界を説明し、所有者がこの当面方針に合意。off-host暗号化copyは推奨だが新しい保存先/権限/費用/実データ移送の承認前に行わない |
+| 切戻し/ログ | reviewed drain/reconciliation/migration手順とstate-aware recoveryを採用。新しいaccepted writes後の旧image単独復帰/旧DB上書きは禁止。認証情報、答案、raw job argsは公開ログ/Issueへ出さない | 障害時の判断担当/連絡方法を決める。破壊的復元はその時点のデータ保護・個別承認が必要 |
+
+手動頻度/backup目安/保持/自動削除なし/同一server限界/有料監視・自動化なしは合意済み。詳細閾値とHost/HSTSの変更要否は技術提案・判断残件。自動監視導入済み・定期backup実施済みとは記載しない。実測/rollback証拠と監査判断を整理し、任意upgradeを追加の卒業条件にしない。
+
+### Guest評価導線の最小案（未公開・未実行）
+
+DPro原文確認記録では管理者/一般ユーザーguest機能が必要。独立demoサーバーの公開という文言はない。一方、実装済みguestは通常本番OFFで、個別テストアカウントはguestの代替証拠にならない。安全に審査できる入口は残件。[実装済みprofile](issue93_production_demo.md)、[Profile](../../lib/demo/profile.rb)、[TransportBoundary](../../lib/demo/transport_boundary.rb)、[demo-web](../../bin/demo-web)の契約を維持する。
+
+1. **候補URL/経路:** 既存サーバーを再利用し、`https://qfd-<新規隔離ID先頭16hex>.<既存のIP解決ドメイン>/` の別hostを候補にする（正確なhostは未生成）。通常学校hostは変更しない。既存Caddyの別virtual hostからdemo Pumaの宣言済みloopback高位portへ**検証付きHTTPS**で接続する案。ProfileはPumaの`ssl://127.0.0.1:<port>`だけを許し、HTTPや全interface bindへの変更はしない。公開443とPuma高位portは異なってよく、Hostは許可hostそのものを保持する。
+2. **まだ成立を実証していない重要条件:** demoはTLS接続でもForwarded/X-Forwarded/X-Real-IP等が一つあれば400。Caddyが通常付ける全転送headerを除去し、Host維持、upstream SNI/CA検証、ingress body/rate/concurrency制限を満たせることを、公開前に隔離環境で確認する。`tls_insecure_skip_verify`、trusted proxy拡大、ブラウザ警告回避は使わない。Puma用の有効な証明書/keyを所定control pathに安全供給する具体的方法は未確定（既存certの無断copy/権限拡大をしない）。現在のschool reverse proxyをそのまま転用したり、HTTP upstreamへ落とすだけでは成立しない。共有raw-peer throttleが全訪問者に効く制限も保持する。
+3. **データ/権限:** 現行imageを新たな独立demo identityで使用。学校DBや保管PDF、学校credentialをmount/接続しない。fresh専用PG18 cluster・独立DB/runtime/provision role・独立session secret・専用storage/manifestを作る必要がある。現在の復元検証コピーは実データなのでdemoに転用しない。明示`demo:provision`だけで架空初期業務データを作り、runtimeは業務/ActiveStorage/metadata SELECTのみ、auth throttle/nonceだけ限定DML。旧manifestをauto-rebaselineしない。runtimeへprovision credential/学校master key/AWS/OpenAI secretを渡さない。
+4. **OS/network:** seeded storage/manifest/targetはruntimeからOS-level readonly、書込み可能領域を限定、0worker、Queue/Cache/Cable接続なし、外部egress拒否。必要通信はdemoのloopback TLS/独立PGだけ。webとfresh PGは独立network namespaceを候補とする。ただし、Dockerの通常port publishはnamespace内loopback bindへ直接到達できず、既存Caddyからそのまま接続できると仮定しない。TLSを保つ限定的なnamespace境界接続を既存toolingで構成できるか、または隔離されたproxyを同じnamespaceに置く必要があるかは未解決。proxy/relay追加も具体化・review・承認前には実装しない。これは公開案の明示的な実現性gateであり、動作確認済みの構成図ではない。共有学校network/DBを安易に使わない。既存imageにはwebとPG実行資産があるが、fresh cluster初期化は非root所有者・所定data_directory/system_identifier照合が必要で、ローカルsmoke harnessを本番へそのまま実行しない。
+5. **容量/費用/影響:** 既存サーバー・既存image利用なら新規AWSサービスやimage pullは不要という候補であり、無料保証ではない（既存compute/disk/通信を消費）。過去backup実行時の安全gateは空き10GiB/available memory1GiB以上、隔離復元は512MiB/0.5CPU・約117MBだった。しかし新しいweb＋fresh PG＋TLS/provisionのpeak余力は未測定で、復元実績をdemo容量保証にしない。候補上限はweb512MiB/0.5CPU＋PG512MiB/0.5CPU、disk2GiB以内、1組/低concurrencyから。学校本番に十分な余力を残せる最新capacityとpeak測定が必要。不足なら起動せず再提案（自動resize/新課金なし）。所有者の限定read承認後の再試行1回で、総memory4,001,198,080byte（約3.73GiB）、available1,994,518,528byte（約1.86GiB）、swap0、空きdisk23,930,421,248byte（約22.29GiB）、CPU2を確認。これは瞬間値であり、学校アプリのpeak余力/継続性能を保証しない。候補web+PGの合計上限1GiBを単純に差し引くとavailableは約0.86GiBに留まり、provision/TLS/学校peak分は未測定。disk2GiB案は空きの範囲内だが、同時read/write負荷・memory余裕を実測せず公開へ進めない。資源不足であるとの断定もせず、限定負荷の隔離検証を次の判断材料とする。
+6. **必要な個別合意/承認:** 公開host/URL、証明書と限定key供給、独立DB roles/secret作成、readonly mounts/egress制御、既存Caddyへの別host追加とreload、resource上限/監視/停止方法。これは公開アクセスを新設する操作なので具体的構成を確定してaction-time approval後に実施する。現時点は実行可能性の提案で、公開準備完了ではない。学校サービスの停止は原則不要という目標で、Caddy変更/余力の検証なしに無影響を保証しない。
+7. **受入/復帰:** 標準CAによるTLS、管理者/教師/生徒guest開始、scope/readonly/有効期限/logout、通常login拒否、no-AI/job/egress、manifest不変を実配置で確認。停止はdemo入口とdemo processだけを対象とし学校サービス/データを保持。既存guest権限の15分期限も扱う。新たな学校機能やAI体験demoは作らない。
+
+したがって「今すぐ既存設定だけで安全な公開guestがある」とは言えない。最小の次工程はTLS/header/networkとcapacityを局所確認し、具体的構成・影響を示して承認を得ること。guest実装済みという技術証拠と公開評価可能性を分ける。
+
+## 初回監査の履歴（以下の未確認は当時の状態）
+
 ## 確認済みと未確認を分ける
 
 | 対象 | 証拠・判断 |
 | --- | --- |
-| 現行source | 上記main。#47永続台帳、PR123/#46 claim、PR122/qpdf、PR127 Secure Cookie、PR125/#49集約、PR128/83を含む。PR23はVips同等性/Mac test portability未完のためdeferred/draft。実稼働版とは未照合 |
+| 現行source | 上記main。#47永続台帳、PR123/#46 claim、PR122/qpdf、PR127 Secure Cookie、PR125/#49集約、PR128/83を含む。PR23はVips同等性/Mac test portability未完のため、2026-10-23に所有者指示で未merge close。branch/history保持。実稼働版とは未照合 |
 | 歴史的owner handoff | URL `https://13-231-93-159.sslip.io`、commit `a35f2ea54ed10953592283edc73b08321701fbbe`、image `quickflow:pr87-a35f2ea`。現在の稼働identityとは未照合 |
 | 公開経路 | 以下の6回のbounded GET/HEADのみ。Caddy応答は確認。EC2 instance、image digest、DB接続先、mount、workerは未確認 |
 | CI | [main CI39876600200](https://github.com/arduino0420/quickflow/actions/runs/39876600200)は親タスク確認で2,034例/失敗0・4ジョブ成功。提出対象headのChecksは別確認 |
