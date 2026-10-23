@@ -61,4 +61,21 @@ RSpec.describe "Home login choices", type: :system do
       expect(page.evaluate_script("document.querySelector('.home-login-options').getBoundingClientRect().bottom <= window.innerHeight")).to be(true)
     end
   end
+
+  it "shows the configured guest link without overflow and makes it keyboard accessible" do
+    destination = "https://qfd-0123456789abcdef.127.0.0.1/"
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("QUICKFLOW_GUEST_ENTRY_URL").and_return(destination)
+
+    [ [ 320, 812 ], [ 1280, 900 ] ].each do |width, height|
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
+        width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      visit root_path
+      expect(page).to have_link("ゲストとしてログインする", href: destination, visible: true)
+      expect(page).to have_content("架空データの閲覧専用ゲスト体験へ移動します。")
+      expect(page.evaluate_script("document.documentElement.scrollWidth <= window.innerWidth")).to be(true)
+      page.find("body").send_keys(:tab, :tab, :tab)
+      expect(page.evaluate_script("document.activeElement.textContent")).to eq("ゲストとしてログインする")
+    end
+  end
 end
