@@ -41,7 +41,8 @@ RSpec.describe "Student grading presentation", type: :request do
       expect(frame.css(".student-grading-waiting__dot").size).to eq(3)
       expect(frame.at_css(".student-grading-waiting__dots")[:'aria-hidden']).to eq("true")
       expect(frame.text).to include(state == :grading ? "AIが答案を確認しています。" : "採点結果を準備しています。")
-      expect(frame.text).not_to include("10秒", "更新します", "%", "％", "問採点済み")
+      expect(frame.text).not_to include("10秒", "更新します", "%", "％", "問採点済み",
+        "時間がかかる場合は、このページを開き直してください。")
       expect(frame.css("[role='progressbar']")).to be_empty
       expect(panel.css("iframe")).to be_empty
       pdf = page.at_css("iframe.teacher-answer-pdf")
