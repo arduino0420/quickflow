@@ -7,20 +7,29 @@ RSpec.describe "Home login choices", type: :system do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
   end
 
-  it "uses the same QuickFlow typography as both existing login pages" do
+  it "enlarges only the home logo while retaining existing brand typography" do
     [ [ 1280, 900 ], [ 375, 812 ] ].each do |width, height|
       page.current_window.resize_to(width, height)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
+        width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("window.innerWidth")).to eq(width)
       styles = [ root_path, login_path, student_login_path ].map do |path|
         visit path
         page.evaluate_script(<<~JS)
           (() => {
             const style = getComputedStyle(document.querySelector('.app-brand'));
-            return ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'color']
+            return ['fontFamily', 'fontWeight', 'color']
               .map(property => style[property]);
           })()
         JS
       end
       expect(styles.uniq.length).to eq(1)
+      sizes = [ root_path, login_path, student_login_path ].map do |path|
+        visit path
+        page.evaluate_script("parseFloat(getComputedStyle(document.querySelector('.app-brand')).fontSize)")
+      end
+      expect(sizes.first).to be > sizes[1]
+      expect(sizes.first).to be > sizes[2]
     end
   end
 
@@ -38,12 +47,16 @@ RSpec.describe "Home login choices", type: :system do
     expect(page).to have_content("生徒ログイン")
   end
 
-  it "keeps both choices visible without horizontal overflow on mobile and tablet" do
-    [ [ 375, 812 ], [ 768, 1024 ] ].each do |width, height|
+  it "keeps all three choices visible without horizontal overflow on mobile and tablet" do
+    [ [ 320, 812 ], [ 375, 812 ], [ 768, 1024 ], [ 1280, 900 ] ].each do |width, height|
       page.current_window.resize_to(width, height)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
+        width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("window.innerWidth")).to eq(width)
       visit root_path
       expect(page).to have_link("教師としてログインする", visible: true)
       expect(page).to have_link("生徒としてログインする", visible: true)
+      expect(page).to have_button("ゲストとしてログインする", disabled: true, visible: true)
       expect(page.evaluate_script("document.documentElement.scrollWidth <= window.innerWidth")).to be(true)
       expect(page.evaluate_script("document.querySelector('.home-login-options').getBoundingClientRect().bottom <= window.innerHeight")).to be(true)
     end
