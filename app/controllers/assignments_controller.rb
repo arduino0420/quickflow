@@ -166,9 +166,7 @@ class AssignmentsController < ApplicationController
     @students = Student.where(classroom: @selected_classrooms).joins(:classroom).includes(:classroom)
       .order("classrooms.grade", "classrooms.class_number", "students.attendance_number")
     @submissions_by_student_id = @reviewable_submissions.includes(:assignment).index_by(&:student_id)
-    @scores_by_submission_id = @submissions_by_student_id.values.select(&:completed?).to_h do |submission|
-      [ submission.id, submission.score ]
-    end
+    @scores_by_submission_id = SubmissionScores.new.call(@submissions_by_student_id.values)
   end
 
   def enqueue_question_generation

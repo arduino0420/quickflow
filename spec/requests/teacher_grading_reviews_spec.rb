@@ -304,22 +304,17 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(document.at_css("#grade_student_#{student.id} a")[:href]).to eq(list_detail_path)
     end
 
-    it "calls score once per completed submission when preparing the summary" do
+    it "renders both completed students with their calculated scores" do
       result = result_for(judgment: :correct)
       other_student = Student.create!(classroom: classroom, attendance_number: 2, password: "password123")
       other_submission = Submission.create!(assignment: assignment, student: other_student,
         status: :completed, submitted_at: Time.current)
       other_submission.grading_results.create!(question: result.question, ai_judgment: :correct,
         ai_model_name: "test-model", prompt_version: "v1", graded_at: Time.current)
-      calls = Hash.new(0)
-      allow_any_instance_of(Submission).to receive(:score).and_wrap_original do |method|
-        calls[method.receiver.id] += 1
-        method.call
-      end
       login
       get assignment_path(assignment)
 
-      expect(calls).to eq(submission.id => 1, other_submission.id => 1)
+      expect(document.css("#grade-summary .grade-score").map(&:text)).to eq([ "5点", "5点" ])
     end
   end
 
@@ -1083,7 +1078,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         material_blob_id: assignment.material_file.blob.id))
       submission.update!(status: :grading, processing_generation: 1)
       allow_any_instance_of(Recovery::GradingRecovery).to receive(:queue_clear?).and_return(true)
-      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2).and_return(true)
+      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2, admission: kind_of(String)).and_return(true)
       login
       get detail_path
       expect(document.at_css("form[action='#{resume_path}'] button").text).to eq("採点を再開する")
