@@ -133,7 +133,7 @@ module Demo
         questions = Sample::QUESTIONS.each_with_index.map do |(label, problem, answer, _, _), index|
           Question.create!(assignment: assignment, question_label: label, position: index + 1,
             question_text: problem, correct_answer: answer,
-            grading_rule: JSON.generate(criteria: "表示用の手動作成サンプル（実AI未実行）", requires_work: false, material_blob_id: assignment.material_file.blob.id),
+            grading_rule: JSON.generate(criteria: "表示用の手動作成サンプル（実AI未実行）。未約分は不正解。", requires_work: false, material_blob_id: assignment.material_file.blob.id),
             answer_generation_model: "demo-sample-no-ai", answer_generation_prompt_version: "demo-sample-v2", answer_generated_at: Time.current)
         end
         problems = questions.zip(Sample::QUESTIONS).map do |question, sample|
@@ -146,7 +146,7 @@ module Demo
         questions.zip(Sample::QUESTIONS).each do |question, sample|
           GradingResult.create!(submission: submission, question: question, student_answer: sample[3], ai_judgment: sample[4],
             ai_model_name: "demo-sample-no-ai", prompt_version: "demo-sample-v2", graded_at: Time.current,
-            feedback: "手動作成の表示例です。実AIの採点結果ではありません。")
+            feedback: question.question_label == "2(3)" ? "未約分のため不正解とする手動表示例です。実AIの採点結果ではありません。" : "手動作成の表示例です。実AIの採点結果ではありません。")
         end
         AnswerDraft.create!(assignment: assignment, student: draft_student,
           material_fingerprint: AnswerDraftContext.fingerprint(assignment), format_version: 1,
@@ -186,7 +186,7 @@ module Demo
       Assignment.find_each { |assignment| QuestionGenerator.new.saved_questions(assignment) }
       Submission.find_each do |submission|
         AnswerGrader.reading_problems(submission.extracted_text)
-        refuse!("Invalid sample score") unless submission.score == 80
+        refuse!("Invalid sample score") unless submission.score == 70
       end
       AnswerDraft.find_each do |draft|
         refuse!("Draft context mismatch") unless draft.material_fingerprint == AnswerDraftContext.fingerprint(draft.assignment) && !Submission.exists?(student: draft.student, assignment: draft.assignment)

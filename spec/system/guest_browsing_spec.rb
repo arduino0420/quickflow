@@ -70,7 +70,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
     click_button "教師ゲストで閲覧"
     click_link "サンプルの小テスト"
     expect(page).to have_link("Excel出力")
-    expect(page).to have_content("80点")
+    expect(page).to have_content("70点")
     find("header a.app-brand").click
     expect(page).to have_current_path(root_path)
     expect(page).to have_button("管理者ゲストで閲覧")
