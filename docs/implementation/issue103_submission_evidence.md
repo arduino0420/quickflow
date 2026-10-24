@@ -1,13 +1,20 @@
-# #103 必須39項目の証跡対応（提出未完了）
+# #103 必須39項目の証跡対応（提出は本人報告済み）
 
 39行表は原文確認記録・既存草案とcode/testを照合したもの。2026-10-24に実行担当も認証済み原文の第8節（10/12/4/5/4/4の39項目）、第9節（提出方法）、設計変更時の再投稿/通知の注記を再確認し、要件の意味と対応表を照合した。課題全体の再読や公式合格判定とは区別し、追加メンター解釈承認をゲートにしない。
 
+
+### 現在の証拠区分と完了条件
+
+- **担当者の技術証拠:** 既存#95/#96/#98の監査と、後続[PR142](https://github.com/arduino0420/quickflow/pull/142)（home/guest表示）、[PR146](https://github.com/arduino0420/quickflow/pull/146)（guest削除ボタン配置）、[PR148](https://github.com/arduino0420/quickflow/pull/148)（答案PDF表示）の限定回帰・レビュー・配備記録を再利用する。PR145/PR152のModel/CRUD補完を含むmain `2e6df7300a57b638971387ff19d6141f054fa95e` の[CI40139691885](https://github.com/arduino0420/quickflow/actions/runs/40139691885)は全4成功・2062例0失敗。今回は新しい画面監査やテストを行っていない。
+- **所有者本人の報告:** 要件定義は合格、設計変更連絡・最終提出は完了。通常教師側PDF・通常生徒側の提出済み答案PDFと再読み込みの確認依頼に対し「通常の教師・生徒ともPDF表示に問題なし」と回答。12業務表各5件以上・内部運用表は理由付き除外・架空履歴を作らないseed方針も確認済みと報告。担当者の独立観測や学校の正式卒業合格へ読み替えない。
+- **状態欄の読み方:** 旧「最終確認待ち」を、既にある証拠の範囲に置き換えた。具体的な未実装として追加すべき項目は今回の既存証拠照合では特定していないが、未検証や適用判断がゼロという意味ではない。全39行を一律OKにはしない。
+- **#103/#88の判断:** 各項目の判定・根拠の記録、本人の提出等報告、配備結果の参照は揃っている。具体的な未実装や追加すべき試験の残件は今回の照合では特定していない。「要確認」として残る下記の適用・検証区分を確認したうえで、既存の完了条件の最終チェックとクローズ判断・操作は所有者が行う。未チェック条件を削除せず、正式な学校判定や全環境の保証へ読み替えない。
 
 ### 原文との対応・証拠の基準
 
 原文: [DPro curriculum 3027](https://diver.diveintocode.jp/curriculums/3027)。認証済み原文の確認記録は2026-10-22（原文更新日時2026-09-28 06:48 JST）。下表の要件欄は受領した39項目の**意味を保持した要約**であり、逐語引用ではない。番号はカテゴリ内の順序。適用判断を要件本文に混ぜず後段へ分離した。本草案は原文確認記録と既存証拠文書を基にした二次照合である。
 
-現行配備/試験基準: 通常・guestとも [0812708](https://github.com/arduino0420/quickflow/commit/0812708fcc4d82dca02eb7d9e9c4594716d64e0b)、[main CI40079428699](https://github.com/arduino0420/quickflow/actions/runs/40079428699) 全4成功、2,062例/失敗0。停止は通常85.8秒・guest16.3秒。答案閲覧を既存PDF.jsへ変更し、本番guestで描画完了9回・実画像4場面、3役割・PDF原本一致・Excel・書込拒否・logoutを確認。通常の認証付き本番描画は未試験で、ローカル架空通常試験とCIを根拠とする。原本タブのChrome内蔵表示は黒画面も観測し、原因・全環境の安定性は未確定。データ・schema・鍵・manifest・network/TLSは維持し、通常の筆記/保存/提出/採点ロジックは変更していない。新しいホーム/guest表示は [PR142](https://github.com/arduino0420/quickflow/pull/142) の変更で、通常・guestへ配備済み。入口の任意説明文は原文の必須指定ではないが、ログイン後の閲覧専用・実AIなし表示とサーバー側制限は保持する。管理者・一般利用者のguest機能は必須であり、read-onlyを公式に十分とする記載は確認していない。原文の各テーブル5件以上・各モデルCRUDのラベルと、以下の工学的適用説明を区別する。
+現行配備/試験基準: 通常・guestとも [0812708](https://github.com/arduino0420/quickflow/commit/0812708fcc4d82dca02eb7d9e9c4594716d64e0b)、[main CI40079428699](https://github.com/arduino0420/quickflow/actions/runs/40079428699) 全4成功、2,062例/失敗0。停止は通常85.8秒・guest16.3秒。答案閲覧を既存PDF.jsへ変更し、本番guestで描画完了9回・実画像4場面、3役割・PDF原本一致・Excel・書込拒否・logoutを確認。通常の認証付き本番描画は担当者自身の試験ではなく、ローカル架空通常試験・CIに加え、下記の所有者本人の確認報告を根拠とする。原本タブのChrome内蔵表示は黒画面も観測し、原因・全環境の安定性は未確定。データ・schema・鍵・manifest・network/TLSは維持し、通常の筆記/保存/提出/採点ロジックは変更していない。新しいホーム/guest表示は [PR142](https://github.com/arduino0420/quickflow/pull/142) の変更で、通常・guestへ配備済み。入口の任意説明文は原文の必須指定ではないが、ログイン後の閲覧専用・実AIなし表示とサーバー側制限は保持する。管理者・一般利用者のguest機能は必須であり、read-onlyを公式に十分とする記載は確認していない。原文の各テーブル5件以上・各モデルCRUDのラベルと、以下の工学的適用説明を区別する。
 
 前版の配備/試験履歴: [mainacd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)、[CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)全4ジョブ成功、RSpec2,049例/失敗0（System/Modelを含む全suite、区分単独件数ではない）。Ruby4.0.6/Rails8.1.4/crass1.0.8。表の固定source9704b30は既存監査時の基準。前版1adb1530からのruntime差分は[PR134の明示的pen/palm処理](https://github.com/arduino0420/quickflow/pull/134)と[PR136のcrass修正](https://github.com/arduino0420/quickflow/pull/136)のみで、DB/schema/保存形式/認証/採点jobは変更なし。[PR135](https://github.com/arduino0420/quickflow/pull/135)は台帳validation8例と設計差分メモ。通常・guestのsource/image/切替時間と検証限界は[配備記録](issue51_predeployment_runbook.md)を参照。前版のChrome確認は履歴として残し、今回のHTTP/配布asset確認や所有者の実AI報告と混ぜない。PR23は未merge close（branch/history保持）。今回の文書commitは稼働imageに含まれない。
 
@@ -16,36 +23,36 @@
 | 要件 | 対応する実装・資料 | テストや画面の証拠 | 状態 |
 | --- | --- | --- | --- |
 | 開発1: Ruby on Railsを使用 | [README](../../README.md)、[Gemfile.lock](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/Gemfile.lock) Rails8.1.4 | [Ruby4.0.6](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/.ruby-version)、上記CIのbundle/setupとsuite成功 | source/CI・配備runtime確認済み |
-| 開発2: HerokuまたはAWS EC2へデプロイ | #51/#99配備runbook、AWS方針 | [runbook](issue51_predeployment_runbook.md)。下記「本番の追加証拠」で実EC2稼働・image・公開TLSを確認 | 配備・公開guest導線確認済み／提出は本人未実施 |
+| 開発2: HerokuまたはAWS EC2へデプロイ | #51/#99配備runbook、AWS方針 | [runbook](issue51_predeployment_runbook.md)。下記「本番の追加証拠」で実EC2稼働・image・公開TLSを確認 | 配備・公開guest導線確認済み／提出済みは本人報告 |
 | 開発3: トップページがある | [home view](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/views/home/index.html.erb)、#89/#95 | [画面監査](issue95_screen_audit.md): `home`、4幅Chrome・title/h1/exact path | 既存試験・最新公開Chrome確認済み |
 | 開発4: トップでサービス・コンセプト・機能が分かる | [home view](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/views/home/index.html.erb)、[home spec](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/home_spec.rb) | #95 `home`と[320px一覧](issue95-evidence/overview-320.jpg)。元の説明2文を残した最新公開Chrome画面と照合済み | 実装/公開本文確認済み／学校受入未判定 |
 | 開発5: 独自404/500ページ | #90（既存#103が参照） | [404](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/public/404.html)・[500](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/public/500.html)、[error_pages spec](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/requests/error_pages_spec.rb)。意図的live500は行わない | コード/Request証拠あり／公開エラー画面の再確認は未実施 |
-| 開発6: モデルとDBのvalidation | [#98](issue98_model_spec_audit.md)、db/schema.rb | #98モデル別表・Database agreement。NOT NULL/unique/FKとモデル側検証の区別、追加台帳差分は後段A3 | 限定証拠あり／最終schema照合待ち |
-| 開発7: メッセージ表示 | [#94](issue94_japanese_errors.md)、[日本語エラーSystem](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/japanese_error_layout_spec.rb)、#95 | #95参照のJapanese error layout、authentication_ui、各保存/失敗画面。通知全種類の網羅は未確定 | 限定証拠あり／最終確認待ち |
+| 開発6: モデルとDBのvalidation | [#98](issue98_model_spec_audit.md)、db/schema.rb | #98モデル別表・Database agreement。NOT NULL/unique/FKとモデル側検証の区別、追加台帳差分は後段A3 | 既存モデル/DB監査＋追加宣言の照合証拠あり（A3） |
+| 開発7: メッセージ表示 | [#94](issue94_japanese_errors.md)、[日本語エラーSystem](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/japanese_error_layout_spec.rb)、#95 | #95参照のJapanese error layout、authentication_ui、各保存/失敗画面。通知全種類の網羅は未確定 | 日本語通知・エラーの既存試験証拠あり／全通知の総当たりではない |
 | 開発8: 利用中に例外が発生しない | #99、#51の主要フローと障害対応 | 基準main CIは上記。下記の認証付き本番架空フローと所有者の実AI成功報告を分離して参照。全操作で例外が起きない保証ではない | 限定証拠＋pen修正配備済み／Chromebook実機解消・新版認証付き筆記は未確認 |
 | 開発9: seedで各テーブルの初期データをそれぞれ5件以上 | [#150全40表・隔離実測](issue150_seed_table_audit.md)、#92/#93 | 12業務表各5件以上MET、blob/attachment各10。所有者が内部運用表を理由付き除外する方針の確認済みを報告。全40物理表5件はNOT METのまま。A1参照 | 確認された業務範囲MET（所有者報告）／全物理表NOT MET |
 | 開発10: CRUD機能 | [#97/#151現行14モデル表](issue97_crud_system_audit.md) | 全具象モデルと実装済み直接/親経由CRUD、機能なし・運用処理を照合。生成要求台帳の配信/状態/親削除を補完。全モデル完全CRUDではない。A2参照 | 現行機能照合済み／内部CRUDの学校適用判断UNVERIFIED |
-| デザイン1: 分かりやすいページタイトル・説明 | #95全HTML画面title | #95の23画面・27状態・320/390/768/1280px、期待exact title/path/h1 | 限定証拠あり／最終照合待ち |
-| デザイン2: 非技術者にも分かる案内 | #95見出し・操作案内・空状態 | #95実ビュー/画像照合。実際の教師/生徒によるユーザビリティ試験は未実施 | 限定証拠あり／最終文言確認待ち |
-| デザイン3: 日本語表示・i18n | #94、#98日本語default locale統合記録 | #95エラー画面再利用、#98日本語locale下のmodel/service検証記録。最終翻訳漏れを確認 | 限定証拠あり／最終照合待ち |
-| デザイン4: エラー表示でレイアウトが崩れない | #94 Japanese error layout、#95 | #95に長文/複数入力エラー参照あり。全エラー×全画面×4幅の総当たりではない | 限定証拠あり／最終照合待ち |
-| デザイン5: 未完成・初期状態のデザインがない | #95全画面監査、#101/#102設計資料 | #95画像3種と空状態。最終版の取り残し・資料差分を確認 | 最終UI・資料確認待ち |
-| デザイン6: 要素が隠れていない | #95画面別表 | #95可視input/select/button寸法、PDF・footer等既存回帰。未確認状態は同文書参照 | 限定証拠あり／最終照合待ち |
-| デザイン7: はみ出しがない | #95画面幅チェック | #95ページ全体の横幅・4幅画像。成績表の意図した内部scrollとdocument overflowを区別 | 限定証拠あり／最終照合待ち |
-| デザイン8: header/footer（画面による例外可） | #91footer、#95画面監査 | #95既存footer/PDF回帰。画面別の除外・理由を最終確認 | 限定証拠あり／最終照合待ち |
-| デザイン9: header/footerの上下配置が適切 | #95全画面監査 | [390pxフロー](issue95-evidence/flow-390.jpg)、[tablet/desktop](issue95-evidence/tablet-desktop.jpg)。タブレット実機は未検証 | 限定証拠あり／最終照合待ち |
-| デザイン10: 適切なリンク名 | #95リンク名・戻る導線 | #95実ビュー/画像、成績→答案→保存後/戻り先。最終文言と遷移図を同期 | 限定証拠あり／最終照合待ち |
-| デザイン11: 適切なボタン名 | #95ボタン名・操作チェック | #95可視button寸法/画面画像、既存フォーム操作回帰。最終文言確認 | 限定証拠あり／最終照合待ち |
-| デザイン12: 明確な入力ラベル・placeholder | #95 label/placeholder照合 | #95実ビュー/画像、フォームinput/select寸法。placeholderだけをlabelの証明とはしない | 限定証拠あり／最終照合待ち |
-| 画面遷移1: rootの設定 | [routes](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/config/routes.rb)、[home spec](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/requests/home_spec.rb) | #95 `home` exact path、基準routesのrootを照合済み／2026-10-23配備後の公開root200（古い404は履歴） | 限定証拠あり／最終照合待ち |
-| 画面遷移2: 初回にトップを表示 | #89トップ、#95未ログイン画面 | #95 `/`。新規未認証セッションで公開URLからの初回遷移を確認 | 公開初回遷移未検証 |
-| 画面遷移3: ログイン後に適切な画面へ | [#96](issue96_authentication_system_audit.md) | `spec/system/footer_spec.rb:35` の教師/生徒/管理者loginと到達先（#96記録） | 限定証拠あり／最終照合待ち |
-| 画面遷移4: 不適切・不要な遷移がない | #95戻り条件、#96認証境界、#99 | #95答案のcontext保持・不正context拒否、#96logout/history/切替。最終図・公開動作と照合 | 限定証拠あり／最終照合待ち |
-| 機能1: ログイン機能 | #96教師/生徒/管理者認証 | `spec/system/authentication_access_spec.rb` と既存 [footer_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/footer_spec.rb)。成功/失敗/切替 | 限定証拠あり／最終照合待ち |
-| 機能2: 管理者機能 | #96管理画面、#97アカウント操作 | `spec/system/admin_account_management_spec.rb`、#97 account CRUD。管理範囲は学校境界を保持 | 限定証拠あり／最終照合待ち |
+| デザイン1: 分かりやすいページタイトル・説明 | #95全HTML画面title | #95の23画面・27状態・320/390/768/1280px、期待exact title/path/h1 | 23画面・27状態・4幅のtitle/見出し監査証拠あり |
+| デザイン2: 非技術者にも分かる案内 | #95見出し・操作案内・空状態 | #95実ビュー/画像照合。実際の教師/生徒によるユーザビリティ試験は未実施 | 画面案内の監査証拠あり／利用者試験は未実施 |
+| デザイン3: 日本語表示・i18n | #94、#98日本語default locale統合記録 | #95エラー画面再利用、#98日本語locale下のmodel/service検証記録。全翻訳の総当たりを意味しない | 日本語locale・エラー表示の既存監査/試験証拠あり |
+| デザイン4: エラー表示でレイアウトが崩れない | #94 Japanese error layout、#95 | #95に長文/複数入力エラー参照あり。全エラー×全画面×4幅の総当たりではない | 長文/複数エラーのレイアウト証拠あり／全組合せではない |
+| デザイン5: 未完成・初期状態のデザインがない | #95全画面監査、#101/#102設計資料 | #95画像3種と空状態。後続UI・資料差分のレビュー記録を併用 | 既存全画面監査＋後続UI/設計資料更新のレビュー証拠あり |
+| デザイン6: 要素が隠れていない | #95画面別表 | #95可視input/select/button寸法、PDF・footer等既存回帰。未確認状態は同文書参照 | 要素寸法・可視性・既存回帰の証拠あり／全状態の保証ではない |
+| デザイン7: はみ出しがない | #95画面幅チェック | #95ページ全体の横幅・4幅画像。成績表の意図した内部scrollとdocument overflowを区別 | 4幅のdocument overflow/表内scroll監査証拠あり |
+| デザイン8: header/footer（画面による例外可） | #91footer、#95画面監査 | #95既存footer/PDF回帰。画面別の例外・理由はA5で区分 | header/footerと画面別例外の監査証拠あり（A5） |
+| デザイン9: header/footerの上下配置が適切 | #95全画面監査 | [390pxフロー](issue95-evidence/flow-390.jpg)、[tablet/desktop](issue95-evidence/tablet-desktop.jpg)。タブレット実機は未検証 | Chromeのmobile/tablet幅・desktop証拠あり／tablet実機未試験 |
+| デザイン10: 適切なリンク名 | #95リンク名・戻る導線 | #95実ビュー/画像、成績→答案→保存後/戻り先。後続の文言・遷移図更新記録を併用 | リンク名・戻り先の監査と後続図/導線更新の証拠あり |
+| デザイン11: 適切なボタン名 | #95ボタン名・操作チェック | #95可視button寸法/画面画像、既存フォーム操作回帰。後続guestボタン回帰を併用 | ボタン名・寸法の監査と後続guestボタン回帰の証拠あり |
+| デザイン12: 明確な入力ラベル・placeholder | #95 label/placeholder照合 | #95実ビュー/画像、フォームinput/select寸法。placeholderだけをlabelの証明とはしない | label/placeholder・フォーム寸法の監査証拠あり |
+| 画面遷移1: rootの設定 | [routes](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/config/routes.rb)、[home spec](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/requests/home_spec.rb) | #95 `home` exact path、基準routesのrootを照合済み／2026-10-23配備後の公開root200（古い404は履歴） | root設定・exact path試験・公開root200の証拠あり |
+| 画面遷移2: 初回にトップを表示 | #89トップ、#95未ログイン画面 | #95 `/`。新規未認証セッションで公開URLからの初回遷移を確認 | 未認証home試験・公開初回導線の既存確認証拠あり |
+| 画面遷移3: ログイン後に適切な画面へ | [#96](issue96_authentication_system_audit.md) | `spec/system/footer_spec.rb:35` の教師/生徒/管理者loginと到達先（#96記録） | 3roleのログイン到達先・認証System証拠あり |
+| 画面遷移4: 不適切・不要な遷移がない | #95戻り条件、#96認証境界、#99 | #95答案のcontext保持・不正context拒否、#96logout/history/切替。後続の図・公開導線確認記録を併用 | context保持/拒否・logout/切替・後続導線更新の証拠あり |
+| 機能1: ログイン機能 | #96教師/生徒/管理者認証 | `spec/system/authentication_access_spec.rb` と既存 [footer_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/footer_spec.rb)。成功/失敗/切替 | 3roleの成功/失敗/切替の既存System証拠あり |
+| 機能2: 管理者機能 | #96管理画面、#97アカウント操作 | `spec/system/admin_account_management_spec.rb`、#97 account CRUD。管理範囲は学校境界を保持 | 学校限定の管理画面・アカウント操作の既存System証拠あり |
 | 機能3: 管理者・一般ユーザーのゲスト | [#93](issue93_production_demo.md)、[guest controller](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/controllers/guest_sessions_controller.rb)、#96 | `spec/system/guest_browsing_spec.rb`の既存証拠と下記2026-10-23公開3役Chrome/PDF確認。local証拠とlive観測を区別 | 公開3役閲覧確認済み／read-onlyの公式受入は学校判定 |
-| 機能4: controllerで管理者アクセス制限 | [#96](issue96_authentication_system_audit.md)、[admin base controller](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/controllers/admin/base_controller.rb) | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb): 普通roleのadmin URL/PATCH拒否、学校境界、変更なし確認 | 限定証拠あり／最終照合待ち |
-| 機能5: 一般ユーザーに管理者操作を表示しない | #96教師/生徒の管理リンク・form action不在 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の画面非表示とcontroller拒否を別々に検証 | 限定証拠あり／最終照合待ち |
+| 機能4: controllerで管理者アクセス制限 | [#96](issue96_authentication_system_audit.md)、[admin base controller](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/controllers/admin/base_controller.rb) | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb): 普通roleのadmin URL/PATCH拒否、学校境界、変更なし確認 | 未認証/role/学校等の許可・拒否のSystem証拠あり |
+| 機能5: 一般ユーザーに管理者操作を表示しない | #96教師/生徒の管理リンク・form action不在 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の画面非表示とcontroller拒否を別々に検証 | 一般roleでの管理操作非表示とcontroller拒否の証拠あり |
 | System Spec1: ログイン機能のテスト | #96 role×operation表 | [footer_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/footer_spec.rb)、[authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb)（Chrome）、guestのdriver区別は機能3参照 | 既存証拠＋配備0812708全suite成功／提出対象変更時は再確認 |
 | System Spec2: 各モデルのCRUD機能のテスト | [#97/#151モデル別C/R/U/D表](issue97_crud_system_audit.md) | 実Chrome配信→実jobの台帳pending/running/succeeded、確認親削除・取消/別台帳保持を追加検証。SystemとRequest/Service/Jobのみを区別。操作変種と運用処理の限界は表・A2参照 | ブラウザ代表経路の証拠補完済み／下位層のみ・適用判断UNVERIFIED |
 | System Spec3: アクセス制限のテスト | #96拒否/許可表 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の未認証・role・学校・作成者・配信範囲拒否と正例。Cancancan注記はA4参照 | 既存証拠＋配備0812708全suite成功／提出対象変更時は再確認 |
@@ -65,9 +72,17 @@
 - **A4 / System3:** Cancancan固有テストが任意であることは、アクセス制限テスト全般の免除ではない。#96の実controllerを通る許可/拒否証拠を残す。
 - **A5 / デザイン8:** header/footerの画面別例外は原文で許容されるが、各画面の実装と理由を記録する。その他のデザイン項目まで除外しない。
 
-### 配備・提出・学校受入の残件
+### 配備・提出の現在の記録と残る限界
 
-配備identity/runtime/DB/storage/worker/TLS/Cookieと限定本番主要フローは下記で確認済み。公開guest評価導線は確認済み。本人の要件定義合格確認、更新した設計原本の審査者閲覧確認、設計差分再投稿/通知、最終提出/完了画面は残る。実タブレット/学校利用者の受入は未実施で、原文にない追加の提出停止条件にはしない。seed/内部CRUDの適用根拠と未証明の宣言単位は保持し、全39合格を宣言しない。
+配備identity/runtime/DB/storage/worker/TLS/Cookieと限定本番主要フロー・公開guest導線の技術証拠は下記のとおり。要件定義合格・設計差分連絡・最終提出は本人報告済み。通常教師/生徒PDFも本人から問題なしと報告された。審査者の閲覧権限・受理画面・正式な学校判定を担当者が独立確認したという意味ではない。下の2026-10-23記録等は当時の履歴として保持し、現在の未提出や未配備へ読み替えない。
+
+要確認・未検証として残す区分（新規の未実装リストではない）:
+
+- **開発5:** 独自404/500のコード/Request証拠はあるが、公開エラー画面の再確認・意図的live500は行っていない。
+- **開発8・デザイン2/9:** Chromebook実機のpen/筆記、正式な利用者試験、tablet実機等の限界。今回の通常PDF確認を筆記/保存の新たな実機検証へ拡大しない。
+- **開発10・System Spec2:** 内部CRUDの適用判断、下位層のみの操作変種は#97/#151表・A2の分類を保持。新しい未実装CRUD画面や、全変種をSystem確認済みという主張は追加しない。
+- **開発4・機能3:** 学校の正式受入、read-only guestを十分とする明文解釈は未確定。実装済み3role guestの証拠とは分け、正式合格を宣言しない。
+- **開発9:** 所有者が確認した12業務表の範囲はMET。全40物理表5件NOT METという実測は維持する。
 
 ### 本番の追加証拠（2026-10-23）
 
