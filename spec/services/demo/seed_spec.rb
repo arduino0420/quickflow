@@ -1,7 +1,9 @@
 require "rails_helper"
 require "tmpdir"
+require_relative "../../support/demo_seed_fixture"
 
 RSpec.describe Demo::Seed do
+  include DemoSeedFixture
   let(:token) { "a" * 32 }
   let(:env) { { "QUICKFLOW_DEMO_SEED" => "true", "QUICKFLOW_DEMO_ISOLATION_ID" => token,
     "QUICKFLOW_DEMO_DATABASE" => "quickflow_test", "QUICKFLOW_DEMO_PORT" => "57429" } }
@@ -15,13 +17,16 @@ RSpec.describe Demo::Seed do
     end
   end
 
-  before do
+  before do |example|
     allow(seed).to receive(:guard!) { seed.instance_variable_set(:@root, @directory) }
     allow(OpenAI::Client).to receive(:new).and_raise("No external API")
     allow(AiClient).to receive(:build).and_raise("No AI")
     allow(ActiveJob::Base).to receive(:perform_later).and_raise("No job")
     allow(ActiveStorage::Blob.services).to receive(:fetch).with("demo_seed")
       .and_return(ActiveStorage::Service::DiskService.new(root: @directory.to_s, name: "demo_seed"))
+    # Keep fixture locks through the outer transaction, including later seed.call
+    # assertions. The real competing-writer test must exercise NOWAIT directly.
+    with_demo_seed_fixture_locks { nil } unless example.metadata[:competing_database_writer]
   end
 
   def rows
@@ -246,7 +251,7 @@ RSpec.describe Demo::Seed do
     expect(School.count).to eq(0)
   end
 
-  it "rejects concurrent database writers instead of waiting" do
+  it "rejects concurrent database writers instead of waiting", :competing_database_writer do
     ready = Queue.new
     release = Queue.new
     config = ApplicationRecord.connection_db_config.configuration_hash

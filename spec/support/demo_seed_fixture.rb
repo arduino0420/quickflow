@@ -1,6 +1,10 @@
 # Test-fixture preparation only. The operator task must retain its NOWAIT guard.
 module DemoSeedFixture
   def prepare_demo_seed_fixture(seed: Demo::Seed.new, lock_timeout_ms: 2_000)
+    with_demo_seed_fixture_locks(lock_timeout_ms: lock_timeout_ms) { seed.call }
+  end
+
+  def with_demo_seed_fixture_locks(lock_timeout_ms: 2_000)
     connection = ApplicationRecord.connection
     raise "An outer fixture transaction is required" unless connection.transaction_open?
     raise ArgumentError, "Bounded fixture timeout required" unless lock_timeout_ms.is_a?(Integer) && (1..2_000).cover?(lock_timeout_ms)
@@ -12,7 +16,7 @@ module DemoSeedFixture
       connection.execute("LOCK TABLE #{tables.join(', ')} IN EXCLUSIVE MODE")
       connection.execute("SET LOCAL lock_timeout = #{connection.quote(original_timeout)}")
       # The same connection retains these locks through the outer fixture transaction.
-      seed.call
+      yield
     end
   rescue ActiveRecord::LockWaitTimeout
     # requires_new has rolled back the failed savepoint, so this connection is usable.
