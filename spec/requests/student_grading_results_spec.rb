@@ -344,8 +344,8 @@ RSpec.describe "Student grading results", type: :request do
     expect(document.at_css("a[href='#{material_student_assignment_path(assignment, download: "1")}']")).to be_nil
     expect(response.body).not_to include("教材を開く", "答案PDFを開く", "答案をダウンロード")
     expect(document.at_css("h1").text).to eq("#{assignment.title}の採点結果")
-    expect(document.at_css(".teacher-review-layout iframe")[:src]).to eq(answer_student_assignment_path(assignment))
-    expect(document.css("form, select, input, button")).to be_empty
+    expect(document.at_css(".teacher-review-layout [data-controller='answer-pdf']")[:'data-answer-pdf-url-value']).to eq(answer_student_assignment_path(assignment))
+    expect(document.css("form, select:not([data-answer-pdf-target='page']), input, button")).to be_empty
     expect(response.body).not_to include("AIの判定に戻す", "判定を保存")
 
     get material_student_assignment_path(assignment)
@@ -395,7 +395,7 @@ RSpec.describe "Student grading results", type: :request do
     get answer_student_assignment_path(assignment), params: { submission_id: other_submission.id }
     expect(response).to have_http_status(:not_found)
     get student_assignment_path(assignment)
-    expect(document.at_css("iframe")).to be_nil
+    expect(document.at_css("[data-controller='answer-pdf']")).to be_nil
     expect(document.css("article")).to be_empty
     expect(document.at_css("input[type='file']")).to be_present
   end
@@ -423,7 +423,7 @@ RSpec.describe "Student grading results", type: :request do
     expect(response).to have_http_status(:not_found)
     submission.answer_file.attach(io: StringIO.new("text answer"), filename: "answer.txt", content_type: "text/plain")
     get student_assignment_path(assignment)
-    expect(document.at_css("iframe")).to be_nil
+    expect(document.at_css("[data-controller='answer-pdf']")).to be_nil
     expect(document.at_css("a[href='#{answer_student_assignment_path(assignment, download: '1')}']")).to be_nil
     expect(response.body).to include("答案ファイルをPDFとして表示できません。先生に確認してください。")
     get answer_student_assignment_path(assignment)

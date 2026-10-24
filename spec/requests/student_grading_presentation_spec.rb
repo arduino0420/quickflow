@@ -44,9 +44,9 @@ RSpec.describe "Student grading presentation", type: :request do
       expect(frame.text).not_to include("10秒", "更新します", "%", "％", "問採点済み",
         "時間がかかる場合は、このページを開き直してください。")
       expect(frame.css("[role='progressbar']")).to be_empty
-      expect(panel.css("iframe")).to be_empty
-      pdf = page.at_css("iframe.teacher-answer-pdf")
-      expect(pdf[:src]).to eq(answer_student_assignment_path(assignment))
+      expect(panel.css("[data-controller='answer-pdf']")).to be_empty
+      pdf = page.at_css("[data-controller='answer-pdf']")
+      expect(pdf[:'data-answer-pdf-url-value']).to eq(answer_student_assignment_path(assignment))
       expect(pdf.parent.parent).to eq(panel.parent)
       expect(document.css("link[rel='stylesheet']").any? { |link| link[:href].include?("student_grading") }).to be(true)
     end

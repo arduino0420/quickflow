@@ -482,14 +482,14 @@ RSpec.describe "Teacher grading reviews", type: :request do
     login
     get detail_path
     expect(response).to have_http_status(:ok)
-    expect(document.at_css("iframe")[:src]).to eq(pdf_path)
+    expect(document.at_css("[data-controller='answer-pdf']")[:'data-answer-pdf-url-value']).to eq(pdf_path)
     expect(document.css("article h3").map(&:text)).to eq([ "問題 問題番号1", "問題 問題番号2" ])
     expect(response.body).to include("3x+2x を計算しなさい。", "生徒解答1", "5x", "判読困難1", "フィードバック1")
     fields = document.css("article").last.css("dt, dd").map(&:text).each_slice(2).to_h
     expect(fields.slice("AI判定", "教師判定", "最終判定")).to eq("最終判定" => "不正解")
     expect(document.at_css("#pending-review-count").text).to eq("未確認の要確認：1件")
     expect(document.at_css("form#teacher-judgments")[:action]).to eq(detail_path)
-    expect(document.css("select").size).to eq(2)
+    expect(document.css("form#teacher-judgments select").size).to eq(2)
     expect(response.body).not_to include("/rails/active_storage")
   end
 
@@ -528,7 +528,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       end
       get detail_path
       expect(response.body).to include(label, "採点結果は未完成です。", "暫定件数")
-      expect(document.at_css("iframe")[:src]).to eq(pdf_path)
+      expect(document.at_css("[data-controller='answer-pdf']")[:'data-answer-pdf-url-value']).to eq(pdf_path)
       expect(document.css("article")).to be_empty
       get pdf_path
       expect(response).to have_http_status(:ok)
@@ -568,7 +568,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     get detail_path
     expect(document.css(".teacher-grading-result.judgment-needs_review").map { |card| card[:id] }).to eq([ "question_#{pending.question_id}" ])
     expect(document.at_css("#question_#{pending.question_id}").text).to include("要確認")
-    expect(document.at_css("iframe")[:src]).to eq(pdf_path)
+    expect(document.at_css("[data-controller='answer-pdf']")[:'data-answer-pdf-url-value']).to eq(pdf_path)
     expect(response.body).not_to include("答案PDFを開く", "答案をダウンロード")
     patch detail_path, params: { judgments: { pending.id.to_s => "correct" }, original_final_judgments: { pending.id.to_s => pending.reload.final_judgment } }
     follow_redirect!
@@ -587,7 +587,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     get detail_path
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("答案PDFが添付されていません。")
-    expect(document.css("iframe")).to be_empty
+    expect(document.css("[data-controller='answer-pdf']")).to be_empty
     get pdf_path
     expect(response).to have_http_status(:not_found)
   end
@@ -603,7 +603,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
     submission.answer_file.blob.update!(content_type: "text/html")
     login
     get detail_path
-    expect(document.css("iframe")).to be_empty
+    expect(document.css("[data-controller='answer-pdf']")).to be_empty
     get pdf_path
     expect(response.headers["Content-Disposition"]).to include("attachment")
     expect(response.headers["X-Content-Type-Options"]).to eq("nosniff")
@@ -918,7 +918,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
         expect(response).to have_http_status(422)
         expect(result.reload.teacher_judgment).to be_nil
         expect(document.css("form#teacher-judgments")).to be_empty
-        expect(document.at_css("iframe")).to be_present
+        expect(document.at_css("[data-controller='answer-pdf']")).to be_present
       end
     end
 

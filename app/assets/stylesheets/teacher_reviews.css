@@ -74,3 +74,8 @@
 .grade-row-link { display: inline-flex; align-items: center; min-height: 2.75rem; font-weight: 400; }
 
 .grade-row-link, .grade-row-link:hover, .grade-row-link:visited { color: var(--color-text); text-decoration: none; }
+
+/* Read-only answer viewing: native PDF plug-in is not required. */
+.answer-pdf { min-width: 0; }
+.answer-pdf__pages { max-height: 75vh; overflow: auto; }
+.answer-pdf__pages canvas { display: block; width: 100%; height: auto; margin-bottom: 0.75rem; }
