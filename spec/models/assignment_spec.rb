@@ -14,6 +14,28 @@ RSpec.describe Assignment, type: :model do
     expect(assignment.published_at).to be_nil
   end
 
+  it "accepts its own selected generation request" do
+    assignment = described_class.create!(attributes)
+    request = QuestionGenerationRequest.create!(assignment: assignment, material_blob_id: 123,
+      model: "test-model", prompt_version: "test-v1", state: "pending")
+
+    assignment.current_question_generation_request = request
+
+    expect(assignment).to be_valid
+  end
+
+  it "rejects another assignment's selected generation request on the pointer attribute" do
+    assignment = described_class.create!(attributes)
+    other = described_class.create!(attributes.merge(title: "Other quiz"))
+    request = QuestionGenerationRequest.create!(assignment: other, material_blob_id: 123,
+      model: "test-model", prompt_version: "test-v1", state: "pending")
+
+    assignment.current_question_generation_request = request
+
+    expect(assignment).not_to be_valid
+    expect(assignment.errors[:current_question_generation_request]).to include("must belong to this assignment")
+  end
+
   describe ".distributed_to_school" do
     it "includes target-school distributions once and excludes other-school and undistributed quizzes" do
       target = described_class.create!(attributes)
