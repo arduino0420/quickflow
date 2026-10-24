@@ -1,10 +1,18 @@
 # #51 / #99 運用監査・配備実績と最小運用案
 
-更新日: 2026-10-24 UTC。最終稼働基準: [f22a4c8](https://github.com/arduino0420/quickflow/commit/f22a4c8aa6076fc9cb874a14058fd25780860edf)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
+更新日: 2026-10-24 UTC。通常の最終稼働基準: [f22a4c8](https://github.com/arduino0420/quickflow/commit/f22a4c8aa6076fc9cb874a14058fd25780860edf)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 今回のPRは文書のみ。以下の運用実績は別途明示承認を受けた作業の記録で、この文書変更が再配備・本番操作を実行するものではない。元checkoutの14未コミット項目を保護し、task専用cloneで編集した。
 
-## 現行UI配備（2026-10-24 04:59 UTC確認）
+## 現行guest配置修正（2026-10-24 07:24 UTC）
+
+通常は下記f22a4c8のまま、guest webのみ source `2f8c3beae3c36050c24c8ceca80a4bcc65d5bf3c`、image `sha256:7fb35e2759e43675707b947aec2dd438da83bcfa2db40cec49ca1c802d2f6eef`へ更新。[main CI40072744081](https://github.com/arduino0420/quickflow/actions/runs/40072744081)全4成功、2,057例/失敗0。runtime差分は削除ボタン右揃えCSS1行のみ。
+
+- guest停止07:24:16–07:24:35 UTC、18.5秒。通常停止0秒、通常webのidentity/開始時刻とworkerを維持。guest DB/storage/鍵/manifest/gateway/network/TLSと864MiB/1CPU上限は不変。migration/reseed/追加Rails検証プロセスなし。旧guest image/configを停止保持し、回復timerは停止済み。
+- 実Chromeの320px/1280pxでExcelと削除ボタンの右端差0px、削除無効・form外を確認。3役割のHTTP認証/終了、書込・Origin拒否、PDF内容一致、Excel数値70、両ロゴ導線とブラウザlogout、通常health/login・worker heartbeatを確認。
+- 今回の教師/生徒埋込みPDFは空白を観測。正常なファイル取得と描画成功を区別する。PDFコード変更なし、原因未確定。下記の過去のChrome描画成功・所有者確認報告を今回の成功に読み替えない。実AI・実データ削除・物理Lenovo端末は未試験。
+
+## 前回の通常・guest UI配備（2026-10-24 04:59 UTC、履歴）
 
 通常・guestとも source `f22a4c8aa6076fc9cb874a14058fd25780860edf`、image `sha256:09d29e7898ac75efb534cff326523d9b660131709120b96171bc4b2acf7b1664`。[main CI40061706662](https://github.com/arduino0420/quickflow/actions/runs/40061706662)全4成功。4667c7caからのruntime差分はホームCSSと2viewのみ。schema/migration/認証/採点/保存形式は変更なし。
 
