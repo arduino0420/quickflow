@@ -33,6 +33,8 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     allow(files).to receive(:create).and_return(double(id: "stub-file"))
     allow(responses).to receive(:create) do |request|
       if request[:instructions]&.include?("添付教材")
+        expect(@generation_request.reload.state).to eq("running")
+        expect(@generation_request.claim_token).to be_present
         ai_response(questions: (1..3).map { |n|
           { question_label: n.to_s, question_text: "3x+2x", correct_answer: "5x", grading_rule: "同類項", requires_work: false }
         })
@@ -52,7 +54,15 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     end
     teacher_login(@teacher)
     @assignment = distribute(title: "ブラウザ採点フロー", classrooms: [ @room ])
+    @generation_request = @assignment.reload.current_question_generation_request
+    expect(@generation_request).to be_persisted
+    expect(@generation_request.assignment_id).to eq(@assignment.id)
+    expect(@generation_request.material_blob_id).to eq(@assignment.material_file.blob.id)
+    expect(@generation_request.state).to eq("pending")
     perform_enqueued_jobs(only: QuestionGenerationJob)
+    expect(@generation_request.reload.state).to eq("succeeded")
+    expect(@generation_request.finished_at).to be_present
+    expect(@generation_request.failure_code).to be_nil
     expect(@assignment.questions.count).to eq(3)
     @questions_before = @assignment.questions.order(:id).map(&:attributes)
   end

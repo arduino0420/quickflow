@@ -48,8 +48,9 @@ parent form's label: responsibility changes create/delete join rows, not UPDATE.
 | Submission | 追加System: handwritten PDF and legacy file-select upload with real enqueue/reading/grading (`quiz_grading_workflow`); 既存System: handwritten submission/recovery/lost response (`student_pdf_preview`) | 追加System: teacher summary/review iframe, student submitted PDF/results, downloaded Excel (`quiz_grading_workflow`) | 追加System: real job status/extracted text, existing flag OFF/ON recovery and processing generation, stale upload overwrite refusal (`quiz_grading_workflow`); 機能なし: student resubmission/edit UI | 追加System: parent explicit deletion (`assignment_crud`); no individual delete UI |
 | GradingResult | 追加System: real `AnswerGradingJob` persistence (`quiz_grading_workflow`) | 追加System: per-question teacher/student judgment and score, Excel download distinguishes blank score from 0 (`quiz_grading_workflow`) | 追加System: teacher final judgment changes only `teacher_judgment`/timestamp, AI text/reasons/reading/questions unchanged, untouched judgments stay nil (`quiz_grading_workflow`); Request-Serviceのみ: legacy judgment clear-to-nil endpoint/optimistic concurrency (`requests/teacher_grading_reviews`, `final_judgment_ui`) | 追加System: parent explicit deletion (`assignment_crud`); no individual delete UI |
 | AnswerDraft | 既存System: autosave from actual ink (`student_pdf_preview`); 追加System: workflow autosave pre-submission (`quiz_grading_workflow`) | 既存System: restore exact coordinates/ink (`student_pdf_preview`) | 既存System: appended ink, restore, session recovery/conflict, lost response keeps one submission (`student_pdf_preview`); 追加System: submission retains saved draft (`quiz_grading_workflow`) | 追加System: only parent explicit deletion (`assignment_crud`); clearing canvas is U (empty operations), submission retains row; no individual delete UI |
+| QuestionGenerationRequest | 追加System: actual distribution creates selected pending row (`assignment_crud`, `quiz_grading_workflow`) | 追加System: DB identity/input/state assertions following browser distribution and actual job; no dedicated ledger read UI | 追加System: actual job pending→running→succeeded (`quiz_grading_workflow`); Service/Jobのみ: failed/enqueue_failed/fencing (`question_generation_lifecycle`, `question_generation_job`); no manual state-edit UI | 追加System: confirmed parent deletion removes selected request, cancel/rename preserves it and another assignment request survives (`assignment_crud`); no individual ledger-delete UI |
 | AuthenticationAttemptBucket | 運用処理 / Request-Serviceのみ: failed authentication reserves internal counters (`services/authentication_throttle`, `requests/authentication_security`) | 運用処理 / Request-Serviceのみ: throttle reads locked counters; no account-management UI | 運用処理 / Request-Serviceのみ: increment/expiry window (`services/authentication_throttle`, `authentication_concurrency`) | 運用処理 / Request-Serviceのみ: successful authentication reset / expired `AuthenticationAttemptCleanupJob` batch cleanup (`services/authentication_throttle`); #96 owns authentication browser evidence |
-| ActiveStorage::Attachment / Blob | 運用処理: framework-managed; 追加System: attached material/answer through actual forms (`assignment_crud`, `quiz_grading_workflow`) | 追加System: original material bytes, submitted PDF and teacher/student iframe (`assignment_crud`, `quiz_grading_workflow`) | 機能なし: attachment replacement UI; 追加System: stale submitted upload cannot replace blob (`quiz_grading_workflow`) | 追加System: attachment rows removed on parent deletion (`assignment_crud`); 運用処理: asynchronous `ActiveStorage::PurgeJob` physical purge (`services/assignment_deletion`); UI enqueue/row deletion is not proof of physical purge |
+| ActiveStorage::Attachment / Blob | 運用処理: framework-managed; 追加System: attached material/answer through actual forms (`assignment_crud`, `quiz_grading_workflow`) | 追加System: original material bytes, submitted PDF and teacher/student PDF canvas and authorized original link (`assignment_crud`, `quiz_grading_workflow`) | 機能なし: attachment replacement UI; 追加System: stale submitted upload cannot replace blob (`quiz_grading_workflow`) | 追加System: attachment rows removed on parent deletion (`assignment_crud`); 運用処理: asynchronous `ActiveStorage::PurgeJob` physical purge (`services/assignment_deletion`); UI enqueue/row deletion is not proof of physical purge |
 | ActiveStorage::VariantRecord | 運用処理: framework variants, no application CRUD UI | 運用処理: framework lifecycle | 機能なし: application edit UI | 運用処理: framework cleanup |
 | ApplicationRecord | 機能なし: abstract base | 機能なし: abstract base | 機能なし: abstract base | 機能なし: abstract base |
 
@@ -120,3 +121,38 @@ rows/cells cannot pass as blank scores. Teacher review asserts rendered question
 text and correct answers within each question article, and the student's
 incorrect-result article asserts its correct answer. The amended Chrome workflow
 passes **1 example, 0 failures** (12.26s); RuboCop and diff checks pass.
+
+## 2026-10-24 #151現行モデル差分
+
+照合基準 `68f37d6ec1cb5be228454ee9f4a006e0f4a840c3`。`app/models/**/*.rb` の具象ApplicationRecord継承モデルは14個:
+School, Admin, Teacher, Classroom, TeacherClassroom, Student, Assignment,
+AssignmentClassroom, QuestionGenerationRequest, Question, Submission,
+GradingResult, AnswerDraft, AuthenticationAttemptBucket。上表と一対一で照合済み。
+ApplicationRecordは抽象、ActiveStorage3モデルと別DBのSolidモデルはframeworkとして別記。
+旧#97の実装・Chrome実績は取り消さず、後から追加された要求台帳1行を補完した。
+
+追加した証拠は新UIではなく既存ブラウザ操作の永続結果検証:
+
+- [`assignment_crud_spec.rb`](../../spec/system/assignment_crud_spec.rb),
+  `cancels or rejects renaming, changes only the title, and deletes only the confirmed quiz graph`:
+  実際の配信で作った台帳をrename/cancelで維持し、確認削除で消し、別配信の台帳を維持する。
+- [`quiz_grading_workflow_spec.rb`](../../spec/system/quiz_grading_workflow_spec.rb),
+  `persists generated questions, handwritten PDF and grading, saves teacher judgments, and downloads Excel through the displayed link`
+  および `before` を共有する `creates a legacy file upload once, rejects a stale form's replacement, and exposes recovery only under its existing flag`:
+  ブラウザ配信後のpending、実QuestionGenerationJobの外部client境界でrunning/claim、完了後succeeded/finished_atを直接検証。
+  外部AIだけstubし、台帳・生成サービス・jobは実装を実行する。fixture作成をブラウザCとは数えない。
+
+### 残る分類・限界（公式passではない）
+
+- 台帳のfailed/enqueue_failed、stale fencing、競合・復旧の全分岐は
+  [Service](../../spec/services/question_generation_lifecycle_spec.rb) /
+  [Job](../../spec/jobs/question_generation_job_spec.rb)の証拠であり、全てをSystemへ読み替えない。
+  pending/runningは独立画面ではなくブラウザ起点のjob中のDB検証。専用CRUD画面は存在しない。
+- AuthenticationAttemptBucketのcounter操作、School/Adminの運用作成、ActiveStorage実ファイルpurge、
+  Solid運用表は上表の運用/下位層分類のまま。CLI/内部処理も全てブラウザSystemを要求する解釈なら **UNVERIFIED**。
+- Classroomの管理者登録由来、GradingResultのlegacy nil解除等の下位層のみの操作変種は上表に明記済み。
+  同モデルの別経路にSystemがあることを、その変種までSystem確認済みとは主張しない。
+- 既存の直接/親経由のユーザーCRUD代表経路は上表に証拠がある。新しい未実装CRUDを増設せず、
+  「全モデルにC/R/U/Dがある」「全変種をSystem検証した」「学校が適用範囲を承認した」とは記録しない。
+
+検証: `assignment_crud_spec.rb`、`quiz_grading_workflow_spec.rb`、`services/demo/seed_spec.rb` の対象37例0失敗、変更した2specのRuboCop違反0。seed実測DBとは別の空テストDBを使用し、終了後専用PostgreSQL停止を確認した。実装コード・schema・seed・本番は未変更。
