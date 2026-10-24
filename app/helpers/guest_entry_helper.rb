@@ -1,4 +1,9 @@
 module GuestEntryHelper
+  # Fixed reviewed public origin; never use a return URL supplied by a request.
+  def normal_selection_home_url
+    "https://13-231-93-159.sslip.io/"
+  end
+
   def configured_guest_entry_url
     return if Demo::Profile.identity?
 

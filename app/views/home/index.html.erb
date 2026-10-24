@@ -1,31 +1,32 @@
-<h1 class="app-brand">QuickFlow</h1>
-<% unless Demo::Profile.identity? %>
-<p>中学校数学の小テストを通じて、教師の負担を減らし、生徒の学びを支えるアプリです。</p>
-<p>教師はPDF教材の配信・AI採点・得点集計・Excel出力を、生徒はPDFへの直接手書き・自動保存・提出・結果確認を行えます。</p>
-<nav class="home-login-options" aria-label="ログインの選択">
-  <%= link_to "教師としてログインする", login_path, class: "button button-secondary" %>
-  <%= link_to "生徒としてログインする", student_login_path, class: "button button-secondary" %>
-  <% if (guest_url = configured_guest_entry_url) %>
-    <%= link_to "ゲストとしてログインする", guest_url, class: "button button-secondary", aria: { describedby: "guest-available" } %>
+<section class="home-intro" aria-label="QuickFlowの紹介">
+  <% if (Demo::Profile.identity? || guest_session?) %>
+    <p class="home-bubble home-bubble--left">架空データの閲覧専用デモです。通常アカウントではログインできません。</p>
   <% else %>
-    <button type="button" class="button button-secondary" disabled aria-describedby="guest-unavailable">ゲストとしてログインする</button>
+    <p class="home-bubble home-bubble--left">中学校数学の小テストを通じて、教師の負担を減らし、生徒の学びを支えるアプリです。</p>
   <% end %>
-</nav>
-<% if guest_url %>
-<p id="guest-available" class="home-guest-status">架空データの閲覧専用ゲスト体験へ移動します。</p>
-<% else %>
-<p id="guest-unavailable" class="home-guest-status">ゲスト体験は準備中です。</p>
-<% end %>
-<% else %>
-<p>架空データ専用の閲覧デモです。通常アカウントではログインできません。<%= "現在ゲスト入口は停止中です。" unless Demo::Guest.enabled? %></p>
-<% end %>
-
-<% if Demo::Guest.enabled? %>
-  <section aria-label="架空データのゲスト体験">
-    <h2>架空データを閲覧する</h2>
-    <p>変更・提出・実AI採点はできません。</p>
-    <% { "admin" => "管理者", "teacher" => "教師", "student" => "生徒" }.each do |role, label| %>
-      <%= button_to "#{label}ゲストで閲覧", guest_login_path(role: role), method: :post %>
+  <h1 class="app-brand home-wordmark" aria-label="QuickFlow"><% if (Demo::Profile.identity? || guest_session?) %><%= link_to "QuickFlow", normal_selection_home_url, aria: { label: "QuickFlow 通常のログイン選択へ" } %><% else %><span aria-hidden="true"><% "QuickFlow".each_char.with_index do |letter, index| %><span class="home-letter home-letter--<%= index %>"><%= letter %></span><% end %></span><% end %></h1>
+  <% if (Demo::Profile.identity? || guest_session?) %>
+    <p class="home-bubble home-bubble--right">変更・提出・実AI採点はできません。<%= "現在ゲスト入口は停止中です。" unless Demo::Guest.enabled? %></p>
+  <% else %>
+    <p class="home-bubble home-bubble--right">教師はPDF教材の配信・AI採点・得点集計・Excel出力を、生徒はPDFへの直接手書き・自動保存・提出・結果確認を行えます。</p>
+  <% end %>
+</section>
+<% unless (Demo::Profile.identity? || guest_session?) %>
+  <nav class="home-login-options" aria-label="ログインの選択">
+    <%= link_to "教師としてログインする", login_path, class: "button button-secondary" %>
+    <%= link_to "生徒としてログインする", student_login_path, class: "button button-secondary" %>
+    <% if (guest_url = configured_guest_entry_url) %>
+      <%= link_to "ゲストとしてログインする", guest_url, class: "button button-secondary" %>
+    <% else %>
+      <button type="button" class="button button-secondary" disabled aria-describedby="guest-unavailable">ゲストとしてログインする</button>
     <% end %>
-  </section>
+  </nav>
+  <% unless guest_url %><p id="guest-unavailable" class="home-guest-status">ゲスト体験は準備中です。</p><% end %>
+<% end %>
+<% if Demo::Guest.enabled? %>
+  <nav class="home-guest-options" aria-label="ゲストの役割を選択">
+    <% { "admin" => "管理者", "teacher" => "教師", "student" => "生徒" }.each do |role, label| %>
+      <%= button_to "#{label}ゲストで閲覧", guest_login_path(role: role), method: :post, class: "button button-secondary" %>
+    <% end %>
+  </nav>
 <% end %>

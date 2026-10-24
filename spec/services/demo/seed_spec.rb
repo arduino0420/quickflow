@@ -99,10 +99,21 @@ RSpec.describe Demo::Seed do
     expect(Assignment.where.not(current_question_generation_request_id: nil)).not_to exist
     expect(ActiveStorage::Blob.count).to eq(10)
     expect(ActiveStorage::Attachment.count).to eq(10)
-    expect(Submission.all.map(&:score)).to eq([ 10 ] * 5)
+    expect(Submission.all.map(&:score)).to eq([ 70 ] * 5)
+    Assignment.find_each do |assignment|
+      expect(assignment.title).to eq("サンプルの小テスト")
+      expect(assignment.material_file.download).to eq(Demo::Sample.bytes(:material))
+      expect(assignment.submissions.sole.answer_file.download).to eq(Demo::Sample.bytes(:answer))
+      expect(assignment.questions.order(:position).pluck(:question_label)).to eq(Demo::Sample::QUESTIONS.map(&:first))
+      expect(assignment.submissions.sole.grading_results.where(ai_judgment: :incorrect).count).to eq(3)
+      unreduced = assignment.submissions.sole.grading_results.joins(:question).find_by!(questions: { question_label: "2(3)" })
+      expect(unreduced.student_answer).to eq("4/6")
+      expect(unreduced).to be_ai_judgment_incorrect
+      expect(unreduced.feedback).to include("未約分", "手動表示例", "実AIの採点結果ではありません")
+    end
     expect(AnswerDraft.all.map(&:student_id) & Submission.all.map(&:student_id)).to be_empty
     ActiveStorage::Blob.find_each do |blob|
-      expect(blob.download).to include("FICTIONAL DEMO SAMPLE", "xref", "%%EOF")
+      expect(Demo::Sample::FILES.values.map(&:last)).to include(Digest::SHA256.hexdigest(blob.download))
       expect(blob.checksum).to eq(Digest::MD5.base64digest(blob.download))
     end
     expect(AiClient).not_to have_received(:build)

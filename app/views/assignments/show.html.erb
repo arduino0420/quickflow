@@ -82,7 +82,7 @@
     </div>
   <% end %>
 </section>
-<% if @classrooms.any? && !guest_session? %>
+<% if @classrooms.any? %>
 <div class="grade-export-actions">
   <%= link_to "Excel出力", export_assignment_path(@assignment, classroom_id: @classroom_selection), class: "button button-excel-export", data: { turbo: false } %>
 </div>

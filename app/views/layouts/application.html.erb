@@ -26,7 +26,9 @@
   <body class="<%= "app-shell" unless content_for?(:hide_footer) %>">
     <header class="app-header <%= "app-header--auth" if [ "sessions", "student_sessions" ].include?(controller_name) %> <%= "app-header--with-actions" if content_for?(:header_actions) %>">
       <div class="app-header-inner">
-        <% if current_teacher && !current_student %>
+        <% if guest_session? %>
+          <%= link_to "QuickFlow", root_path, class: "app-brand" %>
+        <% elsif current_teacher && !current_student %>
           <%= link_to "QuickFlow", assignments_path, class: "app-brand" %>
         <% elsif current_student && !current_teacher %>
           <%= link_to "QuickFlow", student_assignments_path, class: "app-brand" %>

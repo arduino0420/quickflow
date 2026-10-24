@@ -127,19 +127,27 @@ module Demo
         TeacherClassroom.create!(teacher: teacher, classroom: classroom)
         student = Student.create!(classroom: classroom, attendance_number: 1, password: SecureRandom.hex(24))
         draft_student = Student.create!(classroom: classroom, attendance_number: 2, password: SecureRandom.hex(24))
-        assignment = Assignment.create!(teacher: teacher, title: "#{LABEL} #{number}", point_per_question: 10, published_at: Time.current)
-        attach!(assignment, :material_file, "material-#{number}.pdf", "1. Calculate 3x + 2x. Answer: ______")
+        assignment = Assignment.create!(teacher: teacher, title: Sample::TITLE, point_per_question: 10, published_at: Time.current)
+        attach!(assignment, :material_file, "sample-material.pdf", Sample.bytes(:material))
         AssignmentClassroom.create!(assignment: assignment, classroom: classroom)
-        question = Question.create!(assignment: assignment, question_label: "1", position: 1,
-          question_text: "#{LABEL}: 3x+2x", correct_answer: "5x",
-          grading_rule: JSON.generate(criteria: "#{LABEL}: 同類項をまとめる", requires_work: false, material_blob_id: assignment.material_file.blob.id),
-          answer_generation_model: "demo-sample-no-ai", answer_generation_prompt_version: "demo-sample-v1", answer_generated_at: Time.current)
-        submission = Submission.create!(assignment: assignment, student: student, status: :completed, submitted_at: Time.current,
-          extracted_text: JSON.generate(problems: [ { question_label: "1", question_text: question.question_text,
-            student_answer: "5x", reading_status: "readable", reading_reason: LABEL } ]))
-        attach!(submission, :answer_file, "answer-#{number}.pdf", "1. Calculate 3x + 2x. Sample answer: 5x")
-        GradingResult.create!(submission: submission, question: question, student_answer: "5x", ai_judgment: :correct,
-          ai_model_name: "demo-sample-no-ai", prompt_version: "demo-sample-v1", graded_at: Time.current, feedback: LABEL)
+        questions = Sample::QUESTIONS.each_with_index.map do |(label, problem, answer, _, _), index|
+          Question.create!(assignment: assignment, question_label: label, position: index + 1,
+            question_text: problem, correct_answer: answer,
+            grading_rule: JSON.generate(criteria: "表示用の手動作成サンプル（実AI未実行）。未約分は不正解。", requires_work: false, material_blob_id: assignment.material_file.blob.id),
+            answer_generation_model: "demo-sample-no-ai", answer_generation_prompt_version: "demo-sample-v2", answer_generated_at: Time.current)
+        end
+        problems = questions.zip(Sample::QUESTIONS).map do |question, sample|
+          { question_label: question.question_label, question_text: question.question_text,
+            student_answer: sample[3], reading_status: "readable", reading_reason: "提供答案から手動転記した表示用サンプル" }
+        end
+        submission = Submission.create!(assignment: assignment, student: student, status: :completed,
+          submitted_at: Time.current, extracted_text: JSON.generate(problems: problems))
+        attach!(submission, :answer_file, "sample-answer.pdf", Sample.bytes(:answer))
+        questions.zip(Sample::QUESTIONS).each do |question, sample|
+          GradingResult.create!(submission: submission, question: question, student_answer: sample[3], ai_judgment: sample[4],
+            ai_model_name: "demo-sample-no-ai", prompt_version: "demo-sample-v2", graded_at: Time.current,
+            feedback: question.question_label == "2(3)" ? "未約分のため不正解とする手動表示例です。実AIの採点結果ではありません。" : "手動作成の表示例です。実AIの採点結果ではありません。")
+        end
         AnswerDraft.create!(assignment: assignment, student: draft_student,
           material_fingerprint: AnswerDraftContext.fingerprint(assignment), format_version: 1,
           page_data: [ { page_number: 1, operations: [ { id: 1, tool: "pen", color: "#000000", width: 1.2, points: [ [ 30, 100 ], [ 50, 110 ] ] } ] } ])
@@ -150,8 +158,7 @@ module Demo
       "demo_seed"
     end
 
-    def attach!(record, name, filename, text)
-      bytes = pdf(text)
+    def attach!(record, name, filename, bytes)
       blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new(bytes), filename: filename,
         content_type: "application/pdf", service_name: storage_service_name, identify: false,
         metadata: { identified: true, analyzed: true, demo_sample: true })
@@ -161,27 +168,16 @@ module Demo
       record.touch
     end
 
-    # One-page PDF with a real cross-reference table; ASCII label is visible in all viewers.
-    def pdf(text)
-      stream = "BT /F1 12 Tf 40 760 Td (FICTIONAL DEMO SAMPLE - NO AI / NO REAL STUDENT) Tj 0 -30 Td (#{text}) Tj ET\n"
-      objects = [ "<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", "<< /Length #{stream.bytesize} >>\nstream\n#{stream}endstream" ]
-      result = +"%PDF-1.4\n"
-      offsets = objects.each_with_index.map do |object, index|
-        offset = result.bytesize
-        result << "#{index + 1} 0 obj\n#{object}\nendobj\n"
-        offset
-      end
-      xref = result.bytesize
-      result << "xref\n0 6\n0000000000 65535 f \n"
-      offsets.each { |offset| result << format("%010d 00000 n \n", offset) }
-      result << "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n#{xref}\n%%EOF\n"
-    end
-
     def verify!
       MODELS.each do |model|
-        refuse!("Unexpected count: #{model.table_name}") unless model.count == (model == Student ? 10 : 5)
+        expected_count = if model == Student
+          10
+        elsif [ Question, GradingResult ].include?(model)
+          5 * Sample::QUESTIONS.size
+        else
+          5
+        end
+        refuse!("Unexpected count: #{model.table_name}") unless model.count == expected_count
         model.find_each { |record| refuse!("Invalid model: #{model.table_name}") unless record.valid? }
       end
       refuse!("Synthetic samples must have no generation history") if QuestionGenerationRequest.exists? || Assignment.where.not(current_question_generation_request_id: nil).exists?
@@ -190,7 +186,7 @@ module Demo
       Assignment.find_each { |assignment| QuestionGenerator.new.saved_questions(assignment) }
       Submission.find_each do |submission|
         AnswerGrader.reading_problems(submission.extracted_text)
-        refuse!("Invalid sample score") unless submission.score == 10
+        refuse!("Invalid sample score") unless submission.score == 70
       end
       AnswerDraft.find_each do |draft|
         refuse!("Draft context mismatch") unless draft.material_fingerprint == AnswerDraftContext.fingerprint(draft.assignment) && !Submission.exists?(student: draft.student, assignment: draft.assignment)
@@ -198,7 +194,7 @@ module Demo
       ActiveStorage::Blob.find_each do |blob|
         refuse!("Unexpected storage service") unless blob.service_name == storage_service_name
         blob.open do |file|
-          refuse!("Invalid sample PDF") unless Marcel::MimeType.for(file) == "application/pdf" && file.read.start_with?("%PDF-1.4")
+          refuse!("Invalid sample PDF") unless Marcel::MimeType.for(file) == "application/pdf" && Sample::FILES.values.any? { |_, checksum| Digest::SHA256.file(file.path).hexdigest == checksum }
         end
       end
     end
