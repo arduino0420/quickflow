@@ -31,7 +31,7 @@ AIによる判定をそのまま確定せず、読みにくい答案は「要確
 
 ## 使い方と画面
 
-トップ・教師の成績一覧・生徒の結果は、稼働版 `4667c7ca` の実画面です（2026-10-24 UTC）。学校・アカウント・得点は公開guest用のサンプルで、教材・答案PDFは利用者が公開を承認したものです。判定と70点は手動の表示例で、実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。教師答案・生徒結果は、同日の追加撮影で 提供された答案PDF の実描画を確認した画面です。
+トップは配備後の `f22a4c8`、教師成績・答案・生徒結果は表示内容が同じ前版 `4667c7ca` の実画面です（2026-10-24 UTC）。学校・アカウント・得点は公開guest用のサンプルで、教材・答案PDFは利用者が公開を承認したものです。判定と70点は手動の表示例で、実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。教師答案・生徒結果は、同日の追加撮影で 提供された答案PDF の実描画を確認した画面です。
 
 検証中に埋込みPDFが白く写る場面もありましたが、所有者は現行版の教師・生徒の両画面で表示を確認したと報告しています。原因の特定や、すべての環境での表示を保証するものではありません。
 
@@ -84,7 +84,7 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 ## 検証状況
 
-- 通常サイトとguestの稼働sourceは [4667c7ca](https://github.com/arduino0420/quickflow/commit/4667c7ca9427c4f4bfdcb671887d80477f482ffc)。[配備版CI40050429701](https://github.com/arduino0420/quickflow/actions/runs/40050429701)は4ジョブ成功、RSpec 2,054件・失敗0件です。文書更新のheadと稼働sourceは区別しています。
+- 通常サイトとguestの稼働sourceは [f22a4c8](https://github.com/arduino0420/quickflow/commit/f22a4c8aa6076fc9cb874a14058fd25780860edf)。[配備版CI40061706662](https://github.com/arduino0420/quickflow/actions/runs/40061706662)は4ジョブ成功、RSpec 2,054件・失敗0件です。文書更新のheadと稼働sourceは区別しています。
 - TLS・Secure cookie、DB/PDF保全と隔離復元、worker・queue、限定した公開/guestフローを確認し、[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)と[限定フロー検証 #99](https://github.com/arduino0420/quickflow/issues/99)に完了根拠を記録しました。`/up` は起動確認であり、AI・DB・queue全体の健全性を保証しません。
 - 通常の実AI配信・提出・採点、および新版の手書き・保存の成功は所有者からの報告です。担当者によるLenovo実機の独立検証、すべての端末・PDF・実通信障害、AIの数学的正確性を保証するものではありません。
 - 今回の撮影では閲覧だけを行い、実生徒データの変更、答案提出、AI実行はしていません。旧表示試験用の長文画像や失敗履歴は、[検証資料](docs/implementation/issue103_submission_evidence.md)に残しています。
@@ -178,7 +178,7 @@ DB上の削除、物理PDFの非同期削除、外部OpenAI Fileの期限・非�
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
 
-画面遷移図はPR142の表示実装 da5763547cee と公開guest導線を照合した資料です。配備済みの版は4667c7caで、PR142の表示変更は未配備です。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中のschema基準を維持しています。
+画面遷移図はPR142の表示実装 da5763547cee と公開guest導線を照合した資料です。配備済みの版はf22a4c8で、PR142の表示変更を通常・guest双方で確認済みです。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中のschema基準を維持しています。
 
 原本ワイヤーフレームのトップと採点表示は現行仕様へ更新済みです。[差分と通知用本文](docs/implementation/issue103_submission_evidence.md)を用意しています。審査者からの閲覧確認と、DProへの修正版再投稿・変更通知・最終提出は本人が行います。
 
