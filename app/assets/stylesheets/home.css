@@ -26,6 +26,7 @@
 @media (max-width: 900px) {
   .home-intro { grid-template-columns: 1fr; gap: 1rem; max-width: 34rem; margin: 0 auto; }
   .home-wordmark { grid-row: 1; }
+  .home-page .app-brand { font-size: clamp(3rem, 16vw, 6.5rem); }
   .home-bubble { padding: .8rem 1rem; font-size: .875rem; }
   .home-bubble::after { display: none; }
 }
