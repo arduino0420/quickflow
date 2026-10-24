@@ -33,17 +33,13 @@ RSpec.describe "Home login choices", type: :system do
     end
   end
 
-  it "uses one finite sequential bounce and disables it for reduced motion" do
+  it "keeps the logo still and places the two explanation rows below it" do
     visit root_path
-    expect(page).to have_css("h1[aria-label='QuickFlow']")
-    expect(page.all(".home-letter").map(&:text).join).to eq("QuickFlow")
-    delays = page.evaluate_script("Array.from(document.querySelectorAll('.home-letter'), el => parseFloat(getComputedStyle(el).animationDelay))")
-    expect(delays).to eq((0..8).map { |index| index / 10.0 })
-    expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-letter')).animationIterationCount")).to eq("1")
-    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia", features: [ { name: "prefers-reduced-motion", value: "reduce" } ])
-    expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-letter')).animationName")).to eq("none")
-  ensure
-    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia", features: [])
+    expect(page).to have_css("h1[aria-label='QuickFlow']", text: "QuickFlow")
+    expect(page).not_to have_css(".home-letter, .home-bubble")
+    expect(page.all(".home-description p").size).to eq(2)
+    expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-wordmark')).animationName")).to eq("none")
+    expect(page.evaluate_script("document.querySelector('.home-description').getBoundingClientRect().top >= document.querySelector('.home-wordmark').getBoundingClientRect().bottom")).to be(true)
   end
 
   it "supports keyboard navigation and both login destinations" do
