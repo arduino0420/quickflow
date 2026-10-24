@@ -76,6 +76,11 @@ RSpec.describe "Read-only fictional guests", type: :request do
     document = Nokogiri::HTML(response.body)
     export = document.at_css("a.button-excel-export")
     expect(export.text).to eq("Excel出力")
+    deletion = document.at_css("button[aria-describedby='guest-delete-unavailable']")
+    expect(deletion.text).to eq("この小テストを削除する")
+    expect(deletion.key?("disabled")).to be(true)
+    expect(deletion.ancestors("form")).to be_empty
+    expect(document.at_css("#guest-delete-unavailable").text).to eq("閲覧専用のため削除できません。")
     get export["href"]
     expect(response).to have_http_status(:ok)
     expect(response.media_type).to eq("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -91,7 +96,8 @@ RSpec.describe "Read-only fictional guests", type: :request do
     document = Nokogiri::HTML(response.body)
     expect(document.at_css("h1 a")["href"]).to eq("https://13-231-93-159.sslip.io/")
     expect(document.css(".home-guest-options button").map(&:text)).to eq(%w[管理者ゲストで閲覧 教師ゲストで閲覧 生徒ゲストで閲覧])
-    expect(document.text).to include("閲覧専用", "変更・提出・実AI採点はできません")
+    expect(document.css(".home-description, .home-bubble")).to be_empty
+    expect(document.text).not_to include("閲覧専用", "通常アカウントではログインできません", "変更・提出・実AI採点はできません")
     expect(document.text).not_to include("架空データを閲覧する")
   end
 
@@ -184,7 +190,7 @@ RSpec.describe "Read-only fictional guests", type: :request do
       expect(response).to redirect_to(root_path)
       follow_redirect!
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("架空データの閲覧専用デモ")
+      expect(response.body).to include("管理者ゲストで閲覧", "教師ゲストで閲覧", "生徒ゲストで閲覧")
       cookies[key] = previous
       get({ "admin" => "/admin", "teacher" => "/assignments", "student" => "/student/assignments" }.fetch(role))
       expect(response).to have_http_status(:unauthorized)

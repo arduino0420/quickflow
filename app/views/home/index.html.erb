@@ -1,14 +1,10 @@
 <section class="home-intro" aria-label="QuickFlowの紹介">
-  <% if (Demo::Profile.identity? || guest_session?) %>
-    <p class="home-bubble home-bubble--left">架空データの閲覧専用デモです。通常アカウントではログインできません。</p>
-  <% else %>
-    <p class="home-bubble home-bubble--left">中学校数学の小テストを通じて、教師の負担を減らし、生徒の学びを支えるアプリです。</p>
-  <% end %>
-  <h1 class="app-brand home-wordmark" aria-label="QuickFlow"><% if (Demo::Profile.identity? || guest_session?) %><%= link_to "QuickFlow", normal_selection_home_url, aria: { label: "QuickFlow 通常のログイン選択へ" } %><% else %><span aria-hidden="true"><% "QuickFlow".each_char.with_index do |letter, index| %><span class="home-letter home-letter--<%= index %>"><%= letter %></span><% end %></span><% end %></h1>
-  <% if (Demo::Profile.identity? || guest_session?) %>
-    <p class="home-bubble home-bubble--right">変更・提出・実AI採点はできません。<%= "現在ゲスト入口は停止中です。" unless Demo::Guest.enabled? %></p>
-  <% else %>
-    <p class="home-bubble home-bubble--right">教師はPDF教材の配信・AI採点・得点集計・Excel出力を、生徒はPDFへの直接手書き・自動保存・提出・結果確認を行えます。</p>
+  <h1 class="app-brand home-wordmark" aria-label="QuickFlow"><% if (Demo::Profile.identity? || guest_session?) %><%= link_to "QuickFlow", normal_selection_home_url, aria: { label: "QuickFlow 通常のログイン選択へ" } %><% else %>QuickFlow<% end %></h1>
+  <% unless (Demo::Profile.identity? || guest_session?) %>
+    <div class="home-description">
+      <p>中学校数学の小テストを通じて、教師の負担を減らし、生徒の学びを支えるアプリです。</p>
+      <p>教師はPDF教材の配信・AI採点・得点集計・Excel出力を、生徒はPDFへの直接手書き・自動保存・提出・結果確認を行えます。</p>
+    </div>
   <% end %>
 </section>
 <% unless (Demo::Profile.identity? || guest_session?) %>

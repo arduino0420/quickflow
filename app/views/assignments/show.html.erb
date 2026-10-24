@@ -88,7 +88,12 @@
 </div>
 <% end %>
 <div class="assignment-delete-actions">
-  <% unless guest_session? %>
+  <% if guest_session? %>
+    <div>
+    <button type="button" class="button button-danger" disabled aria-describedby="guest-delete-unavailable">この小テストを削除する</button>
+    <p id="guest-delete-unavailable">閲覧専用のため削除できません。</p>
+    </div>
+  <% else %>
   <%= button_to "この小テストを削除する", assignment_path(@assignment), method: :delete,
     form: { data: { turbo_confirm: "「#{@assignment.title}」を削除します。提出答案・採点結果・成績も削除され、元に戻せません。削除してよろしいですか？" } }, class: "button button-danger" %>
   <% end %>
