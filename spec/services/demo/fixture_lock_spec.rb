@@ -62,6 +62,18 @@ RSpec.describe "Demo fixture preparation" do
     worker&.join
   end
 
+  it "retains preparation locks for later seed assertions until the outer fixture ends" do
+    with_demo_seed_fixture_locks { nil }
+    other = other_connection
+    other.exec("BEGIN")
+    expect { other.exec("LOCK TABLE grading_results IN SHARE UPDATE EXCLUSIVE MODE NOWAIT") }.to raise_error(PG::LockNotAvailable)
+    expect(seed.call.values).to all(be >= 5)
+    expect(seed.verify_guest!).to be(true)
+  ensure
+    other&.exec("ROLLBACK")
+    other&.finish
+  end
+
   it "fails within its bound without seeding or leaking the local timeout" do
     other = other_connection
     other.exec("BEGIN")
