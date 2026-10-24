@@ -1,10 +1,20 @@
 # #51 / #99 運用監査・配備実績と最小運用案
 
-更新日: 2026-10-24 UTC。最終稼働基準: [4667c7ca](https://github.com/arduino0420/quickflow/commit/4667c7ca9427c4f4bfdcb671887d80477f482ffc)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
+更新日: 2026-10-24 UTC。最終稼働基準: [f22a4c8](https://github.com/arduino0420/quickflow/commit/f22a4c8aa6076fc9cb874a14058fd25780860edf)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 今回のPRは文書のみ。以下の運用実績は別途明示承認を受けた作業の記録で、この文書変更が再配備・本番操作を実行するものではない。元checkoutの14未コミット項目を保護し、task専用cloneで編集した。
 
-## 現行状態（2026-10-24）
+## 現行UI配備（2026-10-24 04:59 UTC確認）
+
+通常・guestとも source `f22a4c8aa6076fc9cb874a14058fd25780860edf`、image `sha256:09d29e7898ac75efb534cff326523d9b660131709120b96171bc4b2acf7b1664`。[main CI40061706662](https://github.com/arduino0420/quickflow/actions/runs/40061706662)全4成功。4667c7caからのruntime差分はホームCSSと2viewのみ。schema/migration/認証/採点/保存形式は変更なし。
+
+- guest web切替: 04:55:51–04:56:09 UTC、18.5秒。DB/storage/credentials/session鍵/manifestとnetwork/TLS/URLを再利用。旧webを停止保持し、合計864MiB/1CPU上限を維持。
+- 通常maintenance: 04:57:15–04:58:41 UTC、86.2秒。処理静止を確認し、旧worker正常停止後に4DB＋PDFを同一server内へ整合backup。4dumpの一覧・checksum、storageとprimary集計不変を確認してweb/worker更新。migration20本/最新20261022110000は不変。DB復元・seed・鍵作成なし。
+- 通常root/up/3loginは200、session Cookie属性はSecure/HttpOnly/SameSite=Lax/Path=/。Supervisor/Worker/Dispatcher/Schedulerの最近heartbeat各1、観測時queue各分類とclaim0。旧image/config、4DB/PDF backupを保持。回復timer・一時検証containerは停止。
+- Chromeで静止ロゴ・元の説明2段・吹き出しなし、通常/guest各buttonの16px/高さ56px、guest削除無効、教師/生徒の実PDF描画、手動70点、両ロゴ戻り先/logoutを確認。3役割のHTTP認証/Origin拒否/書込403、PDF実体一致とExcel70点も確認。通常削除の認可はcontroller差分なしと既存CIを根拠とし、実データ削除を試していない。
+- 実AI・通常アカウントの認証付き書込・物理Lenovo端末・全browser/PDFは今回未検証。今回の追加Rails検証プロセス、network/TLS変更、データ巻戻しはない。以下は前版の履歴。
+
+## 前版4667c7ca（2026-10-24、履歴）
 
 - 通常・guestのsourceは `4667c7ca9427c4f4bfdcb671887d80477f482ffc`、imageは `sha256:b5a81cb2717c05408e1650d13fc35d6a5921260a139535d9cd0f13dc5c6c9a07`。[main CI40050429701](https://github.com/arduino0420/quickflow/actions/runs/40050429701) 全4成功、2,054例/失敗0。
 - 通常切替は02:49:20–02:50:45 UTC、実測84.7秒。新規の同一server内4DB＋PDFの整合backup、既存処理の完了・旧worker停止後にweb/worker更新。migrationなし。schema最新20261022110000、集計と保存mount継続を確認。DB巻戻しなし、旧image/guest領域を保持。
