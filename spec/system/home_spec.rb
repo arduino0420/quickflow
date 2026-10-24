@@ -33,6 +33,19 @@ RSpec.describe "Home login choices", type: :system do
     end
   end
 
+  it "uses one finite sequential bounce and disables it for reduced motion" do
+    visit root_path
+    expect(page).to have_css("h1[aria-label='QuickFlow']")
+    expect(page.all(".home-letter").map(&:text).join).to eq("QuickFlow")
+    delays = page.evaluate_script("Array.from(document.querySelectorAll('.home-letter'), el => parseFloat(getComputedStyle(el).animationDelay))")
+    expect(delays).to eq((0..8).map { |index| index / 10.0 })
+    expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-letter')).animationIterationCount")).to eq("1")
+    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia", features: [ { name: "prefers-reduced-motion", value: "reduce" } ])
+    expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-letter')).animationName")).to eq("none")
+  ensure
+    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia", features: [])
+  end
+
   it "supports keyboard navigation and both login destinations" do
     visit root_path
     page.find("body").send_keys(:tab)
@@ -72,7 +85,7 @@ RSpec.describe "Home login choices", type: :system do
         width: width, height: height, deviceScaleFactor: 1, mobile: false)
       visit root_path
       expect(page).to have_link("ゲストとしてログインする", href: destination, visible: true)
-      expect(page).to have_content("架空データの閲覧専用ゲスト体験へ移動します。")
+      expect(page).not_to have_content("架空データの閲覧専用ゲスト体験へ移動します。")
       expect(page.evaluate_script("document.documentElement.scrollWidth <= window.innerWidth")).to be(true)
       page.find("body").send_keys(:tab, :tab, :tab)
       expect(page.evaluate_script("document.activeElement.textContent")).to eq("ゲストとしてログインする")

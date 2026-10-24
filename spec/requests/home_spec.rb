@@ -47,8 +47,8 @@ RSpec.describe "Home", type: :request do
     guest = document.css(".home-login-options > *").last
     expect(guest.name).to eq("a")
     expect(guest["href"]).to eq(destination)
-    expect(guest["aria-describedby"]).to eq("guest-available")
-    expect(document.text).to include("架空データの閲覧専用ゲスト体験へ移動します。")
+    expect(guest["aria-describedby"]).to be_nil
+    expect(document.text).not_to include("架空データの閲覧専用ゲスト体験へ移動します。")
     expect(document.css("form")).to be_empty
     post "/guest/admin"
     expect(response).to have_http_status(:not_found)

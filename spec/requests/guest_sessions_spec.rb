@@ -59,6 +59,42 @@ RSpec.describe "Read-only fictional guests", type: :request do
     expect(ActiveJob::Base).not_to have_received(:perform_later)
   end
 
+  it "returns every signed-in guest wordmark to role selection and exposes the existing teacher Excel export" do
+    original = snapshot
+    { "admin" => "/admin", "teacher" => "/assignments", "student" => "/student/assignments" }.each do |role, path|
+      start(role)
+      get path
+      document = Nokogiri::HTML(response.body)
+      expect(document.at_css("header a.app-brand")["href"]).to eq(root_path)
+      get root_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("ゲストの役割を選択")
+    end
+    start("teacher")
+    assignment = Assignment.joins(:teacher).find_by!(teachers: { user_id: "demo-teacher-1" })
+    get assignment_path(assignment)
+    document = Nokogiri::HTML(response.body)
+    export = document.at_css("a.button-excel-export")
+    expect(export.text).to eq("Excel出力")
+    get export["href"]
+    expect(response).to have_http_status(:ok)
+    expect(response.media_type).to eq("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    expect(response.body.b).to start_with("PK".b)
+    expect(snapshot).to eq(original)
+    expect(AiClient).not_to have_received(:build)
+  end
+
+  it "links the isolated landing wordmark to only the fixed normal selection origin" do
+    allow(Demo::Profile).to receive(:identity?).and_return(true)
+    allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+    get root_path, params: { return_to: "https://untrusted.example/" }
+    document = Nokogiri::HTML(response.body)
+    expect(document.at_css("h1 a")["href"]).to eq("https://13-231-93-159.sslip.io/")
+    expect(document.css(".home-guest-options button").map(&:text)).to eq(%w[管理者ゲストで閲覧 教師ゲストで閲覧 生徒ゲストで閲覧])
+    expect(document.text).to include("閲覧専用", "変更・提出・実AI採点はできません")
+    expect(document.text).not_to include("架空データを閲覧する")
+  end
+
   it "keeps school and ownership boundaries on detail and authenticated PDF routes" do
     own = Assignment.joins(:teacher).find_by!(teachers: { user_id: "demo-teacher-1" })
     other = Assignment.where.not(id: own.id).first
@@ -148,7 +184,7 @@ RSpec.describe "Read-only fictional guests", type: :request do
       expect(response).to redirect_to(root_path)
       follow_redirect!
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("架空データ専用の閲覧デモ")
+      expect(response.body).to include("架空データの閲覧専用デモ")
       cookies[key] = previous
       get({ "admin" => "/admin", "teacher" => "/assignments", "student" => "/student/assignments" }.fetch(role))
       expect(response).to have_http_status(:unauthorized)

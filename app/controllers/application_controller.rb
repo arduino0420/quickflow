@@ -53,6 +53,7 @@ class ApplicationController < ActionController::Base
       reset_session
       return head :unauthorized
     end
+    return if controller_path == "home" && action_name == "index" && request.get?
     return if controller_path == "guest_sessions" && action_name == "create" && request.post?
     allowed = Demo::Guest::READS.fetch(session[:guest_role]).fetch(controller_path, [])
     head :forbidden unless request.get? && allowed.include?(action_name)
