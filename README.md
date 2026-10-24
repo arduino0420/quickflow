@@ -84,7 +84,7 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 ## 検証状況
 
-- 通常サイトとguestの稼働sourceは [acd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)。[配備版CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)は4ジョブ成功、RSpec 2,049件・失敗0件です。文書更新のheadと稼働sourceは区別しています。
+- 通常サイトとguestの稼働sourceは [4667c7ca](https://github.com/arduino0420/quickflow/commit/4667c7ca9427c4f4bfdcb671887d80477f482ffc)。[配備版CI40050429701](https://github.com/arduino0420/quickflow/actions/runs/40050429701)は4ジョブ成功、RSpec 2,054件・失敗0件です。文書更新のheadと稼働sourceは区別しています。
 - TLS・Secure cookie、DB/PDF保全と隔離復元、worker・queue、限定した公開/guestフローを確認し、[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)と[限定フロー検証 #99](https://github.com/arduino0420/quickflow/issues/99)に完了根拠を記録しました。`/up` は起動確認であり、AI・DB・queue全体の健全性を保証しません。
 - 通常の実AI配信・提出・採点、および新版の手書き・保存の成功は所有者からの報告です。担当者によるLenovo実機の独立検証、すべての端末・PDF・実通信障害、AIの数学的正確性を保証するものではありません。
 - 今回の撮影では閲覧だけを行い、実生徒データの変更、答案提出、AI実行はしていません。旧表示試験用の長文画像や失敗履歴は、[検証資料](docs/implementation/issue103_submission_evidence.md)に残しています。
