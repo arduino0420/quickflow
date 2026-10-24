@@ -1,12 +1,20 @@
 # #51 / #99 運用監査・配備実績と最小運用案
 
-更新日: 2026-10-23 UTC。最終稼働基準: [mainacd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
+更新日: 2026-10-24 UTC。最終稼働基準: [4667c7ca](https://github.com/arduino0420/quickflow/commit/4667c7ca9427c4f4bfdcb671887d80477f482ffc)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 今回のPRは文書のみ。以下の運用実績は別途明示承認を受けた作業の記録で、この文書変更が再配備・本番操作を実行するものではない。元checkoutの14未コミット項目を保護し、task専用cloneで編集した。
 
-## 最新状態（2026-10-23、配備後の確認済み記録）
+## 現行状態（2026-10-24）
 
-以下は実行担当の観測と所有者報告を分けた記録。初回監査/手順案の「未実行」は当時の履歴であり、この節を現在状態として参照する。
+- 通常・guestのsourceは `4667c7ca9427c4f4bfdcb671887d80477f482ffc`、imageは `sha256:b5a81cb2717c05408e1650d13fc35d6a5921260a139535d9cd0f13dc5c6c9a07`。[main CI40050429701](https://github.com/arduino0420/quickflow/actions/runs/40050429701) 全4成功、2,054例/失敗0。
+- 通常切替は02:49:20–02:50:45 UTC、実測84.7秒。新規の同一server内4DB＋PDFの整合backup、既存処理の完了・旧worker停止後にweb/worker更新。migrationなし。schema最新20261022110000、集計と保存mount継続を確認。DB巻戻しなし、旧image/guest領域を保持。
+- guestの観測停止は3区間合計129.7秒（68.0/39.5/22.2秒）、最終02:37:19–02:37:41 UTC。専用DB・storage・鍵を更新し、URL・隔離network・TLS・864MiB/1CPU上限を保持。追加Rails検証プロセスによるOOMは回復済み。以後は余分なRailsプロセスを起動せず軽量確認とした。誤った検証SQLも訂正して再確認し、障害を隠して成功扱いにしない。
+- 通常health/login、worker heartbeat、guest3役・read-only/Origin/manifest・Excelの限定確認を保持。2026-10-24にChromeで教師答案と生徒結果の提供PDFの実描画を追加確認し、READMEに実撮影を収録。70点は手動表示例、実AI結果ではない。所有者も両PDFが見えると報告。過去の断続的な空白観測の原因や全browser/PDFでの成功を断定しない。
+- PR142の静止ロゴ・説明2段・guestボタン統一・削除無効表示はマージ済みで未配備。現在の公開画面と混同せず、この文書変更で配備しない。実Lenovo端末の解消や今回の認証付き通常筆記/実AI再試験は実行担当の観測として主張しない。
+
+## 前版acd22fb9の配備記録（2026-10-23、履歴）
+
+以下は実行担当の観測と所有者報告を分けた記録。初回監査/手順案の「未実行」は当時の履歴であり、この節は前版の履歴として参照する。
 
 - **最新の通常/ゲスト稼働版:** source `acd22fb9e9f7241c3e434a147edc09f5f3a13ef7`、app image `sha256:d2d31173a09eaa318677d110684e56185b03d746a94ec4abf4b133506ab24f2e`。[main CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)全4ジョブ成功、2,049例/失敗0。1adb1530からのruntime差分は明示的pen/palm入力処理とcrass1.0.7→1.0.8のみ。DB/schema/設定/保存形式/採点jobは変更なし。PR23は含まない。今回の文書commitは稼働imageに含まれない。
 - **最新の通常web切替:** 2026-10-23 22:02:59–22:04:12 UTC、約73.1秒。maintenance→queue/claim/transaction静止を連続3回確認→旧worker正常停止→新版web/worker→公開再開。migration20本/最新20261022110000、storage mount継続。公開再開前に生徒・提出・採点結果・blob・attachmentの集計一致を確認。全レコード/添付checksumの再照合、新規backup、migration/seed/DB復元を行ったとは記載しない。

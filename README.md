@@ -31,7 +31,7 @@ AIによる判定をそのまま確定せず、読みにくい答案は「要確
 
 ## 使い方と画面
 
-トップ・教師の成績一覧・生徒の結果は、稼働版 `4667c7ca` の実画面です（2026-10-24 UTC）。学校・アカウント・得点は公開guest用のサンプルで、教材・答案PDFは利用者が公開を承認したものです。判定と70点は手動の表示例で、実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。教師答案の画像だけは、下記のとおり前版の履歴を残しています。
+トップ・教師の成績一覧・生徒の結果は、稼働版 `4667c7ca` の実画面です（2026-10-24 UTC）。学校・アカウント・得点は公開guest用のサンプルで、教材・答案PDFは利用者が公開を承認したものです。判定と70点は手動の表示例で、実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。教師答案・生徒結果は、同日の追加撮影で 提供された答案PDF の実描画を確認した画面です。
 
 検証中に埋込みPDFが白く写る場面もありましたが、所有者は現行版の教師・生徒の両画面で表示を確認したと報告しています。原因の特定や、すべての環境での表示を保証するものではありません。
 
@@ -47,9 +47,9 @@ AIによる判定をそのまま確定せず、読みにくい答案は「要確
 
 答案PDFと問題ごとの結果を並べて確認できます。通常利用では、教師が最終判定を修正すると得点が再計算され、配信クラスを選んでExcelを出力できます。
 
-![前版acd22fb9の履歴：標準Chromeで表示した教師guestの架空答案3x+2xと回答5x、正解判定](docs/screenshots/teacher-answer.jpg)
+![現行4667c7ca：教師guestのサンプル答案PDFと手動表示例70点](docs/screenshots/teacher-answer.jpg)
 
-この教師答案画像は前版 `acd22fb9`（2026-10-23 UTC）の履歴で、現在の「サンプルの小テスト」の答案ではありません。今回の撮影では現行版の教師答案が描画された画像を取得できなかったため、前版の画像を履歴として残しています。画像中の「AI読み取り」は表示項目名であり、この撮影でAIを実行したものではありません。
+この教師答案画像は現行 `4667c7ca` の公開guestを標準Chromeで撮影したものです。答案の氏名欄は空で、表示される学校・出席番号は架空データです。PDF内の手書きと手動表示例70点を実際に確認しました。画面をスクロールした位置の撮影で、上部のguest注意表示は画像外です。実AIの実行や通常教師の判定変更を検証する画像ではありません。
 
 ### 3. 生徒が答案と結果を確認する
 
@@ -172,7 +172,7 @@ DBと添付PDFは整合したバックアップと復元確認が必要です。
 DB上の削除、物理PDFの非同期削除、外部OpenAI Fileの期限・非同期cleanupは別の処理です。404や `store: false` だけで外部保持ゼロを保証しません。[外部ファイル保持と安全な復旧手順](docs/implementation/operations_details.md)を確認してください。
 
 - [チェックシート](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=1475280975) / [カタログ](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=0) / [テーブル定義](https://docs.google.com/spreadsheets/d/1G-4Q3SS79nOKc3IJGaaYNftkwM0XktCnIgPAiMZ-1ug/edit#gid=524149616)
-- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図（9704b30基準）](docs/er_diagram.png) / [画面遷移図（生成時点の履歴）](docs/screen_transition.png)
+- [ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4) / [ER図（9704b30基準）](docs/er_diagram.png) / [画面遷移図（表示実装と公開導線の照合）](docs/screen_transition.png)
 - [図の編集元・実装照合・全カラムと制約](docs/design/README.md)
 - [画面・架空スクリーンショット監査](docs/implementation/issue95_screen_audit.md) / [Model Spec監査](docs/implementation/issue98_model_spec_audit.md) / [認証System監査](docs/implementation/issue96_authentication_system_audit.md) / [CRUD System監査](docs/implementation/issue97_crud_system_audit.md)
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
