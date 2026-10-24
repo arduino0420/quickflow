@@ -57,13 +57,13 @@ RSpec.describe "Assignment CRUD in Chrome", type: :system do
       ai_model_name: "fixture", prompt_version: "v1", graded_at: Time.current)
     draft = AnswerDraft.create!(assignment: assignment, student: @students.first,
       material_fingerprint: AnswerDraftContext.fingerprint(assignment), page_data: [ { "page_number" => 1, "operations" => [] } ])
-    records = [ *assignment.assignment_classrooms, question, submission, result, draft ]
+    records = [ *assignment.assignment_classrooms, assignment.current_question_generation_request, question, submission, result, draft ]
     snapshot = records.map { |record| record.reload.attributes }
     expect(submission.reload.score).to eq(5)
     other_pdf = other.material_file.download
     unchanged = assignment.attributes.except("title", "updated_at")
     attachments = ActiveStorage::Attachment.where(record: [ assignment, submission ]).pluck(:id, :blob_id)
-    survivors = [ @school, @teacher, *@rooms, *@students, other ].map { |record| [ record, record.reload.attributes ] }
+    survivors = [ @school, @teacher, *@rooms, *@students, other, other.current_question_generation_request ].map { |record| [ record, record.reload.attributes ] }
 
     visit assignment_path(assignment)
     click_link "名前を編集"
