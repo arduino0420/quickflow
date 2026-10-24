@@ -1,10 +1,19 @@
 # #51 / #99 運用監査・配備実績と最小運用案
 
-更新日: 2026-10-24 UTC。通常の最終稼働基準: [f22a4c8](https://github.com/arduino0420/quickflow/commit/f22a4c8aa6076fc9cb874a14058fd25780860edf)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
+更新日: 2026-10-24 UTC。通常・guestの最終稼働基準: [0812708](https://github.com/arduino0420/quickflow/commit/0812708fcc4d82dca02eb7d9e9c4594716d64e0b)。初回コード監査9704b30・公開観測2026-10-22は履歴として保持する。
 [Issue 51](https://github.com/arduino0420/quickflow/issues/51)、[99](https://github.com/arduino0420/quickflow/issues/99)、[提出チェック](issue103_submission_evidence.md)を参照。
 今回のPRは文書のみ。以下の運用実績は別途明示承認を受けた作業の記録で、この文書変更が再配備・本番操作を実行するものではない。元checkoutの14未コミット項目を保護し、task専用cloneで編集した。
 
-## 現行guest配置修正（2026-10-24 07:24 UTC）
+## 現行PDF閲覧版（2026-10-24 09:27 UTC確認）
+
+通常・guestとも source `0812708fcc4d82dca02eb7d9e9c4594716d64e0b`、image `sha256:a09776739e008b98a23cb7659d1e9dc5123e9477f9af164e5c2358fcc915624a`。[main CI40079428699](https://github.com/arduino0420/quickflow/actions/runs/40079428699)全4成功、2,062例/失敗0。答案閲覧だけを既存PDF.jsの1ページずつの描画へ変更。通常の筆記/保存/提出/採点・schema・鍵・manifest・network/TLSは不変。
+
+- guest切替09:14:45–09:15:01 UTC、16.3秒。通常maintenance09:24:28–09:25:54 UTC、85.8秒。処理静止と旧worker正常停止後に4DB＋保存ファイルを同一server内へ整合backupし、dump一覧/checksum・保全を確認。migration20本/最新20261022110000は不変。旧image/configを保持し、回復timerを停止。DB復元・再seed・追加Rails検証プロセスなし。
+- 本番guestの教師/生徒で直接・アプリ内遷移、reload/back等の描画完了9回と、提供PDFの実画像4場面を確認。320/1280px、3役割、原本内容一致、Excel70点、Origin/書込拒否、ロゴ導線・logoutを確認。1ページの実サンプルではページ選択非表示。3ページ選択はローカル試験のみ。
+- 通常root/up/3loginは200、Secure/HttpOnly/Lax/Path=/を維持。Supervisor/Worker/Dispatcher/Scheduler各1の最近heartbeat、観測時queue/claim0。guestの既存DB/storage/gatewayと864MiB/1CPU上限を維持。
+- 通常の認証付き本番描画は未試験（既存の確認用認証情報なし、resetなし）。ローカル架空通常Chrome/headless試験とCIが根拠。実AI・実データ操作・Lenovo実機を再検証していない。原本URL/bytesは正常だが、原本タブのChrome内蔵表示は黒画面を観測。内部原因や全端末/PDFの安定性は断定しない。
+
+## 前回のguest配置修正（2026-10-24 07:24 UTC、履歴）
 
 通常は下記f22a4c8のまま、guest webのみ source `2f8c3beae3c36050c24c8ceca80a4bcc65d5bf3c`、image `sha256:7fb35e2759e43675707b947aec2dd438da83bcfa2db40cec49ca1c802d2f6eef`へ更新。[main CI40072744081](https://github.com/arduino0420/quickflow/actions/runs/40072744081)全4成功、2,057例/失敗0。runtime差分は削除ボタン右揃えCSS1行のみ。
 
