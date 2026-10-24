@@ -126,4 +126,82 @@ RSpec.describe "Fictional guest browsing", type: :system do
     visit "/assignments"
     expect(page).to have_current_path("/login")
   end
+  it "renders guest answer PDFs repeatedly through navigation, reload and resize without a native plug-in" do
+    driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    allow(Demo::Profile).to receive(:identity?).and_return(true)
+    allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+    visit root_path
+    [ [ "教師", 1280 ], [ "生徒", 320 ], [ "教師", 320 ], [ "生徒", 1280 ] ].each_with_index do |(role, width), index|
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("innerWidth")).to eq(width)
+      click_button "#{role}ゲストで閲覧"
+      click_link "サンプルの小テスト"
+      click_link "1番", exact: true if role == "教師"
+      expect_guest_pdf_pixels
+      visit page.current_path
+      expect_guest_pdf_pixels
+      page.refresh
+      expect_guest_pdf_pixels
+      other_width = width == 320 ? 1280 : 320
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: other_width, height: 900, deviceScaleFactor: 1, mobile: false)
+      expect_guest_pdf_pixels
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
+      expect_guest_pdf_pixels
+      if ENV["QF_PDF_EVIDENCE"]
+        page.execute_script("document.querySelector('.guest-answer-pdf').scrollIntoView({block: 'start'})")
+        page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "#{index}-#{width}.png"))
+      end
+      visit root_path
+      page.go_back
+      expect_guest_pdf_pixels
+      find("header a.app-brand").click
+      expect(page).to have_button("管理者ゲストで閲覧")
+    end
+    click_button "教師ゲストで閲覧"
+    page.go_back
+    expect(page).to have_button("生徒ゲストで閲覧")
+  end
+
+  it "shows a readable PDF error and authorized direct-file fallback when loading fails" do
+    driven_by :selenium, using: :headless_chrome, screen_size: [ 320, 812 ]
+    allow(Demo::Profile).to receive(:identity?).and_return(true)
+    allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+    visit root_path
+    page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 320, height: 812, deviceScaleFactor: 1, mobile: false)
+    expect(page.evaluate_script("innerWidth")).to eq(320)
+    click_button "生徒ゲストで閲覧"
+    page.driver.browser.execute_cdp("Network.enable")
+    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [ "*/student/assignments/*/answer*" ])
+    click_link "サンプルの小テスト"
+    expect(page).to have_css("[data-guest-pdf-target='status']", text: "答案PDFを表示できませんでした。")
+    expect(page).to have_link("PDFを別タブで開く", href: %r{/student/assignments/\d+/answer})
+    expect(page).not_to have_css("canvas[data-rendered='true']")
+    page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "error-320.png")) if ENV["QF_PDF_EVIDENCE"]
+    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
+    page.refresh
+    expect_guest_pdf_pixels
+    expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+  ensure
+    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
+  end
+
+  def expect_guest_pdf_pixels
+    expect(page).to have_css("[data-guest-pdf-target='status']", text: "答案PDFを表示しました")
+    expect(page).to have_css("canvas[data-rendered='true']")
+    expect(page).not_to have_css("iframe.teacher-answer-pdf")
+    expect(page.evaluate_script(<<~JS)).to be(true)
+      Array.from(document.querySelectorAll('.guest-answer-pdf canvas')).every(canvas => {
+        const pixels = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+        let ink = 0;
+        for (let i=0; i<pixels.length; i+=16) {
+          if (pixels[i+3] > 0 && pixels[i] < 200 && pixels[i+1] < 200 && pixels[i+2] < 200) ink++;
+        }
+        return ink > 50;
+      })
+    JS
+    expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+    expect(page).to have_content("70点")
+    expect(page).not_to have_button("提出")
+    expect(page).to have_link("PDFを別タブで開く")
+  end
 end
