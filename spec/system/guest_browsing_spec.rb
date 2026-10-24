@@ -63,9 +63,13 @@ RSpec.describe "Fictional guest browsing", type: :system do
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
       allow(Demo::Profile).to receive(:identity?).and_return(false)
       visit root_path
+      # Compare the same available width even when only the normal page needs a scrollbar.
+      page.execute_script("document.documentElement.style.overflowY = 'scroll'")
       normal_style = page.evaluate_script("(() => { const el=document.querySelector('.home-login-options .button'), s=getComputedStyle(el), r=el.getBoundingClientRect(); return ['fontFamily','fontSize','fontWeight','lineHeight','color','backgroundColor','borderRadius'].map(k=>s[k]).concat([r.width,r.height]); })()")
       allow(Demo::Profile).to receive(:identity?).and_return(true)
       visit root_path
+      # Compare the same available width even when only the normal page needs a scrollbar.
+      page.execute_script("document.documentElement.style.overflowY = 'scroll'")
       expect(page).not_to have_css(".home-description, .home-bubble")
       expect(page).not_to have_content("通常アカウントではログインできません。")
       expect(page).to have_link("QuickFlow", href: "https://13-231-93-159.sslip.io/")
