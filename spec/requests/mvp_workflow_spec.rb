@@ -127,8 +127,8 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
       row = document.at_css("#assignment_#{assignment.id}")
       expect(row.css("a").size).to eq(1)
       get row.at_css("a")[:href]
-      expect(document.at_css("iframe")[:src]).to eq(answer_student_assignment_path(assignment))
-      expect(document.css("form, select, input[type='submit']")).to be_empty
+      expect(document.at_css("[data-controller='answer-pdf']")[:'data-answer-pdf-url-value']).to eq(answer_student_assignment_path(assignment))
+      expect(document.css("form, select:not([data-answer-pdf-target='page']), input[type='submit']")).to be_empty
     end
 
     first_submission = students.first.submissions.find_by!(assignment: assignment)
@@ -151,7 +151,7 @@ RSpec.describe "MVP workflow from distribution to Excel export", type: :request 
     get assignment_path(assignment)
     expect(document.at_css("#classroom_id option[selected]")[:value]).to eq("all")
     get document.at_css("#grade_student_#{students.first.id} a")[:href]
-    expect(document.at_css("iframe")[:src]).to eq(answer_assignment_submission_path(assignment, first_submission))
+    expect(document.at_css("[data-controller='answer-pdf']")[:'data-answer-pdf-url-value']).to eq(answer_assignment_submission_path(assignment, first_submission))
     patch assignment_submission_path(assignment, first_submission), params: { final_judgments: { result.id.to_s => "correct", review.id.to_s => "incorrect" },
       original_final_judgments: { result.id.to_s => result.final_judgment, review.id.to_s => review.final_judgment } }
     expect(response).to have_http_status(:see_other)
