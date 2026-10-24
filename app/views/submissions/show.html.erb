@@ -25,11 +25,7 @@
     <h2 id="answer-heading">答案PDF</h2>
     <% if @submission.answer_file.attached? %>
       <% if @submission.answer_file.content_type == "application/pdf" %>
-        <% if guest_session? %>
-          <%= render "shared/guest_answer_pdf", url: answer_assignment_submission_path(@assignment, @submission), title: "生徒の答案PDF" %>
-        <% else %>
-          <iframe class="teacher-answer-pdf" title="生徒の答案PDF" src="<%= answer_assignment_submission_path(@assignment, @submission) %>"></iframe>
-        <% end %>
+        <%= render "shared/answer_pdf", url: answer_assignment_submission_path(@assignment, @submission), title: "生徒の答案PDF" %>
       <% else %>
         <p>答案ファイルをPDFとして表示できません。運用担当者に確認してください。</p>
       <% end %>

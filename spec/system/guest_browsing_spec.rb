@@ -148,7 +148,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
       expect_guest_pdf_pixels
       if ENV["QF_PDF_EVIDENCE"]
-        page.execute_script("document.querySelector('.guest-answer-pdf').scrollIntoView({block: 'start'})")
+        page.execute_script("document.querySelector('.answer-pdf').scrollIntoView({block: 'start'})")
         page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "#{index}-#{width}.png"))
       end
       visit root_path
@@ -173,7 +173,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
     page.driver.browser.execute_cdp("Network.enable")
     page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [ "*/student/assignments/*/answer*" ])
     click_link "サンプルの小テスト"
-    expect(page).to have_css("[data-guest-pdf-target='status']", text: "答案PDFを表示できませんでした。")
+    expect(page).to have_css("[data-answer-pdf-target='status']", text: "答案PDFを表示できませんでした。")
     expect(page).to have_link("PDFを別タブで開く", href: %r{/student/assignments/\d+/answer})
     expect(page).not_to have_css("canvas[data-rendered='true']")
     page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "error-320.png")) if ENV["QF_PDF_EVIDENCE"]
@@ -186,11 +186,11 @@ RSpec.describe "Fictional guest browsing", type: :system do
   end
 
   def expect_guest_pdf_pixels
-    expect(page).to have_css("[data-guest-pdf-target='status']", text: "答案PDFを表示しました")
+    expect(page).to have_css("[data-answer-pdf-target='status']", text: "答案PDFを表示しました")
     expect(page).to have_css("canvas[data-rendered='true']")
     expect(page).not_to have_css("iframe.teacher-answer-pdf")
     expect(page.evaluate_script(<<~JS)).to be(true)
-      Array.from(document.querySelectorAll('.guest-answer-pdf canvas')).every(canvas => {
+      Array.from(document.querySelectorAll('.answer-pdf canvas')).every(canvas => {
         const pixels = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
         let ink = 0;
         for (let i=0; i<pixels.length; i+=16) {

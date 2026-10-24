@@ -33,11 +33,7 @@
     <section aria-label="提出した答案PDF">
       <% if @submission.answer_file.attached? %>
         <% if @submission.answer_file.content_type == "application/pdf" %>
-          <% if guest_session? %>
-            <%= render "shared/guest_answer_pdf", url: answer_student_assignment_path(@assignment), title: "提出した答案PDF" %>
-          <% else %>
-            <iframe class="teacher-answer-pdf" title="提出した答案PDF" src="<%= answer_student_assignment_path(@assignment) %>"></iframe>
-          <% end %>
+          <%= render "shared/answer_pdf", url: answer_student_assignment_path(@assignment), title: "提出した答案PDF" %>
         <% else %>
           <p>答案ファイルをPDFとして表示できません。先生に確認してください。</p>
         <% end %>

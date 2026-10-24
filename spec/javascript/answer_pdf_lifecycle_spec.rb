@@ -1,7 +1,7 @@
 require "spec_helper"
 require "open3"
 
-RSpec.describe "Read-only guest PDF lifecycle" do
+RSpec.describe "Read-only answer PDF lifecycle" do
   it "discards pending render results and releases resources when navigation disconnects the viewer" do
     script = <<~JAVASCRIPT
       const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
@@ -12,7 +12,7 @@ RSpec.describe "Read-only guest PDF lifecycle" do
         Controller: class {}, window: {devicePixelRatio: 3},
         document: {createElement() {return {dataset:{}, setAttribute(){}, getContext(){return {};}};}}
       });
-      c.active = true; c.session = Symbol(); c.revision = 0; c.queue = Promise.resolve();
+      c.active = true; c.session = Symbol(); c.revision = 0; c.pageNumber=1; c.queue = Promise.resolve();
       c.statusTarget = {textContent:'loading'};
       c.pagesTarget = {clientWidth:320, replaceChildren(){canvases.length=0;},
         append(canvas){canvases.push(canvas);}, querySelectorAll(){return canvases;}};
@@ -35,7 +35,7 @@ RSpec.describe "Read-only guest PDF lifecycle" do
         assert.equal(pages,1,'no later page renders after navigation');
         assert.equal(canvases[0].width,0); assert.equal(canvases[0].height,0);
         assert.equal(canvases[0].dataset.rendered,undefined);
-        assert.equal(c.statusTarget.textContent,'loading');
+        assert.equal(c.statusTarget.textContent,'答案PDFを読み込んでいます。');
         assert.equal(cancelled,1); assert.equal(cleaned,1);
         assert.equal(destroyed,3); assert.equal(disconnected,1);
         c.active=true; c.session=Symbol();
@@ -44,7 +44,7 @@ RSpec.describe "Read-only guest PDF lifecycle" do
       })().catch(error=>{console.error(error);process.exitCode=1;});
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "-e", script,
-      File.expand_path("../../app/javascript/controllers/guest_pdf_controller.js", __dir__))
+      File.expand_path("../../app/javascript/controllers/answer_pdf_controller.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
 end

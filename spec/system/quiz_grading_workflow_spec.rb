@@ -120,7 +120,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     expect(xlsx_cell(sheet, "C3")).to be_present
     expect(xlsx_value(sheet, "C3")).to be_nil
     within("#grade_student_#{@student.id}") { click_link }
-    expect(page).to have_css("iframe[src='#{answer_assignment_submission_path(@assignment, submission)}']")
+    expect(page).to have_css("[data-answer-pdf-url-value='#{answer_assignment_submission_path(@assignment, submission)}']")
     @assignment.questions.order(:position).each do |question|
       within("#question_#{question.id}") do
         expect(page).to have_css("dt", text: "問題文", exact_text: true)
