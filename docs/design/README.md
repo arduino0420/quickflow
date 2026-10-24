@@ -1,6 +1,6 @@
 # 実装と設計図の照合（#102 / #101）
 
-ER・属性の基準は merged main `9704b30fa90867a359d11a8ccf0cff78520aa5d2`。schema・routes・models は今回の表示修正まで変更がなく、ER の構造と画像は維持する。画面遷移は PR #142 の表示実装 `da5763547cee0ba4e834827a5425932ada0a7e35` に照合し、既存の公開 guest 導線とロゴの戻り先を反映した。この表示修正は配備済みで、公開中の通常は `f22a4c8aa6076fc9cb874a14058fd25780860edf`、guest は削除ボタンの右揃えCSSのみ更新した `2f8c3beae3c36050c24c8ceca80a4bcc65d5bf3c`。実装・マージ・配備・提出・学校の受入を区別する。
+ER・属性の基準は merged main `9704b30fa90867a359d11a8ccf0cff78520aa5d2`。schema・routes・models は今回の表示修正まで変更がなく、ER の構造と画像は維持する。画面遷移は PR #142 の表示実装 `da5763547cee0ba4e834827a5425932ada0a7e35` に照合し、既存の公開 guest 導線とロゴの戻り先を反映した。この表示修正は配備済みで、公開中の通常・guest は `0812708fcc4d82dca02eb7d9e9c4594716d64e0b`。答案閲覧をPDF.jsへ変更したが、遷移・ER・通常の筆記処理は変更していない。実装・マージ・配備・提出・学校の受入を区別する。
 
 - [ER 図](../er_diagram.png) / [編集用 SVG](er_diagram.svg)
 - [画面遷移図](../screen_transition.png) / [編集用 SVG](screen_transition.svg)

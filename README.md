@@ -31,9 +31,9 @@ AIによる判定をそのまま確定せず、読みにくい答案は「要確
 
 ## 使い方と画面
 
-トップは配備後の `f22a4c8`、教師成績・答案・生徒結果は表示内容が同じ前版 `4667c7ca` の実画面です（2026-10-24 UTC）。学校・アカウント・得点は公開guest用のサンプルで、教材・答案PDFは利用者が公開を承認したものです。判定と70点は手動の表示例で、実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。教師答案・生徒結果は、同日の追加撮影で 提供された答案PDF の実描画を確認した画面です。
+トップは `f22a4c8`、教師成績は `4667c7ca`、答案・生徒結果はPDF.js閲覧版 `0812708` の実画面です（2026-10-24 UTC）。学校・アカウント・得点は公開guest用のサンプルで、教材・答案PDFは利用者が公開を承認したものです。判定と70点は手動の表示例で、実AIの実行結果ではありません。画面の文言や値を画像編集で差し替えていません。教師答案・生徒結果は、同日の追加撮影で 提供された答案PDF の実描画を確認した画面です。
 
-検証中に埋込みPDFが白く写る場面もありましたが、所有者は前版で教師・生徒の両画面の表示を確認したと報告しています。今回のguest配置修正版でも教師・生徒の埋込み領域が空白となる場面を観測しました。PDFの取得・内容一致は正常で、PDFコードは変更していません。原因の特定や、すべての環境での表示を保証するものではありません。
+前版では内蔵PDFビューアの空白を観測しました。現行0812708は答案閲覧を既存PDF.jsへ変更し、本番guestで描画完了9回・実画像4場面を確認しています。通常の認証付き本番描画は未試験で、ローカルの架空通常アカウント試験とCIが根拠です。原本タブではChrome内蔵PDF表示の黒画面も観測し、内部原因や全環境での安定性は確定していません。
 
 ### 1. 教師がPDF教材を配信し、成績を確認する
 
@@ -47,15 +47,15 @@ AIによる判定をそのまま確定せず、読みにくい答案は「要確
 
 答案PDFと問題ごとの結果を並べて確認できます。通常利用では、教師が最終判定を修正すると得点が再計算され、配信クラスを選んでExcelを出力できます。
 
-![現行4667c7ca：教師guestのサンプル答案PDFと手動表示例70点](docs/screenshots/teacher-answer.jpg)
+![現行0812708：教師guestのPDF.js答案表示と手動判定例](docs/screenshots/teacher-answer.jpg)
 
-この教師答案画像は現行 `4667c7ca` の公開guestを標準Chromeで撮影したものです。答案の氏名欄は空で、表示される学校・出席番号は架空データです。PDF内の手書きと手動表示例70点を実際に確認しました。画面をスクロールした位置の撮影で、上部のguest注意表示は画像外です。実AIの実行や通常教師の判定変更を検証する画像ではありません。
+この教師答案画像は現行 `0812708` の公開guestを標準Chromeで撮影したものです。答案の氏名欄は空で、表示される学校・出席番号は架空データです。PDF内の手書きと手動判定欄を実際に確認しました。画面をスクロールした位置の撮影で、上部のguest注意表示は画像外です。実AIの実行や通常教師の判定変更を検証する画像ではありません。
 
 ### 3. 生徒が答案と結果を確認する
 
 通常利用の流れは「PDFに手書き → 保存状態を確認 →『提出する』で正式提出 → 採点結果を確認」です。自動保存だけでは提出されません。採点では「正解・不正解・要確認」を区別し、要確認は得点に加算しません。
 
-![標準Chromeで表示した生徒guestの答案PDFと採点結果。手動表示例70点と判定表示。撮影時に埋込みPDFが描画された実画面](docs/screenshots/student-result.jpg)
+![現行0812708：生徒guestのPDF.js答案表示と手動表示例70点・判定](docs/screenshots/student-result.jpg)
 
 手書きの編集画面は閲覧専用guestでは操作できません。[過去の合成入力試験画像（黒い線）](docs/implementation/issue99-evidence/02-student-saved-handwriting.png)と[保存・再読込の検証記録](docs/implementation/issue103_submission_evidence.md)を別に残しています。この旧画像は試験用タイトルと黒い線を示すもので、保存状態の表示は撮影範囲外です。保存・復元の成立は検証記録を参照し、現在の編集画面を撮り直した画像とは区別してください。
 
@@ -84,7 +84,7 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 ## 検証状況
 
-- 通常サイトの稼働sourceは [f22a4c8](https://github.com/arduino0420/quickflow/commit/f22a4c8aa6076fc9cb874a14058fd25780860edf)。[配備版CI40061706662](https://github.com/arduino0420/quickflow/actions/runs/40061706662)は4ジョブ成功、RSpec 2,054件・失敗0件です。guestはCSSの配置1行だけを更新した [2f8c3be](https://github.com/arduino0420/quickflow/commit/2f8c3beae3c36050c24c8ceca80a4bcc65d5bf3c)（[CI40072744081](https://github.com/arduino0420/quickflow/actions/runs/40072744081) 全4成功、2,057例/失敗0）です。今回の停止は通常0秒・guest18.5秒で、データ・認証情報・network/TLSは維持しています。文書更新のheadと稼働sourceは区別しています。
+- 通常・guestの稼働sourceは [0812708](https://github.com/arduino0420/quickflow/commit/0812708fcc4d82dca02eb7d9e9c4594716d64e0b)。[配備版CI40079428699](https://github.com/arduino0420/quickflow/actions/runs/40079428699)は全4成功、RSpec 2,062件・失敗0件です。通常停止85.8秒・guest停止16.3秒で、データ・認証情報・network/TLSを維持しました。文書更新のheadと稼働sourceは区別しています。
 - TLS・Secure cookie、DB/PDF保全と隔離復元、worker・queue、限定した公開/guestフローを確認し、[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)と[限定フロー検証 #99](https://github.com/arduino0420/quickflow/issues/99)に完了根拠を記録しました。`/up` は起動確認であり、AI・DB・queue全体の健全性を保証しません。
 - 通常の実AI配信・提出・採点、および新版の手書き・保存の成功は所有者からの報告です。担当者によるLenovo実機の独立検証、すべての端末・PDF・実通信障害、AIの数学的正確性を保証するものではありません。
 - 今回の撮影では閲覧だけを行い、実生徒データの変更、答案提出、AI実行はしていません。旧表示試験用の長文画像や失敗履歴は、[検証資料](docs/implementation/issue103_submission_evidence.md)に残しています。
@@ -178,7 +178,7 @@ DB上の削除、物理PDFの非同期削除、外部OpenAI Fileの期限・非�
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
 
-画面遷移図はPR142の表示実装 da5763547cee と公開guest導線を照合した資料です。通常はf22a4c8、guestは配置CSSのみ更新した2f8c3beで、PR142の表示変更を通常・guest双方で確認済みです。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中のschema基準を維持しています。
+画面遷移図はPR142の表示実装 da5763547cee と公開guest導線を照合した資料です。通常・guestは0812708で、答案の閲覧描画だけPDF.jsへ更新し、PR142の表示変更を通常・guest双方で確認済みです。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中のschema基準を維持しています。
 
 原本ワイヤーフレームのトップと採点表示は現行仕様へ更新済みです。[差分と通知用本文](docs/implementation/issue103_submission_evidence.md)を用意しています。審査者からの閲覧確認と、DProへの修正版再投稿・変更通知・最終提出は本人が行います。
 
