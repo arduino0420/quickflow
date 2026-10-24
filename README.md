@@ -178,7 +178,7 @@ DB上の削除、物理PDFの非同期削除、外部OpenAI Fileの期限・非�
 - [推奨品質監査 #104](docs/implementation/issue104_quality_audit.md) / [Phase F当時のREADME記録](docs/implementation/readme_history.md)
 
 
-生成済みの画面遷移図には「公開ゲストURL未確認」という当時の注記が残っています。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中に記載したschema基準の資料です。
+画面遷移図はPR142の表示実装 da5763547cee と公開guest導線を照合した資料です。配備済みの版は4667c7caで、PR142の表示変更は未配備です。現在の公開入口はREADME冒頭と運用runbookを参照してください。ER図は図中のschema基準を維持しています。
 
 原本ワイヤーフレームのトップと採点表示は現行仕様へ更新済みです。[差分と通知用本文](docs/implementation/issue103_submission_evidence.md)を用意しています。審査者からの閲覧確認と、DProへの修正版再投稿・変更通知・最終提出は本人が行います。
 
