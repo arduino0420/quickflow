@@ -97,6 +97,23 @@ RSpec.describe "Fictional guest browsing", type: :system do
     expect(page).not_to have_button("提出")
   end
 
+  it "aligns the disabled guest delete button with Excel at desktop and narrow widths" do
+    driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    allow(Demo::Profile).to receive(:identity?).and_return(true)
+    allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+    visit root_path
+    click_button "教師ゲストで閲覧"
+    click_link "サンプルの小テスト"
+    expect(page).to have_link("Excel出力")
+    expect(page).to have_button("この小テストを削除する", disabled: true)
+    gaps = [ [ 320, 812 ], [ 1280, 900 ] ].map do |width, height|
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+      page.evaluate_script("Math.abs(document.querySelector('.button-excel-export').getBoundingClientRect().right - document.querySelector('.assignment-delete-actions button').getBoundingClientRect().right)")
+    end
+    expect(gaps).to all(be <= 1)
+  end
+
   it "does not restore a guest page through Chrome back navigation after logout" do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
     visit "/"
