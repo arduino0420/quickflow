@@ -14,7 +14,7 @@ OUT = ROOT / 'docs/design'
 FONT = os.environ.get('DIAGRAM_FONT', '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc')
 BASELINE = '9704b30fa90867a359d11a8ccf0cff78520aa5d2'
 # Routes and visible UX unchanged; preserve the independently reviewed screen bytes.
-SCREEN_BASELINE = '1404453a24dce4f3661a7c6aee7fc570e8f6b683'
+SCREEN_BASELINE = 'da5763547cee0ba4e834827a5425932ada0a7e35'
 labels = {'schools':'学校','admins':'管理者','teachers':'教師','classrooms':'クラス','students':'生徒','teacher_classrooms':'担当クラス','assignments':'小テスト・配信','assignment_classrooms':'配信先','answer_drafts':'答案下書き','questions':'設問・正答','submissions':'提出答案','grading_results':'採点結果','question_generation_requests':'正答生成要求','authentication_attempt_buckets':'認証制限・ゲスト有効期限','active_storage_attachments':'添付','active_storage_blobs':'ファイル情報','active_storage_variant_records':'派生画像'}
 def digest(path): return hashlib.sha256((ROOT/path).read_bytes()).hexdigest()
 def schema():
@@ -126,11 +126,11 @@ def screens():
       'クラスまたは all を指定。詳細↔答案、一覧↔詳細の戻り導線あり',
       '通常 DELETE logout → 各ログイン。デモはトップへ',
       '404 / 500 → GET /。認証制限 429 / 利用不可 503'],size=18)
-    c.card(840,1450,780,'ゲスト：実装済み / 通常は OFF',[
-      '有効な隔離デモ構成のみ POST /guest/:role（3ロール）',
+    c.card(840,1450,780,'ゲスト：通常トップから隔離公開デモへ',[
+      '入口 GET / → POST /guest/:role（管理者・教師・生徒）',
       '合成データの許可された GET のみ。登録・変更・手書き不可',
       '教師Excel・答案閲覧は許可。15分期限、ログアウトで失効',
-      '実装と公開デプロイは別。現在の公開ゲストURLは未確認'], '#fff0cc',18)
+      '入口ロゴ→通常トップ。ログイン後ロゴ→役割選択'], '#fff0cc',18)
     c.text(40,1710,'手書きの競合・教材変更・認証切れ・保存失敗は状態別に案内。読取を新たに再実行する UI はない。',21)
     c.text(40,1750,'PDF内容不正は入力画面で案内。確認処理の利用不可は503、手書きと下書きを保持。',21)
     c.save('screen_transition')

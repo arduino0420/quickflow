@@ -1,13 +1,15 @@
 # #103 必須39項目の証跡対応（提出未完了）
 
-39行表は原文確認記録・既存草案とcode/testを照合したもの。2026-10-23に実行担当も認証済み原文の第8節（10/12/4/5/4/4の39項目）、第9節（提出方法）、設計変更時の再投稿/通知の注記を再確認し、要件の意味と対応表を照合した。課題全体の再読や公式合格判定とは区別し、追加メンター解釈承認をゲートにしない。
+39行表は原文確認記録・既存草案とcode/testを照合したもの。2026-10-24に実行担当も認証済み原文の第8節（10/12/4/5/4/4の39項目）、第9節（提出方法）、設計変更時の再投稿/通知の注記を再確認し、要件の意味と対応表を照合した。課題全体の再読や公式合格判定とは区別し、追加メンター解釈承認をゲートにしない。
 
 
 ### 原文との対応・証拠の基準
 
 原文: [DPro curriculum 3027](https://diver.diveintocode.jp/curriculums/3027)。認証済み原文の確認記録は2026-10-22（原文更新日時2026-09-28 06:48 JST）。下表の要件欄は受領した39項目の**意味を保持した要約**であり、逐語引用ではない。番号はカテゴリ内の順序。適用判断を要件本文に混ぜず後段へ分離した。本草案は原文確認記録と既存証拠文書を基にした二次照合である。
 
-最終配備/試験基準: [mainacd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)、[CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)全4ジョブ成功、RSpec2,049例/失敗0（System/Modelを含む全suite、区分単独件数ではない）。Ruby4.0.6/Rails8.1.4/crass1.0.8。表の固定source9704b30は既存監査時の基準。前版1adb1530からのruntime差分は[PR134の明示的pen/palm処理](https://github.com/arduino0420/quickflow/pull/134)と[PR136のcrass修正](https://github.com/arduino0420/quickflow/pull/136)のみで、DB/schema/保存形式/認証/採点jobは変更なし。[PR135](https://github.com/arduino0420/quickflow/pull/135)は台帳validation8例と設計差分メモ。通常・guestのsource/image/切替時間と検証限界は[配備記録](issue51_predeployment_runbook.md#最新状態2026-10-23配備後の確認済み記録)を参照。前版のChrome確認は履歴として残し、今回のHTTP/配布asset確認や所有者の実AI報告と混ぜない。PR23は未merge close（branch/history保持）。今回の文書commitは稼働imageに含まれない。
+現行配備/試験基準: [4667c7ca](https://github.com/arduino0420/quickflow/commit/4667c7ca9427c4f4bfdcb671887d80477f482ffc)、[main CI 40050429701](https://github.com/arduino0420/quickflow/actions/runs/40050429701) 全4ジョブ成功、2,054例/失敗0。通常・guestとも同source。新しいホーム/guest表示は [PR142](https://github.com/arduino0420/quickflow/pull/142) の変更で、未配備。入口の任意説明文は原文の必須指定ではないが、ログイン後の閲覧専用・実AIなし表示とサーバー側制限は保持する。管理者・一般利用者のguest機能は必須であり、read-onlyを公式に十分とする記載は確認していない。原文の各テーブル5件以上・各モデルCRUDのラベルと、以下の工学的適用説明を区別する。
+
+前版の配備/試験履歴: [mainacd22fb9](https://github.com/arduino0420/quickflow/commit/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7)、[CI40027128404](https://github.com/arduino0420/quickflow/actions/runs/40027128404)全4ジョブ成功、RSpec2,049例/失敗0（System/Modelを含む全suite、区分単独件数ではない）。Ruby4.0.6/Rails8.1.4/crass1.0.8。表の固定source9704b30は既存監査時の基準。前版1adb1530からのruntime差分は[PR134の明示的pen/palm処理](https://github.com/arduino0420/quickflow/pull/134)と[PR136のcrass修正](https://github.com/arduino0420/quickflow/pull/136)のみで、DB/schema/保存形式/認証/採点jobは変更なし。[PR135](https://github.com/arduino0420/quickflow/pull/135)は台帳validation8例と設計差分メモ。通常・guestのsource/image/切替時間と検証限界は[配備記録](issue51_predeployment_runbook.md)を参照。前版のChrome確認は履歴として残し、今回のHTTP/配布asset確認や所有者の実AI報告と混ぜない。PR23は未merge close（branch/history保持）。今回の文書commitは稼働imageに含まれない。
 
 状態「実装・既存試験証拠あり」は指定sourceと過去監査/上記CIの範囲。**merged / deployed / submitted / 学校での受入**を別々に扱う。全39項目合格や公開実機検証済みとはしない。画像は架空データのChrome証拠（#95と下記#99）であり実端末・実学校の受入証拠ではない。
 
@@ -44,14 +46,14 @@
 | 機能3: 管理者・一般ユーザーのゲスト | [#93](issue93_production_demo.md)、[guest controller](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/controllers/guest_sessions_controller.rb)、#96 | `spec/system/guest_browsing_spec.rb`の既存証拠と下記2026-10-23公開3役Chrome/PDF確認。local証拠とlive観測を区別 | 公開3役閲覧確認済み／read-onlyの公式受入は学校判定 |
 | 機能4: controllerで管理者アクセス制限 | [#96](issue96_authentication_system_audit.md)、[admin base controller](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/app/controllers/admin/base_controller.rb) | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb): 普通roleのadmin URL/PATCH拒否、学校境界、変更なし確認 | 限定証拠あり／最終照合待ち |
 | 機能5: 一般ユーザーに管理者操作を表示しない | #96教師/生徒の管理リンク・form action不在 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の画面非表示とcontroller拒否を別々に検証 | 限定証拠あり／最終照合待ち |
-| System Spec1: ログイン機能のテスト | #96 role×operation表 | [footer_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/footer_spec.rb)、[authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb)（Chrome）、guestのdriver区別は機能3参照 | 既存証拠＋最終配備acd22fb9全suite成功／提出対象変更時は再確認 |
+| System Spec1: ログイン機能のテスト | #96 role×operation表 | [footer_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/footer_spec.rb)、[authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb)（Chrome）、guestのdriver区別は機能3参照 | 既存証拠＋最終配備4667c7ca全suite成功／提出対象変更時は再確認 |
 | System Spec2: 各モデルのCRUD機能のテスト | #97モデル別C/R/U/D表 | `spec/system/assignment_crud_spec.rb`、[quiz_grading_workflow_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/quiz_grading_workflow_spec.rb)、[student_pdf_preview_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/student_pdf_preview_spec.rb) 等。Request/Serviceのみのセルは別分類。A2参照 | 限定証拠あり／最終モデル・機能照合待ち |
-| System Spec3: アクセス制限のテスト | #96拒否/許可表 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の未認証・role・学校・作成者・配信範囲拒否と正例。Cancancan注記はA4参照 | 既存証拠＋最終配備acd22fb9全suite成功／提出対象変更時は再確認 |
-| System Spec4: 全System Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40027128404) | 過去の関連成功・失敗/診断は#95/#96/#97に限定記録。基準suiteは全Systemを含んで成功。区分単独の件数は本文から推定しない | 配備acd22fb9全suite成功／公開guestを含む限定証拠は下記 |
+| System Spec3: アクセス制限のテスト | #96拒否/許可表 | [authentication_access_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/authentication_access_spec.rb) の未認証・role・学校・作成者・配信範囲拒否と正例。Cancancan注記はA4参照 | 既存証拠＋最終配備4667c7ca全suite成功／提出対象変更時は再確認 |
+| System Spec4: 全System Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40050429701) | 過去の関連成功・失敗/診断は#95/#96/#97に限定記録。基準suiteは全Systemを含んで成功。区分単独の件数は本文から推定しない | 配備4667c7ca全suite成功／公開guestを含む限定証拠は下記 |
 | Model Spec1: すべての宣言済みvalidationのテスト | #98モデル別validation表、追加台帳差分 | `spec/models/*` の対応表と[追加台帳8例](https://github.com/arduino0420/quickflow/blob/acd22fb9e9f7241c3e434a147edc09f5f3a13ef7/spec/models/question_generation_request_spec.rb)。A3参照 | 既存監査＋追加台帳8例成功／これだけで全宣言の網羅を断定しない |
 | Model Spec2: 使用scopeのテスト | #98 explicit scope/enum記録 | [models/assignment_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/models/assignment_spec.rb): `distributed_to_school`、[models/grading_result_spec.rb](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/models/grading_result_spec.rb): `pending_review`。基準sourceの明示scopeはこの2件。enum生成scopeは既存mapping検証を参照 | 限定証拠あり／最終scope棚卸し待ち |
 | Model Spec3: 成功・失敗の両方をテスト | #98各行の正例/負例 | 空・境界・重複・別学校/クラス・更新拒否と状態不変・正例。追加台帳の正例/負例は最終確認 | 限定証拠あり／最終照合待ち |
-| Model Spec4: 全Model Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40027128404) | #98のmodel+PasswordPolicy393例/0失敗は過去の限定範囲。基準suiteは全Modelを含んで成功。区分単独の件数は本文から推定しない | 配備acd22fb9全suite成功／公開guestを含む限定証拠は下記 |
+| Model Spec4: 全Model Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40050429701) | #98のmodel+PasswordPolicy393例/0失敗は過去の限定範囲。基準suiteは全Modelを含んで成功。区分単独の件数は本文から推定しない | 配備4667c7ca全suite成功／公開guestを含む限定証拠は下記 |
 
 ### 適用判断（要件本文を変更しない）
 
@@ -80,7 +82,7 @@
 
 ### 前版1adb1530の公開確認（履歴）（2026-10-23）
 
-- 通常/guestのsourceは上記1adb1530、app image `sha256:77c3ea0a189c6ff41ff4d61d87c177df8894e00d59c35a2a49d205f07934863a`。[通常app](https://13-231-93-159.sslip.io/)から[guest入口](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/)へ遷移を確認。12:45:27–12:46:42 UTCの約75秒maintenanceで、queue/claim静止3回→旧worker正常停止→新web/worker→再開。DB移行・seed・データrollbackなし。migration/同一storage mount継続、旧image/backup保持。詳細は[運用記録](issue51_predeployment_runbook.md#最新状態2026-10-23配備後の確認済み記録)。
+- 通常/guestのsourceは上記1adb1530、app image `sha256:77c3ea0a189c6ff41ff4d61d87c177df8894e00d59c35a2a49d205f07934863a`。[通常app](https://13-231-93-159.sslip.io/)から[guest入口](https://qfd-4c18332acca47671.13-231-93-159.sslip.io/)へ遷移を確認。12:45:27–12:46:42 UTCの約75秒maintenanceで、queue/claim静止3回→旧worker正常停止→新web/worker→再開。DB移行・seed・データrollbackなし。migration/同一storage mount継続、旧image/backup保持。詳細は[運用記録](issue51_predeployment_runbook.md)。
 - 実行担当の通常Chrome確認: 大きいロゴ、元の説明2文、教師/生徒/guestの同色・指定順のボタン、既存2login画面とguest遷移。公開CSSは丸1.1rem/移動10px・reduced-motion保持、不要案内除去。実AIを使う採点中状態は再実行せず、過去の24例/失敗0の合成表示証拠と、今回のserved asset/partial確認を区別する。
 - 公開guestの3役login/表示/終了、教師と生徒の答案PDFの実描画を通常Chromeで確認。専用架空DB/storage/鍵、readonly業務権限とmanifest、別host/namespace、両段厳密TLS、Origin/他校/書込/転送header拒否、PDF/Excel形式確認を記録。64KiB body制限とupstream接続上限2を維持するが、厳密な同時要求数2ではない。864MiB/1CPU ceiling、0worker/AI、新serverなし。全PDF/全browser/ピーク負荷/実学校受入の証明ではない。
 - 通常root/up/3loginとguestは200、通常sessionはSecure/HttpOnly/Lax/Path=/。新Supervisor(fork)/Worker/Dispatcher/Scheduler各1の最近heartbeat、観測時queue5分類/active claim0。通常Caddy設定はmaintenance前と一致、guestは既存Let’s Encrypt account/同意済みtermsを再利用。HSTS未設定・Rails Host強化未追加の監査結果は保持し、課題にない追加必須項目としない。
@@ -128,7 +130,7 @@ Ruby4.0.6/Rails8.1.4/PG18.6、macOS x86_64、Chrome155.0.8059.86/ChromeDriver155
 | 配信/採点/出力 | 正答生成台帳・current pointer、nullable fenced claim、教師の最終判定、Excelを反映。#47/#46/#49とSystem証拠 |
 | 閲覧専用ゲスト | 同一serverの分離hostで架空データを公開閲覧。手書き/AI体験と表現しない。#93/PR132 |
 
-通知用本文案：要件・カタログ・テーブル定義、ER/画面遷移、ワイヤーフレームをコード9704b30に照合しました。役割別認証/管理者管理、担当クラス、PDF手書き/自動保存/提出、正答生成要求/claim、教師判定/Excel、閲覧専用ゲストの差分を上記資料へ整理しています。現在acd22fb9の公開配備と限定HTTP確認が完了し、過去の復元実証・架空Chrome UI/PDF描画証拠を保持しています。実AI成功は所有者報告です。原本トップと採点表示の2frameも現行仕様へ更新しました。実端末/学校受入と実AIの独立再試験は未実施です。修正版資料の再投稿と変更通知は本人が別途実施します。
+通知用本文案：要件・カタログ・テーブル定義、ER/画面遷移、ワイヤーフレームをコード9704b30に照合しました。役割別認証/管理者管理、担当クラス、PDF手書き/自動保存/提出、正答生成要求/claim、教師判定/Excel、閲覧専用ゲストの差分を上記資料へ整理しています。現在4667c7caの公開配備と限定確認が完了し、過去の復元実証・架空Chrome UI/PDF描画証拠を保持しています。実AI成功は所有者報告です。原本トップ・教師詳細・共通注記と遷移図を照合し、PR142の表示変更はマージ済み未配備として区別しています。実端末/学校受入と実AIの独立再試験は未実施です。修正版資料の再投稿と変更通知は本人が別途実施します。
 
 #102の実DoDは現行資料の整合、差分/対象外/今後の課題、通知内容の準備であり、**実送信を技術資料のclosure条件へ追加しない**。上記artifact/link確認と親レビュー後に#102の完了判断材料とする。このタスクはIssueをcloseしない。
 

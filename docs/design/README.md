@@ -1,6 +1,6 @@
 # 実装と設計図の照合（#102 / #101）
 
-ER・属性の基準は merged main `9704b30fa90867a359d11a8ccf0cff78520aa5d2`。現在の実装に対する #102 の部分更新。マージされた #46 の Submission claim 3属性を実 schema と migration で確認して反映した。画面図は生成時点でルート・可視 UX の変更がなかったため、独立レビュー済みの `1404453a24dce4f3661a7c6aee7fc570e8f6b683` 版をバイト単位で維持する。本版はマージ済み実装を対象とし、未マージの変更を含めない。原本資料との最終受入は別途照合する。
+ER・属性の基準は merged main `9704b30fa90867a359d11a8ccf0cff78520aa5d2`。schema・routes・models は今回の表示修正まで変更がなく、ER の構造と画像は維持する。画面遷移は PR #142 の表示実装 `da5763547cee0ba4e834827a5425932ada0a7e35` に照合し、既存の公開 guest 導線とロゴの戻り先を反映した。この表示修正は未配備で、公開中の通常・guest は `4667c7ca9427c4f4bfdcb671887d80477f482ffc`。実装・マージ・配備・提出・学校の受入を区別する。
 
 - [ER 図](../er_diagram.png) / [編集用 SVG](er_diagram.svg)
 - [画面遷移図](../screen_transition.png) / [編集用 SVG](screen_transition.svg)
@@ -10,6 +10,12 @@ ER・属性の基準は merged main `9704b30fa90867a359d11a8ccf0cff78520aa5d2`�
 - [原本ワイヤーフレーム](https://whimsical.com/Lj1FAP2VsasTMNMjFAfDb4)
 
 原本の共有権限・内容はこの変更では更新していない。元の合格済み要件と現在実装の対照表は原本 Sheet を正とする。ここでは重複する要件変更理由を作らず、リポジトリで確認できる実装根拠と提出説明の補足だけを記録する。
+
+## 2026-10-24の差分照合
+
+原本の既存17frameと共有設定を維持し、トップの静止ロゴ・説明2段・3ボタンと教師詳細のguest Excel許可／削除無効表示を修正した。通常トップからguestの3役割選択、入口ロゴから通常トップ、ログイン後ロゴから役割選択への導線は既存トップframeのタイトルと本遷移図に明記した。専用guest入口frameの追加は無料プランのオブジェクト上限で未作成。課金・無関係な要素削除・別boardへの置換はしていない。既存frame内の導線説明は更新済みだが、専用画面の独立ワイヤーフレームは残る資料上の制限である。
+
+DPro原文の第8・9節と設計変更時の再投稿／通知の注記を認証済み教材で再確認した。入口の定型注意文は必須指定ではない。39行の要件と内部状態／CRUDの適用説明は提出対応表で分離している。再投稿・通知・最終提出と学校の受入は未完了。
 
 ## 2026-10-23の原本2frame更新（#101）
 
@@ -46,7 +52,7 @@ ActiveStorage の多態参照は DB FK ではない。Assignment.material_file �
 | 生徒の解答 | 未提出一覧から PDF 手書きへ直接移動。下書き自動保存・提出、提出済みは詳細で状態と結果。従来アップロードは副導線 | `spec/requests/student_pdf_previews_spec.rb`, `student_answer_drafts_spec.rb`, `student_handwritten_submission_concurrency_spec.rb`, `student_grading_results_spec.rb` |
 | 手書きの失敗・復帰 | `pdf_previews/show` と `pdf_draft.js`、`Student::AnswerDraftsController#recovery`。認証切れは別タブ再ログイン後に確認。教材変更・版競合・保存失敗を区別 | `spec/requests/student_answer_recovery_spec.rb`, `spec/system/student_pdf_preview_spec.rb` |
 | 採点の復旧 | `SubmissionsController#resume_grading`, `Recovery::GradingRecovery`。フラグ ON の教師のみ、failed または停止 grading 候補。サーバー側の追加安全条件で拒否されうる。読取再実行操作を追加していない | `spec/requests/teacher_grading_recovery_concurrency_spec.rb` |
-| ゲスト | `Demo::Guest` の有効条件・READS allowlist、`ApplicationController#guard_guest_session`。合成データ専用・書込禁止。既定 OFF。実装の存在を公開 URL の存在と扱わない | `spec/requests/guest_sessions_spec.rb`。実装・隔離の既存記録は [#93](../implementation/issue93_production_demo.md) |
+| ゲスト | `Demo::Guest` の有効条件・READS allowlist、`ApplicationController#guard_guest_session`。合成データ専用・書込禁止。通常の認証入口と分離した公開 guest へリンク。入口ロゴは通常トップ、ログイン後のロゴは guest 役割選択へ戻る。教師 Excel は許可、削除は無効ボタンのみ | `spec/requests/guest_sessions_spec.rb`。実装・隔離の既存記録は [#93](../implementation/issue93_production_demo.md) |
 | エラー・共通 UI | `public/404.html` / `500.html` はトップへのリンク。認可エラーの head 応答もあり、全エラーを同一ページとはしない。role 別ヘッダーと共通 footer | `spec/requests/error_pages_spec.rb`, `footer_spec.rb`、[画面幅の既存監査](../implementation/issue95_screen_audit.md) |
 
 PDF の内容不正は入力画面または手書き提出のエラーで案内する。PDF 確認基盤の利用不可は 503。手書きと下書きを保持する。根拠は `PdfReadabilityValidator`、配信・提出 controller と `pdf_preview_controller.js`。既存検証は `spec/requests/pdf_readability_spec.rb` および `spec/system/student_pdf_preview_spec.rb`。
