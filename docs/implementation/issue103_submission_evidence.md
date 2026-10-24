@@ -23,7 +23,7 @@
 | 開発6: モデルとDBのvalidation | [#98](issue98_model_spec_audit.md)、db/schema.rb | #98モデル別表・Database agreement。NOT NULL/unique/FKとモデル側検証の区別、追加台帳差分は後段A3 | 限定証拠あり／最終schema照合待ち |
 | 開発7: メッセージ表示 | [#94](issue94_japanese_errors.md)、[日本語エラーSystem](https://github.com/arduino0420/quickflow/blob/9704b30fa90867a359d11a8ccf0cff78520aa5d2/spec/system/japanese_error_layout_spec.rb)、#95 | #95参照のJapanese error layout、authentication_ui、各保存/失敗画面。通知全種類の網羅は未確定 | 限定証拠あり／最終確認待ち |
 | 開発8: 利用中に例外が発生しない | #99、#51の主要フローと障害対応 | 基準main CIは上記。下記の認証付き本番架空フローと所有者の実AI成功報告を分離して参照。全操作で例外が起きない保証ではない | 限定証拠＋pen修正配備済み／Chromebook実機解消・新版認証付き筆記は未確認 |
-| 開発9: seedで各テーブルの初期データをそれぞれ5件以上 | [#150全40表・隔離実測](issue150_seed_table_audit.md)、#92/#93 | 12業務表各5件以上MET、blob/attachment各10。内部・運用0件表あり、全物理表5件はNOT MET。学校適用判断はUNVERIFIED。A1参照 | 限定範囲MET／全物理表NOT MET／適用範囲UNVERIFIED |
+| 開発9: seedで各テーブルの初期データをそれぞれ5件以上 | [#150全40表・隔離実測](issue150_seed_table_audit.md)、#92/#93 | 12業務表各5件以上MET、blob/attachment各10。所有者が内部運用表を理由付き除外する方針の確認済みを報告。全40物理表5件はNOT METのまま。A1参照 | 確認された業務範囲MET（所有者報告）／全物理表NOT MET |
 | 開発10: CRUD機能 | [#97/#151現行14モデル表](issue97_crud_system_audit.md) | 全具象モデルと実装済み直接/親経由CRUD、機能なし・運用処理を照合。生成要求台帳の配信/状態/親削除を補完。全モデル完全CRUDではない。A2参照 | 現行機能照合済み／内部CRUDの学校適用判断UNVERIFIED |
 | デザイン1: 分かりやすいページタイトル・説明 | #95全HTML画面title | #95の23画面・27状態・320/390/768/1280px、期待exact title/path/h1 | 限定証拠あり／最終照合待ち |
 | デザイン2: 非技術者にも分かる案内 | #95見出し・操作案内・空状態 | #95実ビュー/画像照合。実際の教師/生徒によるユーザビリティ試験は未実施 | 限定証拠あり／最終文言確認待ち |
@@ -56,6 +56,8 @@
 | Model Spec4: 全Model Specが成功 | 基準mainの[CI test job](https://github.com/arduino0420/quickflow/actions/runs/40079428699) | #98のmodel+PasswordPolicy393例/0失敗は過去の限定範囲。基準suiteは全Modelを含んで成功。区分単独の件数は本文から推定しない | 配備0812708全suite成功／公開guestを含む限定証拠は下記 |
 
 ### 適用判断（要件本文を変更しない）
+
+- **seed方針の確認報告:** 所有者は、12業務表各5件以上・内部運用表は理由付き除外・架空履歴を作らない方針について「確認は取れました。私たちの方針で良いそうです」と報告した。[#150の確認報告](issue150_seed_table_audit.md#適用方針の確認報告所有者報告)を開発9の現在の適用根拠とする。以下A1のUNVERIFIEDは報告前の監査履歴であり、全40物理表の実測値やNOT METという文字どおりの判定を変更しない。この報告を内部CRUDの適用承認、通常認証付き本番PDFの独立検証、学校の公式卒業合格へ拡大しない。
 
 - **A1 / 開発9:** #92/#93の技術完了と公開配備を分ける。通常 `db:seed` ではデモを生成しない。明示的・隔離されたseedと12業務表各5件以上の証拠を用いる。認証counter、queue/cache/cable、variant、Rails metadata、内部要求台帳は真正な処理の運用状態であり、架空履歴を作らない。#47要求台帳は合成教材で0件/pointer nilとする運用理由を基準schemaとmanifest方針に結び付ける。**「各テーブル」の要件は削除せず、全物理表5件達成とも公式免除とも記載しない。** 基準sourceはprimary17表（14アプリ＋3ActiveStorage）、具象ApplicationRecord14モデル。別DBはcache1・queue13・cable1表。12初期業務表、認証counter、要求台帳、3添付表を区別し、全物理表5件の達成とはしない。要求台帳0/pointer nil、Submission claim3列nilは合成デモの実方針で、旧manifestは自動rebaselineしない。 [#150](issue150_seed_table_audit.md)でprimary19（data17+metadata2）、別DB21（data15+metadata6）、合計40物理表を隔離実測。既存12業務表のMETと全物理表NOT MET、適用判断UNVERIFIEDを分離した。
 - **A2 / 開発10・System2:** #97の直接/間接操作、機能なし、運用CLI、System/Request/Serviceを区別する。「各モデルのCRUD機能」を「対象モデルのみ」に書き換えない。既存機能のないTeacher削除や内部モデルの公開CRUDをチェック欄のために増設しない。既存実装に即した根拠を記録し、全モデル完全CRUDや公式免除を主張しない。#151で具象14モデルと表を照合し、後続QuestionGenerationRequestを補完。台帳failed/enqueue_failed等の下位層のみの変種と運用CLIはSystemへ読み替えず、全変種/内部処理の学校適用判断をUNVERIFIEDとする。
