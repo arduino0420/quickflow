@@ -15,6 +15,8 @@ RSpec.describe "Admin account management", type: :system do
     fill_in "管理者ID", with: "browser-accounts"
     fill_in "パスワード", with: "admin-secret"
     click_button "ログイン"
+    expect(page).to have_current_path(admin_root_path)
+    expect(page).to have_title("管理者トップ | QuickFlow", exact: true)
   end
 
   def choose_operation(student, label)
@@ -70,6 +72,8 @@ RSpec.describe "Admin account management", type: :system do
     choose_operation(@first, "編集")
     select "3番", from: "出席番号"
     click_button "変更内容を確認する"
+    expect(page).to have_current_path(confirm_update_admin_student_path(@first), ignore_query: true)
+    expect(page).to have_title("生徒の変更内容を確認 | QuickFlow", exact: true)
     expect(page).to have_content("変更後: 1年 1組 3番")
     expect(@first.reload.attendance_number).to eq(1)
     fill_in "管理者自身のパスワード", with: "admin-secret"
@@ -81,6 +85,8 @@ RSpec.describe "Admin account management", type: :system do
     expect(page).to have_content("1年 1組 2番")
     expect(page).to have_content("元に戻せません")
     click_link "削除せず生徒一覧へ戻る"
+    expect(page).to have_current_path(admin_students_path, ignore_query: true)
+    expect(page).to have_title("生徒一覧 | QuickFlow", exact: true)
     expect(@second.reload).to be_persisted
     choose_operation(@second, "削除")
     fill_in "管理者自身のパスワード", with: "admin-secret"
