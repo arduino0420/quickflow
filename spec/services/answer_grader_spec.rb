@@ -53,6 +53,103 @@ RSpec.describe AnswerGrader, type: :model do
     expect(responses).to have_received(:create).once
   end
 
+  it "batches normalized answers unchanged without rewriting saved inputs or results" do
+    question.update!(question_label: "2①")
+    second = create_question(position: 2, label: "2②")
+    submission.update!(extracted_text: JSON.generate(problems: [
+      problem.merge(question_label: "2 (2)", student_answer: " x + x "), problem.merge(question_label: "2(1)")
+    ]))
+    reading_before = submission.extracted_text
+    questions_before = assignment.questions.order(:id).map(&:attributes)
+    allow(responses).to receive(:create).and_return(ai_response(results: [ judgment(second), judgment(question) ]))
+
+    expect { grader.call(submission, [ question, second ]) }.not_to change(GradingResult, :count)
+    expect(responses).to have_received(:create).once do |request|
+      input = JSON.parse(request[:input]).fetch("problems")
+      expect(input.map { |item| item.values_at("question_id", "question_label", "student_answer") }).to eq([
+        [ question.id, "2①", "5x" ], [ second.id, "2②", " x + x " ]
+      ])
+    end
+    expect(submission.reload.extracted_text).to eq(reading_before)
+    expect(assignment.questions.order(:id).map(&:attributes)).to eq(questions_before)
+  end
+
+  it "grades a standalone format difference only for a wholly standalone material list" do
+    question.update!(question_label: "①")
+    submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(question_label: "(1)") ]))
+    expect(grader.call(submission, [ question ]).first[:ai_judgment]).to eq("correct")
+    expect(responses).to have_received(:create).once
+  end
+
+  it "requires review for a standalone format difference in mixed material while keeping safe grouped matches" do
+    question.update!(question_label: "①")
+    second = create_question(position: 2, label: "2①")
+    submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(question_label: "(1)"), problem.merge(question_label: "2(1)") ]))
+    allow(responses).to receive(:create).and_return(ai_response(results: [ judgment(second) ]))
+    results = grader.call(submission, [ question, second ])
+    expect(results.find { |result| result[:question] == question }).to include(ai_judgment: "needs_review", student_answer: nil)
+    expect(responses).to have_received(:create).once do |request|
+      expect(JSON.parse(request[:input]).fetch("problems").map { |item| item.fetch("question_id") }).to eq([ second.id ])
+    end
+  end
+
+  [ :reading, :material ].each do |side|
+    it "does not prefer an exact match over a normalized #{side} collision" do
+      question.update!(question_label: "2①")
+      second = create_question(position: 2, label: "3①")
+      colliding = create_question(position: 3, label: "2(1)") if side == :material
+      readings = [ problem.merge(question_label: "2①"), problem.merge(question_label: "3(1)") ]
+      readings << problem.merge(question_label: "2(1)") if side == :reading
+      submission.update!(extracted_text: JSON.generate(problems: readings))
+      allow(responses).to receive(:create).and_return(ai_response(results: [ judgment(second) ]))
+      results = grader.call(submission, [ question, second, colliding ].compact)
+      expect(results.reject { |result| result[:question] == second }).to all(include(ai_judgment: "needs_review", student_answer: nil))
+      expect(responses).to have_received(:create).once do |request|
+        expect(JSON.parse(request[:input]).fetch("problems").map { |item| item.fetch("question_id") }).to eq([ second.id ])
+      end
+    end
+  end
+
+  [ "blank", "unclear", "ambiguous", "unavailable" ].each do |status|
+    it "keeps the existing #{status} policy after normalized matching" do
+      question.update!(question_label: "2①")
+      submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(
+        question_label: "2(1)", reading_status: status, student_answer: nil, reading_reason: "確認が必要です。") ]))
+      result = grader.call(submission, [ question ]).first
+      expect(result).to include(ai_judgment: status == "blank" ? "incorrect" : "needs_review", student_answer: nil, ai_model_name: "local-rules")
+      expect(responses).not_to have_received(:create)
+    end
+  end
+
+  [ { reading_status: "readable", student_answer: nil }, { reading_status: "blank", student_answer: "5x" } ].each do |change|
+    it "keeps inconsistent reading states under review after normalization #{change.inspect}" do
+      question.update!(question_label: "2①")
+      submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(question_label: "2(1)", **change) ]))
+      expect(grader.call(submission, [ question ]).first).to include(ai_judgment: "needs_review", review_reason: "読み取り状態と最終解答が一致しません。")
+      expect(responses).not_to have_received(:create)
+    end
+  end
+
+  it "does not treat a missing major number as a confirmed blank" do
+    question.update!(question_label: "2①")
+    submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(question_label: "①", reading_status: "blank", student_answer: nil) ]))
+    expect(grader.call(submission, [ question ]).first).to include(ai_judgment: "needs_review", student_answer: nil)
+    expect(responses).not_to have_received(:create)
+  end
+
+  it "does not infer required work or a correct answer after matching labels" do
+    question.update!(question_label: "2①", grading_rule: JSON.generate(criteria: "式も確認する。", requires_work: true))
+    submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(question_label: "2(1)") ]))
+    expect(grader.call(submission, [ question ]).first[:review_reason]).to eq("指定解法・途中式を読み取り結果から確認できません。")
+    expect(responses).not_to have_received(:create)
+  end
+
+  it "still rejects duplicate original material labels before matching" do
+    second = create_question(position: 2, label: question.question_label)
+    expect { grader.call(submission, [ question, second ]) }.to raise_error("Invalid questions for submission")
+    expect(responses).not_to have_received(:create)
+  end
+
   [ nil, "", "別の問題", "3x-2x を計算しなさい。", "次の計算をしなさい。\n3x+2x" ].each do |text|
     it "grades a unique label without comparing printed text #{text.inspect}" do
       submission.update!(extracted_text: JSON.generate(problems: [ problem.merge(question_text: text) ]))
