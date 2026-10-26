@@ -14,6 +14,7 @@ class SubmissionProcessingClaim
     locked do |owner, current|
       next unless eligible?(current) && current.processing_claim_stage == "ready"
       next unless generation_authorized?(owner)
+      next if current.grading_recovery_attempts.positive? && @stage == "reading" && @expected_admission.nil?
       next if @expected_admission && admission_fingerprint(owner, current) != @expected_admission
 
       # Waiting for shared questions must not consume a grading claim.
@@ -43,6 +44,7 @@ class SubmissionProcessingClaim
       end
       # Force the attachment and blob associations into this captured object.
       current.answer_file.blob
+      current.update!(grading_recovery_state: "started") if current.grading_recovery_state.present?
       @submission = current
       @snapshot = inputs(owner, current)
       @token = SecureRandom.uuid
@@ -102,7 +104,11 @@ class SubmissionProcessingClaim
     capture.send(:locked) do |owner, row|
       if capture.send(:eligible?, row) && row.processing_claim_stage == "ready" &&
           capture.send(:generation_authorized?, owner) && capture.send(:admission_fingerprint, owner, row) == snapshot
-        row.update!(status: :failed)
+        if row.grading_recovery_state.present?
+          row.update!(status: :grading, grading_recovery_state: "uncertain")
+        else
+          row.update!(status: :failed)
+        end
       end
     end
   end
@@ -187,6 +193,7 @@ class SubmissionProcessingClaim
 
   def inputs(owner, current)
     state = [ current.assignment_id, current.student_id, owner.teacher_id, current.extracted_text,
+      current.grading_recovery_attempts, current.grading_recovery_requested_at&.iso8601(6),
       attachment_state(current.answer_file_attachment) ]
     if @stage == "grading"
       state += [ owner.teacher_id, owner.current_question_generation_request_id,

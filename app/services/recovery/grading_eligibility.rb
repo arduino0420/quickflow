@@ -126,8 +126,7 @@ module Recovery
 
       labels = questions.map(&:question_label)
       return [ :question_label_duplicate ] unless labels.uniq.size == labels.size
-      problem_labels = problems&.map { |problem| problem["question_label"] }&.sort
-      return [ :reading_question_labels_mismatch ] unless problem_labels == labels.sort
+      return [ :reading_question_labels_mismatch ] unless reading_labels_match?(questions, problems)
 
       begin
         validated = QuestionGenerator.new(model: nil).saved_questions(assignment)
@@ -139,6 +138,10 @@ module Recovery
       []
     rescue JSON::ParserError
       [ :saved_questions_invalid ]
+    end
+
+    def reading_labels_match?(questions, problems)
+      problems&.map { |problem| problem["question_label"] }&.sort == questions.map(&:question_label).sort
     end
 
     def pdf_reference(attachment)

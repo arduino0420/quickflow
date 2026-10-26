@@ -9,6 +9,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
   include CrudBrowser
   include ActiveJob::TestHelper
   include XlsxInspection
+  self.use_transactional_tests = false
 
   let(:files) { instance_double(OpenAI::Resources::Files) }
   let(:responses) { instance_double(OpenAI::Resources::Responses) }
@@ -22,6 +23,8 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
   before do
     Selenium::WebDriver.logger.level = :warn
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    page.current_window.resize_to(1280, 900)
     @school = School.create!(school_code: "CRUDWORKFLOW")
     @teacher = Teacher.create!(school: @school, user_id: "workflow-crud", password: "password123")
     @room = Classroom.create!(school: @school, teachers: [ @teacher ], grade: 1, class_number: 1)
@@ -31,6 +34,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     # Only the external AI boundary is replaced. Generators/readers/graders/jobs persist normally.
     allow(AiClient).to receive(:build).and_return(client)
     allow(files).to receive(:create).and_return(double(id: "stub-file"))
+    allow_any_instance_of(Recovery::AnswerRecovery).to receive(:queue_clear?).and_return(true)
     allow(responses).to receive(:create) do |request|
       if request[:instructions]&.include?("添付教材")
         expect(@generation_request.reload.state).to eq("running")
@@ -39,6 +43,10 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
           { question_label: n.to_s, question_text: "3x+2x", correct_answer: "5x", grading_rule: "同類項", requires_work: false }
         })
       elsif request[:instructions].nil?
+        if @reading_outage
+          raise OpenAI::Errors::InternalServerError.new(url: URI("https://example.invalid"), status: 503,
+            headers: { "x-request-id" => "req_synthetic" }, body: "synthetic", request: nil, response: nil)
+        end
         ai_response(problems: (1..3).map { |n|
           { question_label: n.to_s, question_text: "3x+2x", student_answer: n == 3 && !@fully_readable ? nil : "6x",
             reading_status: n == 3 && !@fully_readable ? "unclear" : "readable", reading_reason: "固定読み取り根拠" }
@@ -65,6 +73,18 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     expect(@generation_request.failure_code).to be_nil
     expect(@assignment.questions.count).to eq(3)
     @questions_before = @assignment.questions.order(:id).map(&:attributes)
+  end
+
+  after do
+    Capybara.reset_sessions!
+    AssignmentDeletion.new.call(@assignment.reload, teacher: @teacher) if @assignment && Assignment.exists?(@assignment.id)
+    perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
+    [ @student, @unsubmitted ].compact.each(&:destroy!)
+    TeacherClassroom.where(classroom: @room).delete_all
+    @room&.destroy!
+    @teacher&.destroy!
+    @school&.destroy!
+    clear_enqueued_jobs
   end
 
   def complete_jobs(submission)
@@ -167,7 +187,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     expect(responses).to have_received(:create).exactly(3).times
   end
 
-  it "creates a legacy file upload once, rejects a stale form's replacement, and exposes recovery only under its existing flag" do
+  it "creates a legacy file upload once, rejects a stale form's replacement, and accepts a touch retry only under its existing flag" do
     previous_flag = ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"]
     student_login(@student)
     visit student_assignment_path(@assignment)
@@ -202,11 +222,18 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] = "false"
     teacher_login(@teacher)
     visit assignment_submission_path(@assignment, submission)
-    expect(page).not_to have_button("採点を再開する")
+    expect(page).to have_button("採点をもう一度依頼する", disabled: true)
     ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] = "true"
     visit assignment_submission_path(@assignment, submission)
-    click_button "採点を再開する"
-    expect(page).to have_content("採点を再開しました。")
+    expect(page).to have_css(".answer-pdf canvas[data-rendered='true']", wait: 20)
+    retry_button = find(".grading-retry-button")
+    retry_button.execute_script("this.scrollIntoView({block:'center',behavior:'instant'})")
+    bounds = retry_button.evaluate_script("this.getBoundingClientRect().toJSON()")
+    touch = page.driver.browser.action
+    touch.add_pointer_input(:touch, "teacher-retry-touch")
+    touch.move_to_location((bounds["x"] + bounds["width"] / 2).round, (bounds["y"] + bounds["height"] / 2).round, device: "teacher-retry-touch")
+      .pointer_down(:left, device: "teacher-retry-touch").pointer_up(:left, device: "teacher-retry-touch").perform
+    expect(page).to have_content("採点の再依頼を受け付けました。")
     expect(submission.reload.processing_generation).to eq(1)
     @grading_outage = false
     perform_enqueued_jobs(only: AnswerGradingJob)
@@ -217,5 +244,99 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
   ensure
     ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] = previous_flag if defined?(previous_flag)
     stale&.close unless stale&.closed?
+  end
+
+  it "recovers a reading 5xx once from the accessible right panel and shows both users the persisted results" do
+    previous_flag = ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"]
+    @fully_readable = true
+    @reading_outage = true
+    student_login(@student)
+    visit student_assignment_path(@assignment)
+    find("summary", text: "従来のPDFアップロード").click
+    attach_file "解答PDF", Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")
+    click_button "提出", exact: true
+    expect(page).to have_content("採点結果を準備しています。")
+    submission = Submission.find_by!(student: @student, assignment: @assignment)
+    original_pdf = submission.answer_file.blob.attributes
+    submitted_at = submission.submitted_at
+    perform_enqueued_jobs(only: AnswerReadingJob)
+    expect(submission.reload).to be_failed
+    expect(submission.extracted_text).to be_nil
+    expect(submission.processing_claim_stage).to eq("reading")
+    expect(submission.grading_results).to be_empty
+
+    ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] = "true"
+    teacher_login(@teacher)
+    visit assignment_submission_path(@assignment, submission)
+    expect(page).to have_css(".answer-pdf canvas[data-rendered='true']", wait: 20)
+    expect(page).to have_css("#results-heading", text: "採点に失敗しました")
+    expect(page).not_to have_text("採点が完了すると、ここに結果が表示されます。")
+    expect(page).not_to have_css("#results-heading", text: "問題ごとの採点結果")
+    expect(page).to have_button("採点をもう一度依頼する", count: 1)
+    [ [ 1280, 900 ], [ 320, 900 ] ].each do |width, height|
+      page.current_window.resize_to(width, height)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      metrics_overridden = true
+      button = find(".grading-retry-button")
+      viewport = nil
+      begin
+        expect(page).to have_css("section[aria-labelledby='results-heading'] .grading-retry-button") do |element|
+          element.execute_script("this.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})")
+          viewport = element.evaluate_script("(() => { const r=this.getBoundingClientRect();return {width:innerWidth,height:innerHeight,top:r.top,bottom:r.bottom,scrollY:scrollY};})()")
+          viewport.fetch("width") == width && viewport.fetch("top") >= 0 && viewport.fetch("bottom") <= viewport.fetch("height")
+        end
+      rescue RSpec::Expectations::ExpectationNotMetError
+        warn "Synthetic recovery viewport: #{viewport.inspect}"
+        raise
+      end
+      metrics = button.evaluate_script("(() => { const s=getComputedStyle(this),r=this.getBoundingClientRect();return {height:r.height,font:parseFloat(s.fontSize),right:r.right,width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth};})()")
+      expect(metrics.fetch("height")).to be >= 52
+      expect(metrics.fetch("width")).to eq(width)
+      expect(metrics.fetch("font")).to eq(18)
+      expect(metrics.fetch("right")).to be <= metrics.fetch("width")
+      expect(metrics.fetch("overflow")).to be(false)
+      button.execute_script("this.focus()")
+      expect(button.evaluate_script("this === document.activeElement")).to be(true)
+      if ENV["QUICKFLOW_REVIEW_SCREENSHOTS"]
+        page.save_screenshot(File.join(ENV.fetch("QUICKFLOW_REVIEW_SCREENSHOTS"), "retry-#{width}.png"))
+      end
+    end
+
+    entered = Queue.new
+    release = Queue.new
+    allow_any_instance_of(Recovery::AnswerRecovery).to receive(:dispatch).and_wrap_original do |method, *args|
+      entered << true
+      Timeout.timeout(15) { release.pop }
+      method.call(*args)
+    end
+    find(".grading-retry-button").send_keys(:enter)
+    Timeout.timeout(10) { entered.pop }
+    expect(page).to have_button("依頼を受け付けています…", disabled: true)
+    page.execute_script("document.querySelector('.grading-retry-button').click()")
+    release << true
+    expect(page).to have_content("採点の再依頼を受け付けました。")
+    expect(submission.reload).to have_attributes(processing_generation: 1, grading_recovery_attempts: 1, grading_recovery_state: "enqueued")
+    expect(AnswerReadingJob).to have_been_enqueued.with(submission, 1, admission: kind_of(String)).once
+    @reading_outage = false
+    perform_enqueued_jobs(only: AnswerReadingJob)
+    perform_enqueued_jobs(only: AnswerGradingJob)
+    expect(submission.reload).to be_completed
+    expect(submission.grading_recovery_state).to eq("started")
+    expect(submission.grading_results.count).to eq(3)
+    expect(submission.answer_file.blob.attributes).to eq(original_pdf)
+    expect(submission.submitted_at).to eq(submitted_at)
+    expect(@assignment.questions.order(:id).map(&:attributes)).to eq(@questions_before)
+    visit assignment_submission_path(@assignment, submission)
+    expect(page).to have_css(".teacher-grading-result", count: 3)
+    expect(page).not_to have_button("採点をもう一度依頼する")
+    student_login(@student)
+    visit student_assignment_path(@assignment)
+    expect(page).to have_css(".final-judgment", count: 3)
+    expect(submission.grading_recovery_attempts).to eq(1)
+  ensure
+    release << true if defined?(release) && release
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride") if defined?(metrics_overridden) && metrics_overridden
+    page.current_window.resize_to(1280, 900) if defined?(metrics_overridden) && metrics_overridden
+    ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] = previous_flag if defined?(previous_flag)
   end
 end

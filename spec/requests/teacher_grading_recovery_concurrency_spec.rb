@@ -18,6 +18,7 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
     @assignment_id = assignment.id
     @submission_id = submission.id
     @threads = []
+    allow_any_instance_of(Recovery::AnswerRecovery).to receive(:queue_clear?).and_return(true)
   end
 
   after do
@@ -56,6 +57,10 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
     submission.update!(status: :failed)
     first = teacher_session
     second = teacher_session
+    first.get assignment_submission_path(@assignment_id, @submission_id)
+    first_token = Nokogiri::HTML(first.response.body).at_css("input[name=retry_request_token]")[:value]
+    second.get assignment_submission_path(@assignment_id, @submission_id)
+    second_token = Nokogiri::HTML(second.response.body).at_css("input[name=retry_request_token]")[:value]
     entered = Queue.new
     release = Queue.new
     expect(AnswerGradingJob).to receive(:perform_later).once do
@@ -64,9 +69,9 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
       true
     end
 
-    request = run_thread { first.post(resume_path) }
+    request = run_thread { first.post(resume_path, params: { retry_request_token: first_token }) }
     Timeout.timeout(10) { entered.pop }
-    second.post(resume_path)
+    second.post(resume_path, params: { retry_request_token: second_token })
     expect(second.response.status).to eq(303)
     expect(second.response.location).to end_with(assignment_submission_path(@assignment_id, @submission_id))
     expect(submission.reload.processing_generation).to eq(1)
@@ -91,6 +96,7 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
       [ judgment(assignment.questions.sole).merge(ai_model_name: "test", prompt_version: "v1", graded_at: Time.current) ]
     end
 
+    allow_any_instance_of(Recovery::AnswerRecovery).to receive(:queue_clear?).and_return(false)
     worker = run_thread { AnswerGradingJob.perform_now(Submission.find(@submission_id)) }
     Timeout.timeout(10) { entered.pop }
     expect(AnswerGradingJob).not_to receive(:perform_later)
@@ -109,6 +115,8 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
   it "does not enqueue when deletion wins during PDF verification" do
     submission.update!(status: :failed)
     session = teacher_session
+    session.get assignment_submission_path(@assignment_id, @submission_id)
+    request_token = Nokogiri::HTML(session.response.body).at_css("input[name=retry_request_token]")[:value]
     entered = Queue.new
     release = Queue.new
     paused = false
@@ -123,7 +131,7 @@ RSpec.describe "Teacher grading recovery concurrency", type: :request do
     end
     expect(AnswerGradingJob).not_to receive(:perform_later)
 
-    request = run_thread { session.post(resume_path) }
+    request = run_thread { session.post(resume_path, params: { retry_request_token: request_token }) }
     Timeout.timeout(10) { entered.pop }
     expect(AssignmentDeletion.new.call(Assignment.find(@assignment_id), teacher: teacher)).to eq(:deleted)
     release << true
