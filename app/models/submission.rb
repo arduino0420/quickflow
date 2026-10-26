@@ -11,6 +11,8 @@ class Submission < ApplicationRecord
 
   validates :status, :submitted_at, presence: true
   validates :student_id, uniqueness: { scope: :assignment_id }
+  validates :grading_recovery_attempts, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :grading_recovery_state, inclusion: { in: %w[pending enqueued uncertain started] }, allow_nil: true
 
   validate :assignment_distributed_to_student_classroom
 

@@ -1012,6 +1012,8 @@ RSpec.describe "Teacher grading reviews", type: :request do
   end
 
   describe "resuming failed grading" do
+    include ActiveJob::TestHelper
+    self.use_transactional_tests = false
     def resume_path
       resume_grading_assignment_submission_path(assignment, submission)
     end
@@ -1020,6 +1022,29 @@ RSpec.describe "Teacher grading reviews", type: :request do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with("QUICKFLOW_GRADING_RECOVERY_ENABLED").and_return("true")
       submission.update!(status: :failed)
+      question = create_question
+      question.update!(grading_rule: JSON.generate(criteria: "同類項をまとめる。", requires_work: false,
+        material_blob_id: assignment.material_file.blob.id))
+      allow_any_instance_of(Recovery::AnswerRecovery).to receive(:queue_clear?).and_return(true)
+    end
+
+    after do
+      [ @another_assignment, assignment ].compact.each do |item|
+        AssignmentDeletion.new.call(item.reload, teacher: item.teacher) if Assignment.exists?(item.id)
+      end
+      perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
+      student.destroy!
+      TeacherClassroom.where(classroom_id: classroom.id).delete_all
+      classroom.destroy!
+      @other_teacher&.destroy!
+      teacher.destroy!
+      school.destroy!
+      @other_school&.destroy!
+      clear_enqueued_jobs
+    end
+
+    def retry_token_from_page
+      document.at_css("input[name='retry_request_token']")[:value]
     end
 
     it "keeps the feature off by default on GET and POST" do
@@ -1027,7 +1052,7 @@ RSpec.describe "Teacher grading reviews", type: :request do
       login
       get detail_path
       expect(document.text).not_to include("採点を再開する")
-      expect(Recovery::GradingRecovery).not_to receive(:new)
+      expect(Recovery::AnswerRecovery).not_to receive(:new)
       post resume_path
       expect(response).to redirect_to(detail_path)
       follow_redirect!
@@ -1035,68 +1060,82 @@ RSpec.describe "Teacher grading reviews", type: :request do
       expect(submission.reload).to be_failed
     end
 
-    it "shows a CSRF-protected POST button without checking PDF contents on GET" do
+    it "shows a verified CSRF-protected POST button in the right panel" do
       login
-      expect(Recovery::GradingEligibility).not_to receive(:new)
       get detail_path
       form = document.at_css("form[action='#{resume_path}']")
       expect(form[:method]).to eq("post")
-      expect(form.at_css("button").text).to eq("採点を再開する")
+      expect(form.at_css("button").text).to eq("採点をもう一度依頼する")
+      expect(form.ancestors("section").first["aria-labelledby"]).to eq("results-heading")
+      expect(document.text).not_to include("採点が完了すると、ここに結果が表示されます。")
+    end
+
+    [ "true", nil ].each do |flag|
+      it "keeps uncertain registration visible after reload even with feature flag #{flag.inspect}" do
+        submission.update!(status: :grading, grading_recovery_attempts: 1,
+          grading_recovery_requested_at: 5.minutes.ago, grading_recovery_state: "uncertain")
+        allow(ENV).to receive(:[]).with("QUICKFLOW_GRADING_RECOVERY_ENABLED").and_return(flag)
+        login
+        get detail_path
+        expect(document.at_css("#results-heading").text).to include("受付状況を確認できません")
+        expect(document.at_css(".grading-retry-button")[:disabled]).not_to be_nil
+        expect(document.text).to include("再送せず運用担当者に確認")
+        expect(document.text).not_to include("採点が完了すると、ここに結果が表示されます。")
+        expect(document.at_css("input[name='retry_request_token']")).to be_nil
+        expect(submission.reload.grading_recovery_attempts).to eq(1)
+      end
     end
 
     it "reuses the recovery service and refuses a repeated POST" do
-      question = create_question
-      question.update!(grading_rule: JSON.generate(criteria: "同類項をまとめる。", requires_work: false,
-        material_blob_id: assignment.material_file.blob.id))
       login
+      get detail_path
+      request_token = retry_token_from_page
       expect(AnswerGradingJob).to receive(:perform_later).once.and_return(true)
-      post resume_path
+      post resume_path, params: { retry_request_token: request_token }
       expect(response).to redirect_to(detail_path)
       expect(submission.reload).to be_grading
       expect(submission.processing_generation).to eq(1)
       follow_redirect!
-      expect(document.at_css("[role='status']").text).to include("採点を再開しました")
+      expect(document.at_css("[role='status']").text).to include("再依頼を受け付けました")
       expect(document.text).not_to include("採点を再開する")
-      post resume_path
+      post resume_path, params: { retry_request_token: request_token }
       expect(submission.reload.processing_generation).to eq(1)
       follow_redirect!
-      expect(document.at_css("[role='alert']").text).to include("現在は採点を再開できません")
+      expect(document.at_css("[role='alert']").text).to include("状態が変わりました")
     end
 
-    it "rejects an ineligible failed answer without enqueueing" do
+    it "rejects a missing request token without enqueueing" do
       expect(AnswerGradingJob).not_to receive(:perform_later)
       login
       post resume_path
       expect(submission.reload).to be_failed
       follow_redirect!
-      expect(document.at_css("[role='alert']").text).to include("現在は採点を再開できません")
+      expect(document.at_css("[role='alert']").text).to include("画面の情報が古い")
     end
 
     it "shows and accepts the button for a stopped grading answer" do
-      question = create_question
-      question.update!(grading_rule: JSON.generate(criteria: "同類項をまとめる。", requires_work: false,
-        material_blob_id: assignment.material_file.blob.id))
       submission.update!(status: :grading, processing_generation: 1)
-      allow_any_instance_of(Recovery::GradingRecovery).to receive(:queue_clear?).and_return(true)
+      allow_any_instance_of(Recovery::AnswerRecovery).to receive(:queue_clear?).and_return(true)
       expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 2, admission: kind_of(String)).and_return(true)
       login
       get detail_path
-      expect(document.at_css("form[action='#{resume_path}'] button").text).to eq("採点を再開する")
-      post resume_path
+      expect(document.at_css("form[action='#{resume_path}'] button").text).to eq("採点をもう一度依頼する")
+      post resume_path, params: { retry_request_token: retry_token_from_page }
       expect(response).to redirect_to(detail_path)
       expect(submission.reload.processing_generation).to eq(2)
       follow_redirect!
-      expect(document.at_css("[role='status']").text).to include("採点を再開しました")
+      expect(document.at_css("[role='status']").text).to include("再依頼を受け付けました")
     end
 
     [ :submitted, :grading, :completed ].each do |state|
       it "does not offer or resume #{state} answers" do
         submission.update!(status: state)
+        allow_any_instance_of(Recovery::AnswerRecovery).to receive(:queue_clear?).and_return(false)
         login
         get detail_path
         expect(document.text).not_to include("採点を再開する")
         expect(document.text).to include("画面から採点を再開できません") unless state == :completed
-        expect_any_instance_of(Recovery::GradingRecovery).not_to receive(:call) unless state == :grading
+        expect_any_instance_of(Recovery::AnswerRecovery).not_to receive(:call) unless state == :grading
         post resume_path
         expect(submission.reload.status).to eq(state.to_s)
       end
@@ -1110,10 +1149,10 @@ RSpec.describe "Teacher grading reviews", type: :request do
             grade: classroom.grade, class_number: classroom.class_number,
             attendance_number: student.attendance_number, password: "password123" } }
         when :other_teacher, :foreign_teacher
-          target_school = actor == :foreign_teacher ? School.create!(school_code: "FOREIGN") : school
-          login(Teacher.create!(school: target_school, user_id: "other", password: "password123"))
+          target_school = actor == :foreign_teacher ? (@other_school = School.create!(school_code: "FOREIGN")) : school
+          login(@other_teacher = Teacher.create!(school: target_school, user_id: "other", password: "password123"))
         end
-        expect(Recovery::GradingRecovery).not_to receive(:new)
+        expect(Recovery::AnswerRecovery).not_to receive(:new)
         post resume_path
         if [ :anonymous, :student ].include?(actor)
           expect(response).to redirect_to(login_path)
@@ -1126,9 +1165,9 @@ RSpec.describe "Teacher grading reviews", type: :request do
 
     it "rejects an undistributed answer and a swapped assignment ID" do
       login
-      another_assignment = Assignment.create!(teacher: teacher, title: "別テスト", point_per_question: 5)
+      another_assignment = @another_assignment = Assignment.create!(teacher: teacher, title: "別テスト", point_per_question: 5)
       another_assignment.assignment_classrooms.create!(classroom: classroom)
-      expect(Recovery::GradingRecovery).not_to receive(:new)
+      expect(Recovery::AnswerRecovery).not_to receive(:new)
       post resume_grading_assignment_submission_path(another_assignment, submission)
       expect(response).to have_http_status(:not_found)
       AssignmentClassroom.where(assignment: assignment).delete_all
@@ -1145,12 +1184,15 @@ RSpec.describe "Teacher grading reviews", type: :request do
       post login_path, params: { authenticity_token: token,
         session: { user_id: teacher.user_id, password: "password123" } }
       get detail_path
+      request_token = retry_token_from_page
       token = document.at_css("form[action='#{resume_path}'] input[name='authenticity_token']")[:value]
       post resume_path
       expect(response).to have_http_status(:unprocessable_content)
       expect(submission.reload).to be_failed
-      post resume_path, params: { authenticity_token: token }
+      expect(AnswerGradingJob).to receive(:perform_later).with(have_attributes(id: submission.id), 1, admission: kind_of(String)).once.and_return(true)
+      post resume_path, params: { authenticity_token: token, retry_request_token: request_token }
       expect(response).to redirect_to(detail_path)
+      expect(submission.reload).to have_attributes(processing_generation: 1, grading_recovery_attempts: 1, status: "grading")
     ensure
       ActionController::Base.allow_forgery_protection = original
     end

@@ -3,8 +3,8 @@ class AnswerReadingJob < ApplicationJob
 
   queue_as :default
 
-  def perform(submission, generation = 0)
-    claim = SubmissionProcessingClaim.new(submission, generation, "reading")
+  def perform(submission, generation = 0, admission: nil)
+    claim = SubmissionProcessingClaim.new(submission, generation, "reading", admission: admission)
     return unless claim.claim
 
     captured = claim.submission

@@ -284,7 +284,8 @@ RSpec.describe "Student submissions", type: :request do
       expect(document.at_css("#grade_student_#{student.id} .grade-score").text).to be_empty
       get assignment_submission_path(assignment, item)
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("採点失敗", "採点が完了すると")
+      expect(response.body).to include("採点失敗", "採点に失敗しました", "採点をもう一度依頼する")
+      expect(response.body).not_to include("採点が完了すると")
       get answer_assignment_submission_path(assignment, item)
       expect(response.body.b).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
     end

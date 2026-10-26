@@ -6,7 +6,9 @@ class SubmissionsController < ApplicationController
 
   def show
     set_grading_results
-    @grading_recovery_candidate = Recovery::GradingRecovery.new.stopped_grading_candidate?(@submission) if grading_recovery_enabled? && @submission.grading?
+    if !guest_session? && grading_recovery_enabled? && (@submission.failed? || @submission.grading?)
+      @grading_recovery_offer = Recovery::AnswerRecovery.new.offer(@submission, teacher: current_teacher)
+    end
   end
 
   def resume_grading
@@ -15,14 +17,13 @@ class SubmissionsController < ApplicationController
         alert: "現在は採点を再開できません。運用担当者に確認してください。", status: :see_other
     end
 
-    report = Recovery::GradingRecovery.new.call(@submission.id,
-      interrupted_generation: (@submission.processing_generation if @submission.grading?))
+    report = Recovery::AnswerRecovery.new.call(@submission.id, teacher: current_teacher, request_token: params[:retry_request_token])
     if report[:result] == "enqueued"
       redirect_to assignment_submission_path(@assignment, @submission),
-        notice: "採点を再開しました。処理中です。", status: :see_other
+        notice: "採点の再依頼を受け付けました。処理中です。", status: :see_other
     else
       redirect_to assignment_submission_path(@assignment, @submission),
-        alert: "現在は採点を再開できません。運用担当者に確認してください。", status: :see_other
+        alert: grading_recovery_message(report), status: :see_other
     end
   rescue StandardError => error
     Rails.logger.error("Teacher grading recovery failed: submission_id=#{@submission.id} #{error.class}")
@@ -110,6 +111,17 @@ class SubmissionsController < ApplicationController
 
   helper_method def grading_recovery_enabled?
     ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"] == "true"
+  end
+
+  helper_method def grading_recovery_message(report = @grading_recovery_offer)
+    codes = report&.fetch(:reason_codes, []) || []
+    codes += [ "recovery_registration_unknown" ] if %w[pending uncertain].include?(@submission.grading_recovery_state)
+    return "再依頼の受付状況を確認できません。再送せず運用担当者に確認してください。" if (codes & %w[recovery_registration_unknown enqueue_not_confirmed]).any?
+    return "再依頼はこの答案の上限3回に達しています。運用担当者に確認してください。" if codes.include?("recovery_attempt_limit")
+    return "画面の情報が古いか状態が変わりました。再読み込みして確認してください。" if (codes & %w[state_changed request_invalid_or_expired status_not_failed]).any?
+    return "前の受付から60秒以上あけて、画面を再読み込みしてください。" if codes.include?("recovery_cooldown")
+
+    "現在は採点を再開できません。答案や処理状況を運用担当者に確認してください。"
   end
 
   def render_update_error(message)
