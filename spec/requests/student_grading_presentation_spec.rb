@@ -52,9 +52,8 @@ RSpec.describe "Student grading presentation", type: :request do
       expect(frame.at_css("[data-controller='grading-status']")).to be_present
       expect(frame.css("a, button")).to be_empty
       expect(frame.text).not_to include("採点結果を見る", "結果を確認する")
-      expect(frame.css(".student-grading-waiting__dot")).to be_empty
-      expect(page.css(".student-grading-left-waiting .student-grading-waiting__dot").size).to eq(3)
-      expect(page.at_css(".student-grading-left-waiting__dots")[:'aria-hidden']).to eq("true")
+      expect(frame.css(".student-grading-waiting__dot").size).to eq(3)
+      expect(frame.at_css(".student-grading-waiting__dots")[:'aria-hidden']).to eq("true")
       expect(frame.text).to include(state == :grading ? "AIが答案を確認しています。" : "採点結果を準備しています。")
       expect(frame.text).not_to include("10秒", "更新します", "%", "％", "問採点済み",
         "時間がかかる場合は、このページを開き直してください。")
