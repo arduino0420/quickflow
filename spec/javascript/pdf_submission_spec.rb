@@ -16,7 +16,7 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
         }
       });
       function editor() {
-        const c=new Preview();Object.assign(c,{active:true,session:Symbol(),pagesReady:true,exporting:false,
+        const c=new Preview();Object.assign(c,{confirmation:{ask:async()=>true,cancel(){},destroy(){}},active:true,session:Symbol(),pagesReady:true,exporting:false,
           pdf:{getData:async()=>new Uint8Array([1])},pageStates:[{ink:'latest'}],toolTargets:[{}],sizeTargets:[{}],
           submitTarget:{},submitStatusTarget:{setAttribute(){}},draftEditable:true,
           draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,revision:1,prepareSubmission:async()=>{assert(c.exporting);return 7},finishSubmission(){},stop(){this.stopped=true}}});
@@ -70,6 +70,63 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
 
+  it "requires a single positive confirmation before any submission work and rejects stale intent" do
+    script = <<~JS
+      const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+      const source=fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/gm,'').replace('export default class','class Preview');
+      const Preview=vm.runInNewContext(source+';Preview',{Controller:class{}});
+      function editor(){
+        const c=new Preview();let resolve,asks=0,work=0,ends=0;
+        Object.assign(c,{active:true,session:Symbol(),pagesReady:true,pdf:{},submitTarget:{},submitStatusTarget:{},
+          draft:{ready:true,allowed:true,blocked:false},confirmation:{ask:()=>{asks++;return new Promise(r=>resolve=r)}},
+          finishInput:()=>ends++,performSubmission:async()=>{work++}});
+        return {c,answer:value=>resolve(value),counts:()=>({asks,work,ends})};
+      }
+      (async()=>{
+        const no=editor(),pending=no.c.submitAnswer();
+        await no.c.submitAnswer();assert.deepEqual(no.counts(),{asks:1,work:0,ends:1});
+        assert(no.c.submitTarget.disabled);no.answer(false);await pending;
+        assert.equal(no.counts().work,0);assert.equal(no.c.submitTarget.disabled,false);
+        const yes=no.c.submitAnswer();no.answer(true);await yes;assert.equal(no.counts().work,1);
+        const stale=editor(),old=stale.c.submitAnswer();stale.c.session=Symbol();stale.answer(true);await old;
+        assert.equal(stale.counts().work,0);
+        const gone=editor(),removed=gone.c.submitAnswer();gone.c.active=false;gone.answer(true);await removed;
+        assert.equal(gone.counts().work,0);
+        const blocked=editor(),waiting=blocked.c.submitAnswer();blocked.c.draft.blocked=true;
+        blocked.c.performSubmission=Preview.prototype.performSubmission;
+        blocked.c.submissionState=()=>{throw Error('blocked draft must not make a request')};
+        blocked.answer(true);await waiting;assert.equal(blocked.counts().work,0);
+      })().catch(e=>{console.error(e);process.exitCode=1});
+    JS
+    stdout, stderr, status = Open3.capture3("node", "-e", script,
+      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+
+  it "discards the removed dialog so a reconnected controller can ask again" do
+    script = <<~JS
+      const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+      const source=fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/gm,'').replace('export default class','class Preview');
+      let created=0,destroyed=0,submitted=0;
+      const Preview=vm.runInNewContext(source+';Preview',{
+        Controller:class{},window:{clearTimeout(){}},document:{documentElement:{removeAttribute(){},setAttribute(){}}},
+        SubmissionConfirmation:class{constructor(){created++}async ask(){return true}}
+      });
+      (async()=>{
+        const c=new Preview();Object.assign(c,{active:true,session:Symbol(),pageStates:[],previousTurboSetting:null,
+          confirmation:{destroy(){destroyed++}},draft:{stop(){},ready:true,allowed:true,blocked:false},
+          finishInput(){},stopInputDiagnostics(){},submitTarget:{},submitStatusTarget:{}});
+        c.disconnect();assert.equal(destroyed,1);assert.equal(c.confirmation,null);assert.equal(c.active,false);
+        c.active=true;c.session=Symbol();c.pagesReady=true;c.pdf={};
+        c.performSubmission=async()=>submitted++;
+        await c.submitAnswer();assert.equal(created,1);assert.equal(submitted,1);
+      })().catch(e=>{console.error(e);process.exitCode=1});
+    JS
+    stdout, stderr, status = Open3.capture3("node", "-e", script,
+      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+
   it "keeps ink when both submission and reconciliation lose connectivity, then retries safely" do
     script = <<~JS
       const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
@@ -81,7 +138,7 @@ RSpec.describe "Handwritten PDF submission lifecycle" do
         snapshotPages:states=>structuredClone(states),generateAnswerPdf:async()=>new Uint8Array([37,80,68,70])
       });
       const c=new Preview();let posts=0,checks=0,flushes=0;
-      Object.assign(c,{active:true,session:Symbol(),pagesReady:true,exporting:false,
+      Object.assign(c,{confirmation:{ask:async()=>true,cancel(){},destroy(){}},active:true,session:Symbol(),pagesReady:true,exporting:false,
         pdf:{getData:async()=>new Uint8Array([1])},pageStates:[{ink:'latest'}],toolTargets:[{}],sizeTargets:[{}],
         submitTarget:{},submitStatusTarget:{setAttribute(){}},draftEditable:true,
         draft:{ready:true,allowed:true,blocked:false,dirty:true,version:0,revision:1,

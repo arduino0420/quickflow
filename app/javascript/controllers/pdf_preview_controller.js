@@ -2,6 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import PdfInk from "pdf_ink"
 import PdfInputDiagnostics from "controllers/pdf_input_diagnostics"
 import PdfDraft from "pdf_draft"
+import SubmissionConfirmation from "submission_confirmation"
 import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
@@ -15,6 +16,7 @@ export default class extends Controller {
     this.previousTurboSetting = document.documentElement.getAttribute("data-turbo")
     document.documentElement.setAttribute("data-turbo", "false")
     this.exporting = false
+    this.confirming = false
     this.draftEditable = false
     this.sourceBytes = null
     this.submissionAttempt = null
@@ -238,11 +240,11 @@ export default class extends Controller {
     this.containerTarget.setAttribute("aria-busy", "false")
     this.statusTarget.textContent = ""
     this.statusTarget.hidden = true
-    if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || !this.draft?.ready || !this.draft?.allowed || this.draft?.blocked
+    if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || this.confirming || !this.draft?.ready || !this.draft?.allowed || this.draft?.blocked
   }
 
   selectTool(event) {
-    if (this.exporting) return
+    if (this.exporting || this.confirming) return
     if (!["pen", "eraser"].includes(event.params.tool)) return
     this.finishInput()
     this.tool = event.params.tool
@@ -251,7 +253,7 @@ export default class extends Controller {
   }
 
   selectSize(event) {
-    if (this.exporting) return
+    if (this.exporting || this.confirming) return
     if (!["small", "medium", "large"].includes(event.params.size)) return
     this.finishInput()
     this.eraserSize = event.params.size
@@ -350,7 +352,7 @@ export default class extends Controller {
 
   pointerDown(event) {
     this.inputDiagnostics?.record("controller", event, "down-enter")
-    if (this.exporting) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
+    if (this.exporting || this.confirming) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
     this.showCursor(event)
     const state = this.statesByCanvas.get(event.currentTarget)
     if (!state || state.inkCanvas.hidden) {
@@ -409,7 +411,7 @@ export default class extends Controller {
 
   pointerMove(event) {
     this.inputDiagnostics?.record("controller", event, "move-enter")
-    if (this.exporting) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
+    if (this.exporting || this.confirming) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
     this.showCursor(event)
     if (!this.multiTouch && event.pointerId === this.touch?.id) {
       window.scrollBy(0, this.touch.y - event.clientY)
@@ -535,7 +537,7 @@ export default class extends Controller {
       editable: value => {
         if (!this.current(session)) return
         this.draftEditable = value
-        if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || !this.pagesReady || !value
+        if (this.hasSubmitTarget) this.submitTarget.disabled = this.exporting || this.confirming || !this.pagesReady || !value
         if (!value) this.finishInput()
       },
       expired: () => this.showRecovery()
@@ -555,6 +557,7 @@ export default class extends Controller {
   }
 
   showRecovery() {
+    this.confirmation?.cancel()
     if (this.hasRecoveryTarget) this.recoveryTarget.hidden = false
     if (this.hasResumeTarget) this.resumeTarget.disabled = false
     if (this.hasSubmitTarget) this.submitTarget.disabled = true
@@ -625,11 +628,13 @@ export default class extends Controller {
   }
 
   warnUnsaved(event) {
+    this.confirmation?.cancel()
     this.finishInput()
     if (this.draft?.dirty && !this.submissionConfirmed) { event.preventDefault(); event.returnValue = "" }
   }
 
   confirmLeave(event) {
+    this.confirmation?.cancel()
     this.finishInput()
     if (this.draft?.dirty && !this.submissionConfirmed && !window.confirm("保存が完了していない手書きがあります。このまま移動すると失われる可能性があります。移動しますか？")) event.preventDefault()
   }
@@ -653,6 +658,29 @@ export default class extends Controller {
   }
 
   async submitAnswer() {
+    if (this.confirming || this.exporting || !this.active || !this.pagesReady || !this.pdf ||
+        !this.draft?.ready || !this.draft.allowed || this.draft.blocked) return
+    this.finishInput()
+    const session = this.session
+    this.confirming = true
+    this.submitTarget.disabled = true
+    try {
+      this.confirmation ||= new SubmissionConfirmation()
+      if (!await this.confirmation.ask(this.submitTarget) || !this.current(session)) return
+      // Autosave remains active while deciding. The existing submission path rechecks
+      // authorization/context and reconciles the original token before generating a PDF.
+      await this.performSubmission()
+    } catch {
+      if (this.current(session)) this.submitStatusTarget.textContent = "提出の状態を確認できませんでした。答案画面を閉じず、先生に確認してください。"
+    } finally {
+      if (this.current(session)) {
+        this.confirming = false
+        this.submitTarget.disabled = this.exporting || !this.draft?.ready || !this.draft.allowed || this.draft.blocked
+      }
+    }
+  }
+
+  async performSubmission() {
     if (this.exporting || !this.active || !this.pagesReady || !this.pdf ||
         !this.draft?.ready || !this.draft.allowed || this.draft.blocked) return
     this.finishInput()
@@ -743,6 +771,9 @@ export default class extends Controller {
   }
 
   disconnect() {
+    this.active = false
+    this.confirmation?.destroy()
+    this.confirmation = null
     for (const canvas of this.inkTouchListeners?.keys() || []) this.inkTargetDisconnected(canvas)
     this.stopInputDiagnostics()
     this.touchIds?.clear()
