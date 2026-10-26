@@ -165,27 +165,59 @@ RSpec.describe "Fictional guest browsing", type: :system do
     expect(page).to have_button("生徒ゲストで閲覧")
   end
 
-  it "shows a readable PDF error and authorized direct-file fallback when loading fails" do
-    driven_by :selenium, using: :headless_chrome, screen_size: [ 320, 812 ]
-    allow(Demo::Profile).to receive(:identity?).and_return(true)
-    allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
-    visit root_path
-    page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 320, height: 812, deviceScaleFactor: 1, mobile: false)
-    expect(page.evaluate_script("innerWidth")).to eq(320)
-    click_button "生徒ゲストで閲覧"
-    page.driver.browser.execute_cdp("Network.enable")
-    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [ "*/student/assignments/*/answer*" ])
-    click_link "サンプルの小テスト"
-    expect(page).to have_css("[data-answer-pdf-target='status']", text: "答案PDFを表示できませんでした。")
-    expect(page).to have_link("PDFを別タブで開く", href: %r{/student/assignments/\d+/answer})
-    expect(page).not_to have_css("canvas[data-rendered='true']")
-    page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "error-320.png")) if ENV["QF_PDF_EVIDENCE"]
-    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
-    page.refresh
-    expect_guest_pdf_pixels
-    expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
-  ensure
-    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
+  [ :fetch, :worker ].each do |failure|
+    it "shows actionable PDF reload guidance without an obsolete link on #{failure} failure" do
+      driven_by :selenium, using: :headless_chrome, screen_size: [ 320, 812 ]
+      allow(Demo::Profile).to receive(:identity?).and_return(true)
+      allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+      visit root_path
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 320, height: 812, deviceScaleFactor: 1, mobile: false)
+      expect(page.evaluate_script("innerWidth")).to eq(320)
+      click_button "生徒ゲストで閲覧"
+      page.driver.browser.execute_cdp("Network.enable")
+      page.driver.browser.execute_cdp("Network.setCacheDisabled", cacheDisabled: true)
+      if failure == :fetch
+        page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [ "*/student/assignments/*/answer*" ])
+      else
+        # Network blocking on the page target does not reliably intercept a dedicated worker.
+        worker_failure = <<~JS
+          window.qfOriginalWorker=window.Worker;
+          window.Worker=class extends window.Worker {
+            constructor(url,options) {
+              if(String(url).includes('/pdf.worker.min.mjs')) throw new DOMException('Synthetic worker creation failure','SecurityError');
+              super(url,options);
+            }
+          };
+        JS
+        worker_script = page.driver.browser.execute_cdp("Page.addScriptToEvaluateOnNewDocument", source: worker_failure).fetch("identifier")
+        page.execute_script(worker_failure)
+      end
+      click_link "サンプルの小テスト"
+      expect(page).to have_css("[data-answer-pdf-target='status']", text: "答案PDFを表示できませんでした。")
+      expect(page).not_to have_css('.answer-pdf a, .answer-pdf [target="_blank"]', visible: :all)
+      expect(page.html).not_to include("PDFを別タブで開く", "下のリンク")
+      expect(page).to have_text("時間をおいて画面を再読み込みしてください。")
+      expect(page).not_to have_css("canvas[data-rendered='true']")
+      page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "error-#{failure}-320.png")) if ENV["QF_PDF_EVIDENCE"]
+      page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
+      if worker_script
+        page.driver.browser.execute_cdp("Page.removeScriptToEvaluateOnNewDocument", identifier: worker_script)
+        worker_script = nil
+        page.execute_script("window.Worker=window.qfOriginalWorker")
+      end
+      page.refresh
+      expect_guest_pdf_pixels
+      expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+    ensure
+      if worker_script
+        page.driver.browser.execute_cdp("Page.removeScriptToEvaluateOnNewDocument", identifier: worker_script)
+        page.execute_script("window.Worker=window.qfOriginalWorker")
+      end
+      page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
+      page.driver.browser.execute_cdp("Network.setCacheDisabled", cacheDisabled: false)
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+      page.current_window.resize_to(1280, 900)
+    end
   end
 
   def expect_guest_pdf_pixels
@@ -225,6 +257,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
     expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
     expect(page).to have_content("70点")
     expect(page).not_to have_button("提出")
-    expect(page).to have_link("PDFを別タブで開く")
+    expect(page).not_to have_css('.answer-pdf a, .answer-pdf [target="_blank"]', visible: :all)
+    expect(page.html).not_to include("PDFを別タブで開く")
   end
 end

@@ -22,6 +22,20 @@ RSpec.describe "Student grading presentation", type: :request do
       ai_model_name: "test", prompt_version: "v1", graded_at: Time.current)
   end
 
+  [ :submitted, :grading, :failed, :completed ].each do |state|
+    it "keeps the authenticated viewer URL but no new-tab action in #{state} results" do
+      submission.update!(status: state)
+      submission.answer_file.attach(io: StringIO.new("%PDF-1.4\nanswer"), filename: "answer.pdf", content_type: "application/pdf")
+      login
+      get student_assignment_path(assignment)
+      expect(response).to have_http_status(:ok)
+      viewer = document.at_css("[data-controller='answer-pdf']")
+      expect(viewer[:'data-answer-pdf-url-value']).to eq(answer_student_assignment_path(assignment))
+      expect(viewer.css("a, [target='_blank']")).to be_empty
+      expect(response.body).not_to include("PDFを別タブで開く")
+    end
+  end
+
   [ :submitted, :grading ].each do |state|
     it "shows calm #{state} guidance with no technical interval or invented progress and leaves the PDF outside the frame" do
       submission.update!(status: state)

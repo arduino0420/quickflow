@@ -476,6 +476,19 @@ RSpec.describe "Teacher grading reviews", type: :request do
     expect(pending.reload.teacher_judgment).to be_nil
   end
 
+  [ :submitted, :grading, :failed, :completed ].each do |state|
+    it "keeps the authenticated viewer URL but no new-tab action in #{state} teacher results" do
+      submission.update!(status: state)
+      login
+      get detail_path
+      expect(response).to have_http_status(:ok)
+      viewer = document.at_css("[data-controller='answer-pdf']")
+      expect(viewer[:'data-answer-pdf-url-value']).to eq(pdf_path)
+      expect(viewer.css("a, [target='_blank']")).to be_empty
+      expect(response.body).not_to include("PDFを別タブで開く")
+    end
+  end
+
   it "shows the PDF and ordered question details with independent AI, teacher and final judgments" do
     result_for(judgment: :correct, teacher_judgment: :incorrect, position: 2)
     result_for(position: 1)
