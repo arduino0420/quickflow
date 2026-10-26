@@ -36,9 +36,16 @@ RSpec.describe "Student grading waiting presentation", type: :system do
       expect(page).not_to have_content("時間がかかる場合は、このページを開き直してください。")
       expect(page).to have_css('.student-grading-waiting__dots[aria-hidden="true"]')
       expect(page).to have_css(".student-grading-waiting__dot", count: 3)
+      expect(page).to have_css("canvas[data-rendered='true']")
+      expect(page.evaluate_script(<<~JS)).to be(true)
+        (() => { const left=document.querySelector('.student-grading-left-waiting').getBoundingClientRect();
+          const section=document.querySelector('[aria-label="提出した答案PDF"]').getBoundingClientRect();
+          const pdf=document.querySelector('.answer-pdf').getBoundingClientRect();
+          return left.width > 0 && Math.abs((left.left+left.right)/2-(section.left+section.right)/2) < 2 && left.bottom <= pdf.top; })()
+      JS
       geometry = page.evaluate_script(<<~JS)
         (() => {
-          const panel = document.querySelector('.student-grading-waiting');
+          const panel = document.querySelector('.student-grading-left-waiting');
           const dot = panel.querySelector('.student-grading-waiting__dot');
           const animation = dot.getAnimations()[0];
           animation.pause(); animation.currentTime = 900;
@@ -50,12 +57,28 @@ RSpec.describe "Student grading waiting presentation", type: :system do
             overflow: document.documentElement.scrollWidth > innerWidth };
         })()
       JS
-      expect(geometry.fetch("width")).to be >= 16
-      expect(geometry.fetch("height")).to be >= 16
-      expect(geometry.fetch("y")).to be <= -8
+      expect(geometry.fetch("width")).to be >= 40
+      expect(geometry.fetch("height")).to be >= 40
+      expect(geometry.fetch("y")).to be <= -24
       expect(geometry.fetch("contained")).to be(true)
       expect(geometry.fetch("overflow")).to be(false)
+      page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "waiting-#{width}.png")) if ENV["QF_PDF_EVIDENCE"]
     end
+  end
+
+  it "shows the left waiting area only while submitted or grading" do
+    [ :submitted, :grading ].each do |state|
+      submission.update!(status: state)
+      visit student_assignment_path(assignment)
+      expect(page).to have_css(".student-grading-left-waiting", visible: true)
+      expect(page).to have_css(".student-grading-waiting__dot", count: 3)
+      expect(page).to have_text(state == :submitted ? "採点結果を準備しています。" : "AIが答案を確認しています。")
+    end
+    submission.update!(status: :completed)
+    visit student_assignment_path(assignment)
+    expect(page).to have_css(".student-grading-left-waiting", visible: :hidden)
+    expect(page).not_to have_css(".student-grading-waiting__dot", visible: true)
+    expect(page).to have_css("canvas[data-rendered='true']")
   end
 
   it "keeps reduced motion still and preserves the real failure guidance" do
@@ -70,6 +93,7 @@ RSpec.describe "Student grading waiting presentation", type: :system do
     submission.update!(status: :failed)
     visit student_assignment_path(assignment)
     expect(page).to have_content("採点に失敗しました。先生に確認してください。")
-    expect(page).not_to have_css(".student-grading-waiting__dot")
+    expect(page).not_to have_css(".student-grading-waiting__dot", visible: true)
+    expect(page).to have_css(".student-grading-left-waiting", visible: :hidden)
   end
 end

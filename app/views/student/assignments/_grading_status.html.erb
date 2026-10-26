@@ -13,12 +13,7 @@
     <% elsif @submission.failed? %>
       <p>採点に失敗しました。先生に確認してください。</p>
     <% else %>
-      <div class="student-grading-waiting">
-        <div class="student-grading-waiting__dots" aria-hidden="true">
-          <% 3.times do %><span class="student-grading-waiting__dot"></span><% end %>
-        </div>
-        <p><%= @submission.submitted? ? "採点結果を準備しています。" : "AIが答案を確認しています。" %></p>
-      </div>
+      <p class="student-grading-waiting-fallback"><%= @submission.submitted? ? "採点結果を準備しています。" : "AIが答案を確認しています。" %></p>
     <% end %>
   <% end %>
 <% end %>

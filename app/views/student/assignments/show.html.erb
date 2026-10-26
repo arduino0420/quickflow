@@ -31,6 +31,13 @@
 <% if @submission.persisted? %>
   <div class="teacher-review-layout">
     <section aria-label="提出した答案PDF">
+      <div class="student-grading-left-waiting">
+        <div class="student-grading-left-waiting__dots student-grading-waiting__dots" aria-hidden="true">
+          <% 3.times do %><span class="student-grading-waiting__dot"></span><% end %>
+        </div>
+        <p class="student-grading-left-waiting__submitted">採点結果を準備しています。</p>
+        <p class="student-grading-left-waiting__grading">AIが答案を確認しています。</p>
+      </div>
       <% if @submission.answer_file.attached? %>
         <% if @submission.answer_file.content_type == "application/pdf" %>
           <%= render "shared/answer_pdf", url: answer_student_assignment_path(@assignment), title: "提出した答案PDF" %>
