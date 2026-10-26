@@ -119,6 +119,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     draft = AnswerDraft.find_by!(student: @student, assignment: @assignment)
     draft_before = draft.attributes
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     submission = Submission.find_by!(student: @student, assignment: @assignment)
     expect(submission).to be_submitted
@@ -187,6 +188,33 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     expect(responses).to have_received(:create).exactly(3).times
   end
 
+  it "confirms legacy uploads before state requests and rejects a changed material without posting" do
+    student_login(@student)
+    visit student_assignment_path(@assignment)
+    find("summary", text: "従来のPDFアップロード").click
+    attach_file "解答PDF", Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")
+    jobs = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
+    page.execute_script(<<~JS)
+      window.legacyRequests=[];const nativeFetch=window.fetch.bind(window);
+      window.fetch=(url,options)=>{window.legacyRequests.push([String(url),options?.method||'GET']);return nativeFetch(url,options)};
+    JS
+    click_button "提出", exact: true
+    within("dialog") { click_button "いいえ" }
+    expect(page).to have_button("提出", exact: true, disabled: false)
+    expect(page.evaluate_script("window.legacyRequests")).to eq([])
+    expect(page.find_field("解答PDF").value).to end_with("pdf_preview_single.pdf")
+    click_button "提出", exact: true
+    old_blob = @assignment.material_file.blob
+    @assignment.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files/material.pdf")), filename: "changed.pdf", content_type: "application/pdf")
+    within("dialog") { click_button "はい", exact: true }
+    expect(page).to have_text("提出状況を確認できないため送信していません")
+    expect(Submission.where(student: @student, assignment: @assignment)).to be_empty
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(jobs)
+    expect(page.evaluate_script("window.legacyRequests.map(r=>r[1])")).to eq([ "GET" ])
+  ensure
+    old_blob&.purge if old_blob && !old_blob.attachments.exists?
+  end
+
   it "creates a legacy file upload once, rejects a stale form's replacement, and accepts a touch retry only under its existing flag" do
     previous_flag = ENV["QUICKFLOW_GRADING_RECOVERY_ENABLED"]
     student_login(@student)
@@ -200,6 +228,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
       attach_file "解答PDF", Rails.root.join("spec/fixtures/files/material.pdf")
     end
     click_button "提出", exact: true
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_content("採点結果を準備しています。")
     submission = Submission.find_by!(student: @student, assignment: @assignment)
     original = submission.attributes
@@ -207,7 +236,9 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     pdf = blob.download
     within_window(stale) do
       click_button "提出", exact: true
-      expect(page).not_to have_css("input[type='file']")
+      within("dialog.submission-confirmation") { click_button "はい", exact: true }
+      expect(page).to have_text("提出状況を確認できないため送信していません")
+      expect(page).to have_css("input[type='file']")
     end
     stale.close
     expect(submission.reload.attributes).to eq(original)
@@ -255,6 +286,7 @@ RSpec.describe "Quiz grading workflow in Chrome", type: :system do
     find("summary", text: "従来のPDFアップロード").click
     attach_file "解答PDF", Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")
     click_button "提出", exact: true
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_content("採点結果を準備しています。")
     submission = Submission.find_by!(student: @student, assignment: @assignment)
     original_pdf = submission.answer_file.blob.attributes

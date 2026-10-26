@@ -1,0 +1,21 @@
+.submission-confirmation {
+  position: fixed;
+  width: min(24rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 1.5rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1rem 3rem #0003;
+}
+.submission-confirmation::backdrop { background: #0f172a99; }
+.submission-confirmation h2 { margin: 0 2rem 1.25rem 0; font-size: 1.4rem; overflow-wrap: anywhere; }
+.submission-confirmation-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.submission-confirmation-actions button { min-height: 44px; min-width: 0; padding: 0.6rem 0.25rem; overflow-wrap: anywhere; }
+.submission-confirmation .submission-confirmation-close { position: absolute; top: 0.25rem; right: 0.25rem; width: 44px; height: 44px; padding: 0.25rem; background: transparent; color: var(--color-text); }
+.submission-confirmation .submission-confirmation-close:hover { background: var(--color-info-soft); }

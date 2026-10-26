@@ -63,10 +63,15 @@
         </ul>
       </div>
     <% end %>
-    <%= form_with model: @submission, url: student_assignment_submission_path(@assignment) do |form| %>
+    <%= form_with model: @submission, url: student_assignment_submission_path(@assignment),
+      data: { controller: "submission-confirmation", submission_confirmation_context_value: AnswerDraftContext.issue(current_student, @assignment),
+        submission_confirmation_state_url_value: student_assignment_path(@assignment),
+        action: "submit->submission-confirmation#request turbo:submit-end->submission-confirmation#submitted turbo:before-cache@document->submission-confirmation#disconnect pagehide@window->submission-confirmation#cancel" } do |form| %>
       <%= form.label :answer_file, "解答PDF" %>
-      <%= form.file_field :answer_file, accept: "application/pdf,.pdf" %>
-      <%= form.submit "提出" %>
+      <%= form.file_field :answer_file, accept: "application/pdf,.pdf", data: { submission_confirmation_target: "file" } %>
+      <%= form.submit "提出", disabled: true, data: { submission_confirmation_target: "submit" } %>
+      <p role="alert" data-submission-confirmation-target="status"></p>
+      <noscript><p>提出の確認にはJavaScriptが必要です。設定を確認してください。</p></noscript>
     <% end %>
   </details>
 <% end %>

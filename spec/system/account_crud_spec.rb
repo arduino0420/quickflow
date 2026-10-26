@@ -82,6 +82,7 @@ RSpec.describe "Account CRUD in Chrome", type: :system do
     visit edit_admin_student_path(student)
     select "2組", from: "クラス"
     click_button "変更内容を確認する"
+    expect(page).to have_current_path(confirm_update_admin_student_path(student))
     expect(page).to have_content("変更後: 1年 2組 1番")
     expect(student.reload.classroom).to eq(@room)
     confirm_change

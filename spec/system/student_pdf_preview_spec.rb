@@ -33,6 +33,89 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  it "cancels one accessible confirmation without submission work while autosave and editing continue" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.1, 0.3, 0.1)
+    jobs = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
+    page.execute_script(<<~JS)
+      const editor=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller="pdf-preview"]'),'pdf-preview');
+      window.confirmationCounts={gets:0,posts:0,exports:0};
+      const nativeState=editor.submissionState.bind(editor);
+      editor.submissionState=(options)=>{window.confirmationCounts[options?'posts':'gets']++;return nativeState(options)};
+      const nativeData=editor.pdf.getData.bind(editor.pdf);
+      editor.pdf.getData=()=>{window.confirmationCounts.exports++;return nativeData()};
+    JS
+    [ :no, :escape, :close, :enter ].each do |action|
+      click_button "提出する"
+      expect(page).to have_css("dialog[open]", count: 1)
+      expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", visible: :all, wait: 10)
+      expect(page).to have_selector("dialog h2", text: "提出しますか？")
+      expect(page.evaluate_script("document.activeElement.textContent")).to eq("いいえ")
+      within("dialog") do
+        case action
+        when :no then click_button "いいえ"
+        when :escape then find_button("いいえ").send_keys(:escape)
+        when :close then find('button[aria-label="確認を閉じる"]').click
+        when :enter then find_button("いいえ").send_keys(:enter)
+        end
+      end
+      expect(page).not_to have_css("dialog[open]")
+      expect(page).to have_button("提出する", disabled: false)
+      expect(page.evaluate_script("document.activeElement.textContent")).to eq("提出する")
+      expect(ink_alpha(0.2, 0.1)).to be > 0
+    end
+    ink_drag(0.3, 0.2, 0.5, 0.2, 1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first.fetch("operations").length).to eq(2)
+    expect(page.evaluate_script("window.confirmationCounts")).to eq("gets" => 0, "posts" => 0, "exports" => 0)
+    expect(Submission.where(assignment: @assignment)).to be_empty
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(jobs)
+  end
+
+  it "keeps confirmation choices visible and touch sized at a genuine narrow viewport" do
+    page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 320, height: 480, deviceScaleFactor: 1, mobile: false)
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "提出する"
+    expect(page).to have_css("dialog[open]")
+    expect(page.evaluate_script(<<~JS)).to eq(true)
+      (()=>{const d=document.querySelector('dialog'),r=d.getBoundingClientRect();return innerWidth===320&&r.left>=0&&r.right<=innerWidth&&
+        r.top>=0&&r.bottom<=innerHeight&&[...d.querySelectorAll('button')].every(b=>{const q=b.getBoundingClientRect();return q.height>=44&&q.width>=44&&q.left>=0&&q.right<=innerWidth})})()
+    JS
+    page.save_screenshot(File.join(ENV["QUICKFLOW_REVIEW_SCREENSHOTS"], "confirmation-320.png")) if ENV["QUICKFLOW_REVIEW_SCREENSHOTS"]
+    within("dialog") do
+      find_button("いいえ").send_keys([ :shift, :tab ])
+      expect(page.evaluate_script("document.activeElement.getAttribute('aria-label')")).to eq("確認を閉じる")
+      find('button[aria-label="確認を閉じる"]').send_keys(:tab)
+      expect(page.evaluate_script("document.activeElement.textContent")).to eq("いいえ")
+      click_button "いいえ"
+    end
+    [ [ 844, 390, 200 ], [ 768, 1024, 100 ], [ 1280, 900, 100 ] ].each do |width, height, percent|
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      page.execute_script("document.documentElement.style.fontSize=arguments[0]+'%'", percent)
+      click_button "提出する"
+      expect(page).to have_css("dialog[open]")
+      expect(page.evaluate_script(<<~JS)).to eq(true)
+        (()=>{const d=document.querySelector('dialog'),r=d.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&
+          [...d.querySelectorAll('button')].every(b=>{const q=b.getBoundingClientRect();return q.width>=44&&q.height>=44&&q.top>=r.top&&q.bottom<=r.bottom})})()
+      JS
+      tree = page.driver.browser.execute_cdp("Accessibility.getFullAXTree").fetch("nodes")
+      expect(tree.any? { |node| node.dig("role", "value") == "dialog" && node.dig("name", "value") == "提出しますか？" }).to be(true)
+      page.save_screenshot(File.join(ENV["QUICKFLOW_REVIEW_SCREENSHOTS"], "confirmation-#{width}.png")) if ENV["QUICKFLOW_REVIEW_SCREENSHOTS"]
+      rect = page.evaluate_script("(()=>{const r=document.querySelector('dialog button').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+      action = page.driver.browser.action
+      action.add_pointer_input(:touch, "confirmation-touch")
+      action.move_to_location(rect.fetch("x").round, rect.fetch("y").round, device: "confirmation-touch")
+        .pointer_down(:left, device: "confirmation-touch").pointer_up(:left, device: "confirmation-touch").perform
+      expect(page).not_to have_css("dialog[open]")
+    end
+  ensure
+    page.execute_script("document.documentElement.style.fontSize=''")
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    page.current_window.resize_to(1280, 900)
+  end
+
   it "retains saved and unsaved ink when password revocation rejects a real draft request" do
     previous_protection = ActionController::Base.allow_forgery_protection
     ActionController::Base.allow_forgery_protection = true
@@ -124,6 +207,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
 
     jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     expect(Submission.where(assignment: @assignment).count).to eq(1)
     expect(ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }).to eq(jobs_before + 1)
@@ -223,6 +307,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       window.recoveryPdf=()=>{const attempt=editor.submissionAttempt;return attempt && [attempt.token,attempt.revision,Array.from(attempt.bytes)];};
     JS
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("typeof window.releaseRecoveryUpload==='function'") }
     pdf = page.evaluate_script("window.recoveryPdf()")
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
@@ -246,6 +331,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page.evaluate_script("window.recoveryPdf()")).to eq(pdf)
     page.execute_script("window.fetch=window.recoveryOriginalFetch")
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     expect(Submission.where(assignment: @assignment).count).to eq(1)
     expect(AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length).to eq(1)
@@ -270,6 +356,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         })) : original(url,options);
     JS
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("window.committedUploadStatus===200") }
     expect(Submission.where(assignment: @assignment).count).to eq(1)
     student = Student.find_by!(classroom: @assignment.classrooms.sole, attendance_number: 1)
@@ -311,6 +398,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     JS
     ink_drag(0.1, 0.1, 0.2, 0.1)
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     Timeout.timeout(15) { sleep 0.05 until page.evaluate_script("typeof window.releaseRevokedSubmission==='function'") }
     pdf = page.evaluate_script("window.pendingPdf()")
     student = Student.joins(:classroom).find_by!(classrooms: { id: @assignment.classrooms.sole.id }, attendance_number: 1)
@@ -1056,6 +1144,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     allow(PdfReadabilityValidator).to receive(:validate!).and_raise(PdfReadabilityValidator::InvalidPdf)
 
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
 
     expect(page).to have_text("PDFの内容を確認できませんでした", wait: 30)
     expect(page).to have_text("この画面を閉じず、先生に確認してください")
@@ -1074,6 +1163,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       HTMLCanvasElement.prototype.toBlob = function(callback) { callback(null); };
     JS
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_text("提出できませんでした", wait: 30)
     expect(ink_alpha(0.2, 0.1)).to be > 0
     expect(page).to have_button("提出する", disabled: false)
@@ -1081,6 +1171,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(AnswerDraft.find_by!(assignment: @assignment)).to be_persisted
     page.execute_script("HTMLCanvasElement.prototype.toBlob = window.nativeToBlob")
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     expect(Submission.find_by!(assignment: @assignment).answer_file).to be_attached
   end
@@ -1481,6 +1572,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.count { |job| job[:job] == AnswerReadingJob }
     record_leave_guard
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     expect(leave_guard_value).to eq("false")
     expect(page).to have_text("採点待ち")
@@ -1604,6 +1696,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         expect(page.evaluate_script("window.rejectedDraftPuts")).to eq(1)
         record_leave_guard
         click_button "提出する"
+        within("dialog.submission-confirmation") { click_button "はい", exact: true }
         expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
         expect(leave_guard_value).to eq("false")
         expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
@@ -1627,6 +1720,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(AnswerDraft.where(assignment: @assignment)).to be_empty
     record_leave_guard
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     expect(leave_guard_value).to eq("false")
     expect(submitted_pdf_pixel(0.5, 0.2).max).to be < 20
@@ -1647,6 +1741,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page).to have_text("保存中…", wait: 10)
     ink_drag(0.45, 0.2, 0.55, 0.2)
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_text("答案を準備しています…", wait: 10)
     page.execute_script("window.releaseDraftSave()")
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
@@ -1672,6 +1767,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     JS
     ink_drag(0.45, 0.2, 0.55, 0.2)
     click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
     expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
     expect(page.evaluate_script("sessionStorage.getItem('lostSubmissionPosts')")).to eq("1")
     expect(Submission.where(assignment: @assignment).count).to eq(1)
