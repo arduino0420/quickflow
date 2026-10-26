@@ -69,6 +69,13 @@ class SubmissionProcessingClaim
     nil
   end
 
+  # Recheck ownership before another external request, without changing state.
+  def current?
+    locked { |owner, current| owned?(owner, current) } == true
+  rescue ActiveRecord::RecordNotFound
+    false
+  end
+
   # Retain the last reading token in ready state. It identifies this enqueue
   # admission even if another reading worker later returns identical text.
   def self.admission_snapshot(id, generation, stage:)

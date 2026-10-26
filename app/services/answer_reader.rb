@@ -1,7 +1,8 @@
 class AnswerReader
-  def initialize(api_key: nil, client: nil, model: AiClient.model(:answer_reading))
+  def initialize(api_key: nil, client: nil, model: AiClient.model(:answer_reading), retry_allowed: nil)
     @client = client || AiClient.build(api_key: api_key)
     @model = model
+    @retry_allowed = retry_allowed
   end
 
   def call(submission)
@@ -10,33 +11,35 @@ class AnswerReader
     blob = submission.answer_file.blob
     raise "Answer PDF is missing" unless blob
 
+    requests = AnswerReadingRequest.new(retry_allowed: @retry_allowed)
     blob.open do |file|
       PdfReadabilityValidator.validate!(file)
-      uploaded_file = @client.files.create(
-        file: Pathname.new(file.path),
-        purpose: "user_data",
-        expires_after: { anchor: "created_at", seconds: 3600 }
-      )
+      uploaded_file = requests.call("upload") do |options|
+        @client.files.create(file: Pathname.new(file.path), purpose: "user_data",
+          expires_after: { anchor: "created_at", seconds: 3600 }, request_options: options)
+      end
 
-      response = @client.responses.create(
-        model: @model,
-        store: false,
-        input: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_file",
-                file_id: uploaded_file.id
-              },
-              {
-                type: "input_text",
-                text: prompt
-              }
-            ]
-          }
-        ]
-      )
+      response = requests.call("reading") do |options|
+        @client.responses.create(
+          model: @model,
+          store: false,
+          request_options: options, input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_file",
+                  file_id: uploaded_file.id
+                },
+                {
+                  type: "input_text",
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        )
+      end
 
       validate_response!(response)
       response.output_text

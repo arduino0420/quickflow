@@ -10,7 +10,7 @@ class AnswerReadingJob < ApplicationJob
     captured = claim.submission
     text = captured.extracted_text
     if text.blank?
-      result = AnswerReader.new.call(captured)
+      result = AnswerReader.new(retry_allowed: -> { claim.current? }).call(captured)
       data = JSON.parse(result)
       unless data.is_a?(Hash) && data["problems"].is_a?(Array) && data["problems"].any? &&
           data["problems"].all? { |problem| valid_problem?(problem) }
