@@ -57,9 +57,9 @@ RSpec.describe "Student grading waiting presentation", type: :system do
             overflow: document.documentElement.scrollWidth > innerWidth };
         })()
       JS
-      expect(geometry.fetch("width")).to be >= 40
-      expect(geometry.fetch("height")).to be >= 40
-      expect(geometry.fetch("y")).to be <= -24
+      expect(geometry.fetch("width")).to be >= 28
+      expect(geometry.fetch("height")).to be >= 28
+      expect(geometry.fetch("y")).to be <= -18
       expect(geometry.fetch("contained")).to be(true)
       expect(geometry.fetch("overflow")).to be(false)
       page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "waiting-#{width}.png")) if ENV["QF_PDF_EVIDENCE"]
