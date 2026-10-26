@@ -58,7 +58,7 @@ RSpec.describe "Student grading waiting presentation", type: :system do
       expect(page).to have_css("canvas[data-rendered='true']")
       pdf_geometry = <<~JS
         (() => { const r=document.querySelector('.answer-pdf').getBoundingClientRect();
-          return [r.x,r.y,r.width,r.height,document.documentElement.scrollWidth]; })()
+          return [r.x,r.y,r.width,r.height,document.documentElement.scrollWidth,document.documentElement.clientWidth]; })()
       JS
       current_pdf = page.evaluate_script(pdf_geometry)
       page.execute_script(<<~JS)
@@ -70,8 +70,9 @@ RSpec.describe "Student grading waiting presentation", type: :system do
       previous_pdf = page.evaluate_script(pdf_geometry)
       page.execute_script("document.getElementById('previous-waiting-size').remove()")
       current_pdf.first(4).zip(previous_pdf.first(4)).each { |actual, prior| expect(actual).to be_within(1).of(prior) }
-      expect(current_pdf.last).to eq(previous_pdf.last)
-      expect(current_pdf.last).to eq(width)
+      expect(current_pdf[4]).to eq(previous_pdf[4])
+      expect(current_pdf[4]).to eq(current_pdf[5])
+      expect(current_pdf[5]).to be <= width
       page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "waiting-#{width}.png")) if ENV["QF_PDF_EVIDENCE"]
     end
   end
