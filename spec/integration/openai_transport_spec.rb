@@ -71,6 +71,25 @@ RSpec.describe "Offline OpenAI SDK compatibility", type: :model do
     expect(AiFileCleanupJob).to have_received(:schedule).with("file-offline")
   end
 
+  %w[upload reading].each do |stage|
+    it "recovers one #{stage} 5xx through the real SDK without nested retries" do
+      attach_answer
+      error = [ 503, { error: { message: "synthetic server failure", type: "server_error" } } ]
+      success = [ 200, response({ problems: [ problem ] }) ]
+      @replies.concat(stage == "upload" ? [ error, upload_reply, success ] : [ upload_reply, error, success ])
+      allow_any_instance_of(AnswerReadingRequest).to receive(:sleep)
+
+      data = AnswerReader.new(client: @sdk, retry_allowed: -> { true }).call(submission)
+      expect(JSON.parse(data)).to eq("problems" => [ problem.stringify_keys ])
+      expect(@requests.size).to eq(3)
+      expect(@replies).to be_empty
+      paths = @requests.map { |request, _| request.url.path }
+      expect(paths.count("/v1/files")).to eq(stage == "upload" ? 2 : 1)
+      expect(paths.count("/v1/responses")).to eq(stage == "reading" ? 2 : 1)
+      expect(AiFileCleanupJob).to have_received(:schedule).with("file-offline").once
+    end
+  end
+
   [ "incomplete", "failed", "refused", "http_error", "timeout" ].each do |failure|
     it "rejects #{failure} and schedules PDF cleanup without an SDK retry" do
       attach_answer
