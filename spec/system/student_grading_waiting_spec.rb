@@ -55,19 +55,23 @@ RSpec.describe "Student grading waiting presentation", type: :system do
       expect(geometry.fetch("y")).to be <= -18
       expect(geometry.fetch("contained")).to be(true)
       expect(geometry.fetch("overflow")).to be(false)
-      baseline = {
-        320 => [ 43.59375, 254.953125, 232.8125, 459.265625 ],
-        375 => [ 43.59375, 254.953125, 287.8125, 541.28125 ],
-        768 => [ 50.625, 261.984375, 666.75, 838.375 ],
-        1280 => [ 90, 305.375, 521, 745.375 ]
-      }
       expect(page).to have_css("canvas[data-rendered='true']")
-      pdf = page.evaluate_script(<<~JS)
+      pdf_geometry = <<~JS
         (() => { const r=document.querySelector('.answer-pdf').getBoundingClientRect();
           return [r.x,r.y,r.width,r.height,document.documentElement.scrollWidth]; })()
       JS
-      pdf.first(4).zip(baseline.fetch(width)).each { |actual, prior| expect(actual).to be_within(1).of(prior) }
-      expect(pdf.last).to eq(width)
+      current_pdf = page.evaluate_script(pdf_geometry)
+      page.execute_script(<<~JS)
+        const style = document.createElement('style');
+        style.id = 'previous-waiting-size';
+        style.textContent = '.student-grading-panel .student-grading-waiting__dots { height: 2.75rem; } .student-grading-panel .student-grading-waiting__dot { width: 1.1rem; height: 1.1rem; }';
+        document.head.append(style);
+      JS
+      previous_pdf = page.evaluate_script(pdf_geometry)
+      page.execute_script("document.getElementById('previous-waiting-size').remove()")
+      current_pdf.first(4).zip(previous_pdf.first(4)).each { |actual, prior| expect(actual).to be_within(1).of(prior) }
+      expect(current_pdf.last).to eq(previous_pdf.last)
+      expect(current_pdf.last).to eq(width)
       page.save_screenshot(File.join(ENV.fetch("QF_PDF_EVIDENCE"), "waiting-#{width}.png")) if ENV["QF_PDF_EVIDENCE"]
     end
   end
