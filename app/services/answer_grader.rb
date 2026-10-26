@@ -11,12 +11,12 @@ class AnswerGrader
   def call(submission, questions)
     problems = self.class.reading_problems(submission.extracted_text)
     validate_questions!(submission, questions)
+    matcher = AnswerLabelMatcher.new(questions, problems)
     results = []
     candidates = []
 
     questions.each do |question|
-      matches = problems.select { |problem| problem["question_label"] == question.question_label }
-      problem = matches.one? ? matches.first : nil
+      problem = matcher.match(question)
       reason = review_reason(question, problem)
       if reason
         results << result_for(question, problem, "needs_review", LOCAL_MODEL, review_reason: reason)
