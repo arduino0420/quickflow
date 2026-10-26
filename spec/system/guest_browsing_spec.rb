@@ -138,6 +138,9 @@ RSpec.describe "Fictional guest browsing", type: :system do
       click_link "サンプルの小テスト"
       click_link "1番", exact: true if role == "教師"
       expect_guest_pdf_pixels
+      if index.zero?
+        expect(page).to have_css(".answer-pdf__pages") { |pages| pages.evaluate_script("this.offsetWidth > this.clientWidth") }
+      end
       visit page.current_path
       expect_guest_pdf_pixels
       page.refresh
@@ -186,19 +189,39 @@ RSpec.describe "Fictional guest browsing", type: :system do
   end
 
   def expect_guest_pdf_pixels
+    expect(page).to have_css(".answer-pdf")
+    # Exercise non-overlay scrollbar geometry on macOS as well as Linux CI.
+    page.execute_script(<<~JS)
+      if (!document.getElementById('guest-pdf-scrollbar-fixture')) {
+        const style = document.createElement('style');
+        style.id = 'guest-pdf-scrollbar-fixture';
+        style.textContent = '.answer-pdf__pages::-webkit-scrollbar { width: 16px; height: 16px; }';
+        document.head.append(style);
+      }
+    JS
     expect(page).to have_css("[data-answer-pdf-target='status']", text: "答案PDFを表示しました")
     expect(page).to have_css("canvas[data-rendered='true']")
     expect(page).not_to have_css("iframe.teacher-answer-pdf")
-    expect(page.evaluate_script(<<~JS)).to be(true)
-      Array.from(document.querySelectorAll('.answer-pdf canvas')).every(canvas => {
-        const pixels = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
-        let ink = 0;
-        for (let i=0; i<pixels.length; i+=16) {
-          if (pixels[i+3] > 0 && pixels[i] < 200 && pixels[i+1] < 200 && pixels[i+2] < 200) ink++;
-        }
-        return ink > 50;
-      })
-    JS
+    # ResizeObserver may replace a previously rendered canvas between queries.
+    # Wait for current-size pixels, rather than sampling once during that transition.
+    expect(page).to have_css(".answer-pdf canvas[data-rendered='true']", count: 1) do |canvas|
+      canvas.evaluate_script(<<~JS)
+        (() => {
+          if (!this.isConnected || this.dataset.rendered !== 'true' || !this.width || !this.height) return false;
+          const ratio = Math.min(devicePixelRatio || 1, 2);
+          // Rendering can precede the vertical scrollbar appearing; CSS scales the raster.
+          const minWidth = Math.min(this.parentElement.clientWidth, 1200) * ratio;
+          const maxWidth = Math.min(this.parentElement.offsetWidth, 1200) * ratio;
+          if (this.width < Math.floor(minWidth) - 1 || this.width > Math.ceil(maxWidth) + 1) return false;
+          const pixels = this.getContext('2d').getImageData(0,0,this.width,this.height).data;
+          let ink = 0;
+          for (let i=0; i<pixels.length; i+=16) {
+            if (pixels[i+3] > 0 && pixels[i] < 200 && pixels[i+1] < 200 && pixels[i+2] < 200) ink++;
+          }
+          return ink > 50;
+        })()
+      JS
+    end
     expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
     expect(page).to have_content("70点")
     expect(page).not_to have_button("提出")
