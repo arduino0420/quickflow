@@ -18,11 +18,15 @@ class AiClient
     api_key ||= Rails.application.credentials.dig(:openai, :api_key)
     raise "OpenAI API key is not configured" if api_key.blank?
 
+    OpenAI::Client.new(api_key: api_key, max_retries: 0, timeout: timeout_seconds)
+  end
+
+  def self.timeout_seconds
     timeout = Float(ENV.fetch("OPENAI_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS), exception: false)
     unless timeout && timeout.finite? && timeout.positive?
       raise "OpenAI timeout must be a positive number of seconds"
     end
 
-    OpenAI::Client.new(api_key: api_key, max_retries: 0, timeout: timeout)
+    timeout
   end
 end
