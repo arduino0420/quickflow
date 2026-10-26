@@ -104,7 +104,7 @@ export default class extends Controller {
   }
 
   fail() {
-    this.statusTarget.textContent = "答案PDFを表示できませんでした。下のリンクからPDFを開いてください。"
+    this.statusTarget.textContent = "答案PDFを表示できませんでした。時間をおいて画面を再読み込みしてください。"
   }
 
   disconnect() {

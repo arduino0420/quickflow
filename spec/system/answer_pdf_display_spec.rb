@@ -60,6 +60,13 @@ RSpec.describe "Normal account read-only answer PDFs", type: :system do
     select "2 / 3", from: "表示ページ"
     expect(page).to have_css("[data-answer-pdf-target='status']", text: "2 / 3ページ")
     expect(page).to have_css("canvas", count: 1)
+    page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 320, height: 900, deviceScaleFactor: 1, mobile: false)
+    expect(page).to have_css("canvas[data-rendered='true']", count: 1) do |canvas|
+      canvas.evaluate_script("this.isConnected && this.width <= Math.ceil(this.parentElement.offsetWidth * Math.min(devicePixelRatio || 1, 2)) + 1")
+    end
+    expect(find("canvas")["aria-label"]).to eq("答案PDF 2 / 3ページ")
+  ensure
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
   end
 
   def verify_render(name)
@@ -67,6 +74,8 @@ RSpec.describe "Normal account read-only answer PDFs", type: :system do
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
       expect(page.evaluate_script("innerWidth")).to eq(width)
       expect_answer_pixels
+      expect(page.evaluate_script("getComputedStyle(document.querySelector('.teacher-review-layout')).gridTemplateColumns.split(' ').length")).to eq(width == 1280 ? 2 : 1)
+      expect(page).not_to have_css(".answer-pdf > p:empty", visible: :all)
       page.refresh
       expect_answer_pixels
       visit page.current_path
@@ -91,6 +100,7 @@ RSpec.describe "Normal account read-only answer PDFs", type: :system do
         return ink>50 && document.documentElement.scrollWidth<=innerWidth;
       })()
     JS
-    expect(page).to have_link("PDFを別タブで開く")
+    expect(page).not_to have_css('.answer-pdf a, .answer-pdf [target="_blank"]', visible: :all)
+    expect(page.html).not_to include("PDFを別タブで開く")
   end
 end
