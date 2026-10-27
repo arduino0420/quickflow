@@ -9,16 +9,6 @@
 .teacher-review-layout > section > :first-child { margin-top: 0; }
 .teacher-review-layout > section[aria-labelledby="answer-heading"],
 .teacher-review-layout > section[aria-label="提出した答案PDF"] { position: sticky; top: 1rem; }
-.teacher-answer-pdf {
-  display: block;
-  width: 100%;
-  height: 75vh;
-  max-height: calc(100vh - 12rem);
-  max-height: calc(100dvh - 12rem);
-  border: 1px solid var(--color-border);
-  border-radius: var(--control-radius);
-  background: var(--color-background);
-}
 .grading-result { padding: 1rem; margin: 1.25rem 0; border: 1px solid var(--color-soft-border); border-left: 4px solid var(--color-border); border-radius: var(--control-radius); overflow-wrap: anywhere; }
 .grading-result h2, .grading-result h3, .grading-result h4 { margin-top: 0; font-size: 1.1rem; }
 .grading-result dl { margin-bottom: 0; }
@@ -29,12 +19,10 @@
 .judgment-incorrect { border-left-color: var(--color-danger); }
 .judgment-needs_review { border-left-color: var(--color-warning-text); }
 .teacher-grading-result.judgment-needs_review { background: var(--color-warning-soft); border-color: var(--color-warning-border); color: var(--color-text); }
-.judgment-badge, .grade-state { display: inline-block; padding: 0.25rem 0.65rem; border-radius: var(--control-radius); font-size: 0.875rem; font-weight: 600; }
-.judgment-correct .judgment-badge, .grade-state-completed { color: var(--color-success-text); background: var(--color-success-soft); }
-.judgment-incorrect .judgment-badge, .grade-state-failed { color: var(--color-danger-text); background: var(--color-danger-soft); }
+.judgment-badge { display: inline-block; padding: 0.25rem 0.65rem; border-radius: var(--control-radius); font-size: 0.875rem; font-weight: 600; }
+.judgment-correct .judgment-badge { color: var(--color-success-text); background: var(--color-success-soft); }
+.judgment-incorrect .judgment-badge { color: var(--color-danger-text); background: var(--color-danger-soft); }
 .judgment-needs_review .judgment-badge { color: var(--color-warning-text); background: var(--color-warning-soft); }
-.grade-state-unsubmitted { color: var(--color-muted); background: var(--color-background); }
-.grade-state-submitted, .grade-state-grading { color: var(--color-primary-hover); background: var(--color-info-soft); }
 .review-table-container { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-soft-border); border-radius: var(--control-radius); }
 .review-table { width: 100%; border-collapse: collapse; }
 .review-table th, .review-table td { padding: 0.9rem 1rem; border-bottom: 1px solid var(--color-soft-border); text-align: left; vertical-align: middle; }
@@ -79,7 +67,6 @@
 @media (max-width: 48rem), (max-height: 36rem) {
   .teacher-review-layout > section[aria-labelledby="answer-heading"],
   .teacher-review-layout > section[aria-label="提出した答案PDF"] { position: static; }
-  .teacher-answer-pdf { height: 55vh; max-height: none; }
 }
 
 #grade-summary tr[data-controller="row-navigation"] { cursor: pointer; }
