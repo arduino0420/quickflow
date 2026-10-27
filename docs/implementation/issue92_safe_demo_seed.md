@@ -1,7 +1,7 @@
 # Issue #92: 安全な架空デモseed
 
-通常の `db/seeds.rb` は空のままです。Rails起動、`db:prepare`、`db:seed` ではデモを作りません。
-明示的な `demo:seed` タスクだけが対象です。現時点ではローカルの `RAILS_ENV=test` のみ対応します。
+通常の `db:seed` は見本データを作りません。`QUICKFLOW_DEMO_SEED=true` を明示した場合だけ、`db/seeds.rb` が既存の `Demo::Seed` を呼び出します。
+従来の `demo:seed` タスクも利用できます。どちらもガード付きで、ローカルの `RAILS_ENV=test` にある専用DB・Storageだけが対象です。
 ゲスト入口・閲覧権限制限は #93、公開環境・AWS・実AI検証は今回の範囲外です。
 このseedだけで公開・ゲストログインできるとは扱わないでください。
 
@@ -84,8 +84,8 @@ psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -c "COMMENT ON DATABASE quickflow_test IS 'quickflow-demo:${QUICKFLOW_DEMO_ISOLATION_ID}'"
 mkdir "$PWD/tmp/demo-seed-${QUICKFLOW_DEMO_ISOLATION_ID}"
 printf '%s' "$QUICKFLOW_DEMO_ISOLATION_ID" > "$PWD/tmp/demo-seed-${QUICKFLOW_DEMO_ISOLATION_ID}/.demo-isolation"
-QUICKFLOW_DEMO_SEED=true bin/rails demo:seed
-QUICKFLOW_DEMO_SEED=true bin/rails demo:seed
+QUICKFLOW_DEMO_SEED=true bin/rails db:seed
+QUICKFLOW_DEMO_SEED=true bin/rails db:seed
 )
 ```
 
@@ -141,7 +141,7 @@ DPro原文は「各テーブルそれぞれ5件以上」「各モデルCRUD Syst
 テキストの初期データ要件に対し、業務12表と正規添付は上記の件数を実証しています。
 内部表を運用状態として扱い、件数のために制限・実行中Job・履歴を捏造しないことは実装上の適用判断です。
 原文にない公式免除や、追加のメンター確認を必須条件とする意味ではありません。
-`demo:seed`という明示コマンドの選択も、通常DBへの誤投入を防ぐ実装上の安全策であり、初期データ要件そのものと区別します。
+明示フラグ付きの `db:seed` と `demo:seed` は同じガード付き処理を呼び出します。この実行条件は通常DBへの誤投入を防ぐ実装上の安全策であり、初期データ要件そのものと区別します。
 
 ## 再実行・失敗・並行実行
 

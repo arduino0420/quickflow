@@ -79,6 +79,7 @@ RSpec.describe "Admin teacher management", type: :request do
     expect(names.index("teacher[password]")).to be < names.index("teacher[classroom_codes][]")
     expect(form.at_css("input[name='school_code']")[:readonly]).to be_present
     expect(form.at_css("input[name='school_code']")[:value]).to eq(school.school_code)
+    expect(form.at_css("input[name='teacher[user_id]']")[:placeholder]).to eq("例：teacher01")
     expect(form.css("input[type='password']").map { |field| field[:value] }).to all(be_blank)
     boxes = form.css("input[type='checkbox']")
     expect(boxes.map { |field| field[:value] }).to eq(Admin::TeacherRegistration::CLASSROOM_CODES)

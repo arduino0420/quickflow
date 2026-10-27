@@ -20,7 +20,7 @@ RSpec.describe "Teacher sessions", type: :request do
   def expect_login_form
     document = Nokogiri::HTML(response.body)
     expect(document.at_css('form[action="/login"][method="post"]')).to be_present
-    expect(document.at_css('input[name="session[user_id]"]')).to be_present
+    expect(document.at_css('input[name="session[user_id]"]')[:placeholder]).to eq("例：teacher01")
     expect(document.at_css('input[name="session[password]"][type="password"]')).to be_present
     expect(document.at_css('form[action="/logout"]')).to be_nil
     expect(document.at_css(".teacher-header-identity")).to be_nil

@@ -285,8 +285,17 @@ RSpec.describe Demo::Seed do
   end
 
   it "does not create demo records through ordinary db/seeds.rb" do
+    allow(ENV).to receive(:[]).with("QUICKFLOW_DEMO_SEED").and_return(nil)
+    expect(described_class).not_to receive(:new)
     load Rails.root.join("db/seeds.rb")
     expect(described_class::TABLE_MODELS.map(&:count)).to all(eq(0))
+  end
+
+  it "routes an explicit db:seed request through the guarded demo seeder" do
+    allow(ENV).to receive(:[]).with("QUICKFLOW_DEMO_SEED").and_return("true")
+    expect(described_class).to receive(:new).and_return(seed)
+    expect(seed).to receive(:call).and_raise(described_class::UnsafeTarget, "guarded target")
+    expect { load Rails.root.join("db/seeds.rb") }.to raise_error(described_class::UnsafeTarget, /guarded target/)
   end
 
   context "target guard" do

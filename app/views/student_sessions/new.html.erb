@@ -12,7 +12,7 @@
   <%= form_with scope: :student_session, url: student_login_path do |form| %>
     <div>
       <%= form.label :school_code, "学校コード" %>
-      <%= form.text_field :school_code, autocomplete: "off", spellcheck: false %>
+      <%= form.text_field :school_code, autocomplete: "off", spellcheck: false, placeholder: "例：SCHOOL01" %>
     </div>
     <div>
       <%= form.label :grade, "学年" %>
