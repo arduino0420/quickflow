@@ -93,7 +93,7 @@ class AssignmentsController < ApplicationController
     end
 
     enqueue_question_generation
-    redirect_to new_assignment_path, notice: "小テストを配信しました", status: :see_other
+    redirect_to assignments_path, notice: "小テストを配信しました", status: :see_other
   rescue ActiveRecord::RecordInvalid => error
     @assignment.errors.add(:base, "配信先を保存できませんでした") unless error.record.equal?(@assignment)
     render_creation_errors

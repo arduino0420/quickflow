@@ -22,7 +22,8 @@ RSpec.describe "Assignment CRUD in Chrome", type: :system do
     expect(assignment.classrooms).to match_array(@rooms.first(2))
     expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")))
     expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).once
-    click_link "配信済み小テスト"
+    expect(page).to have_current_path(assignments_path)
+    expect(page).to have_css(".assignment-card-link", text: assignment.title)
     click_link assignment.title
     expect(page).to have_css(".distributed-classrooms li", count: 2)
     @students.first(2).each { |student| expect(page).to have_css("#grade_student_#{student.id}") }

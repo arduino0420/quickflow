@@ -57,7 +57,7 @@ RSpec.describe "Assignment creation", type: :request do
     end
   end
 
-  it "creates and distributes a teacher's assignment and returns to an empty form with a notice" do
+  it "creates and distributes a teacher's assignment and opens the list with a notice" do
     teacher_login
     expect(QuestionGenerator).not_to receive(:new)
 
@@ -84,14 +84,14 @@ RSpec.describe "Assignment creation", type: :request do
     expect(request.claim_token).to be_nil
     expect(QuestionGenerationJob).to have_been_enqueued.with(assignment, assignment.material_file.blob.id, 0, request_id: assignment.current_question_generation_request_id).exactly(:once)
     expect(response).to have_http_status(:see_other)
-    expect(response).to redirect_to(new_assignment_path)
+    expect(response).to redirect_to(assignments_path)
     follow_redirect!
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("小テストを配信しました")
-    expect(document.at_css('input[name="assignment[title]"]')[:value]).to be_blank
-    expect(document.at_css('input[name="assignment[point_per_question]"]')[:value]).to be_blank
+    expect(document.at_css("h1").text).to eq("配信済み小テスト")
+    expect(document.at_css("a[href='#{assignment_path(assignment)}']").text.strip).to eq(assignment.title)
 
-    get new_assignment_path
+    get assignments_path
     expect(response.body).not_to include("小テストを配信しました")
   end
 
@@ -115,7 +115,11 @@ RSpec.describe "Assignment creation", type: :request do
         allow(Rails.logger).to receive(:error)
         expect { post assignments_path, params: { assignment: attributes } }.to change(Assignment, :count).by(1)
         expect(response).to have_http_status(:see_other)
+        expect(response).to redirect_to(assignments_path)
         assignment = Assignment.last
+        expect(assignment.material_file.download).to eq(File.binread(Rails.root.join("spec/fixtures/files/material.pdf")))
+        follow_redirect!
+        expect(response.body).to include("小テストを配信しました", assignment.title)
         expect(assignment.classrooms).to contain_exactly(classroom)
         expect(QuestionGenerator.new.failed?(assignment)).to be(true)
         request = assignment.current_question_generation_request
@@ -368,8 +372,8 @@ RSpec.describe "Assignment creation", type: :request do
       post assignments_path, params: { assignment: attributes }
       expect(response).to have_http_status(:see_other)
       item = Assignment.last
+      expect(response).to redirect_to(assignments_path)
       follow_redirect!
-      get document.at_css("a[href='#{assignments_path}']")[:href]
       expect(response).to have_http_status(:ok)
       get document.at_css("a[href='#{assignment_path(item)}']")[:href]
       expect(response).to have_http_status(:ok)
