@@ -32,6 +32,7 @@ RSpec.describe "Admin sessions", type: :request do
     expect(document.at_css("h1").text).to eq("管理者ログイン")
     expect(document.at_css("form[action='/admin/login'][method='post']")).to be_present
     expect(document.at_css("input[name='admin_session[user_id]']")[:autocomplete]).to eq("username")
+    expect(document.at_css("input[name='admin_session[user_id]']")[:placeholder]).to eq("例：admin01")
     field = document.at_css("input[name='admin_session[password]']")
     expect(field[:type]).to eq("password")
     expect(field[:autocomplete]).to eq("current-password")

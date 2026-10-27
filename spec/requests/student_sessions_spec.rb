@@ -20,6 +20,7 @@ RSpec.describe "Student sessions", type: :request do
     %w[school_code grade class_number attendance_number password].each do |field|
       expect(document.at_css("[name='student_session[#{field}]']")).to be_present
     end
+    expect(document.at_css('input[name="student_session[school_code]"]')[:placeholder]).to eq("例：SCHOOL01")
     expect(document.at_css('input[name="student_session[password]"][type="password"]')).to be_present
     expect(document.at_css('form[action="/student/logout"]')).to be_nil
   end

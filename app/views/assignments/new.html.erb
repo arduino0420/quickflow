@@ -20,11 +20,11 @@
 <%= form_with model: @assignment, class: "entry-form" do |form| %>
   <div>
     <%= form.label :title, "タイトル" %>
-    <%= form.text_field :title %>
+    <%= form.text_field :title, placeholder: "例：一次方程式の小テスト" %>
   </div>
   <div>
     <%= form.label :point_per_question, "1問あたりの点数" %>
-    <%= form.number_field :point_per_question, min: 1, step: 1 %>
+    <%= form.number_field :point_per_question, min: 1, step: 1, placeholder: "例：10" %>
   </div>
   <div>
     <%= form.label :material_file, "教材ファイル（必須）" %>

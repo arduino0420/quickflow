@@ -40,10 +40,14 @@ RSpec.describe "Assignment creation", type: :request do
     expect(document.at_css("main a[href='/assignments']").text).to eq("配信済み小テスト")
     expect(document.at_css("a[href*='/distribution']")).to be_nil
     expect(document.at_css('form[action="/assignments"][method="post"][enctype="multipart/form-data"]')).to be_present
-    expect(document.at_css('input[name="assignment[title]"]')).to be_present
+    title = document.at_css('input[name="assignment[title]"]')
+    expect(title[:placeholder]).to eq("例：一次方程式の小テスト")
+    expect(title[:value]).to be_blank
     points = document.at_css('input[name="assignment[point_per_question]"][type="number"]')
     expect(points[:min]).to eq("1")
     expect(points[:step]).to eq("1")
+    expect(points[:placeholder]).to eq("例：10")
+    expect(points[:value]).to be_blank
     file = document.at_css('input[name="assignment[material_file]"][type="file"]')
     expect(file).to be_present
     expect(file[:accept]).to eq(".pdf,application/pdf")
