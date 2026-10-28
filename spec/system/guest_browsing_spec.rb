@@ -3,9 +3,11 @@ require_relative "../support/demo_seed_fixture"
 require "capybara/rspec"
 require "tmpdir"
 require "selenium-webdriver"
+require_relative "../support/wordmark_checks"
 
 RSpec.describe "Fictional guest browsing", type: :system do
   include DemoSeedFixture
+  include WordmarkChecks
   around do |example|
     old = ENV["QUICKFLOW_GUEST_LOGIN"]
     ENV["QUICKFLOW_GUEST_LOGIN"] = "true"
@@ -59,17 +61,22 @@ RSpec.describe "Fictional guest browsing", type: :system do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
     allow(Demo::Profile).to receive(:identity?).and_return(true)
     allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
-    [ [ 320, 812 ], [ 1280, 900 ] ].each do |width, height|
+    [ [ 320, 812 ], [ 375, 812 ], [ 768, 1024 ], [ 1280, 900 ] ].each do |width, height|
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
       allow(Demo::Profile).to receive(:identity?).and_return(false)
       visit root_path
       # Compare the same available width even when only the normal page needs a scrollbar.
       page.execute_script("document.documentElement.style.overflowY = 'scroll'")
+      expect_nunito_wordmark
+      normal_wordmark = page.evaluate_script("(() => { const s=getComputedStyle(document.querySelector('.app-brand')); return ['fontFamily','fontSize','fontWeight','letterSpacing','color','lineHeight'].map(k=>s[k]); })()")
       normal_style = page.evaluate_script("(() => { const el=document.querySelector('.home-login-options .button'), s=getComputedStyle(el), r=el.getBoundingClientRect(); return ['fontFamily','fontSize','fontWeight','lineHeight','color','backgroundColor','borderRadius'].map(k=>s[k]).concat([r.width,r.height]); })()")
       allow(Demo::Profile).to receive(:identity?).and_return(true)
       visit root_path
       # Compare the same available width even when only the normal page needs a scrollbar.
       page.execute_script("document.documentElement.style.overflowY = 'scroll'")
+      expect_nunito_wordmark
+      expect(page.evaluate_script("(() => { const s=getComputedStyle(document.querySelector('.app-brand')); return ['fontFamily','fontSize','fontWeight','letterSpacing','color','lineHeight'].map(k=>s[k]); })()")).to eq(normal_wordmark)
+      save_brand_evidence("guest-roles-#{width}")
       expect(page).not_to have_css(".home-description, .home-bubble")
       expect(page).not_to have_content("通常アカウントではログインできません。")
       expect(page).to have_link("QuickFlow", href: "https://13-231-93-159.sslip.io/")
@@ -78,6 +85,12 @@ RSpec.describe "Fictional guest browsing", type: :system do
       expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
       role_styles = page.evaluate_script("Array.from(document.querySelectorAll('.home-guest-options button'), el => { const s=getComputedStyle(el), r=el.getBoundingClientRect(); return ['fontFamily','fontSize','fontWeight','lineHeight','color','backgroundColor','borderRadius'].map(k=>s[k]).concat([r.width,r.height]); })")
       expect(role_styles).to all(eq(normal_style))
+      button = find_button("教師ゲストで閲覧")
+      button.hover
+      expect(button.evaluate_script("getComputedStyle(this).backgroundColor")).to eq("rgb(29, 78, 216)")
+      find("body").send_keys(:tab, :tab, :tab)
+      expect(page.evaluate_script("document.activeElement.textContent")).to eq("教師ゲストで閲覧")
+      expect(button.evaluate_script("getComputedStyle(this).outlineStyle")).to eq("solid")
     end
     click_button "教師ゲストで閲覧"
     click_link "サンプルの小テスト"
@@ -95,6 +108,28 @@ RSpec.describe "Fictional guest browsing", type: :system do
     click_link "サンプルの小テスト"
     expect(page).to have_content("実際のAI実行結果ではありません")
     expect(page).not_to have_button("提出")
+  end
+
+  it "uses the rounded white wordmark in every existing guest header" do
+    driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
+    allow(Demo::Profile).to receive(:identity?).and_return(true)
+    allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
+    %w[管理者 教師 生徒].each do |role|
+      visit root_path
+      click_button "#{role}ゲストで閲覧"
+      expect(page).to have_content("架空データの閲覧専用ゲスト（#{role}）")
+      [ 320, 375, 768, 1280 ].each do |width|
+        page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
+        expect_nunito_wordmark
+        expect(page.evaluate_script("getComputedStyle(document.querySelector('header')).backgroundColor")).to eq("rgb(37, 99, 235)")
+        expect(page.evaluate_script("getComputedStyle(document.querySelector('header .app-brand')).color")).to eq("rgb(255, 255, 255)")
+        expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+        expect(page).to have_link("QuickFlow", href: root_path)
+        save_brand_evidence("guest-#{role}-header-#{width}")
+      end
+      find("header a.app-brand").click
+      expect(page).to have_current_path(root_path)
+    end
   end
 
   it "aligns the disabled guest delete button with Excel at desktop and narrow widths" do

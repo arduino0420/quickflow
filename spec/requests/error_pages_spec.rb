@@ -41,7 +41,10 @@ RSpec.describe "Static error pages", type: :request do
       expect(document.at_css("meta[name='viewport']")["content"]).to include("width=device-width")
       expect(document.css("a").map { |link| [ link.text, link["href"] ] }).to eq([ [ "トップページへ", "/" ] ])
       expect(document.css("script, link, img, iframe, form, [src], [onclick], meta[http-equiv='refresh']")).to be_empty
-      expect(document.at_css("style").text).not_to match(/url\s*\(|@import/i)
+      # All wordmarks now use the same self-hosted font, including standalone errors.
+      style = document.at_css("style").text
+      expect(style.scan(/url\("([^"]+)"\)/).flatten).to eq([ "/fonts/nunito/Nunito-800-v32.ttf" ])
+      expect(style).not_to match(/@import|https?:/i)
     ensure
       ActionController::Base.allow_forgery_protection = old_csrf if status == 422
     end
