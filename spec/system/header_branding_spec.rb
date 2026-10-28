@@ -65,8 +65,11 @@ RSpec.describe "Shared header wordmarks", type: :system do
         end
         button = find("header button", text: "ログアウト")
         style = button.evaluate_script("(() => { const s=getComputedStyle(this); return [s.backgroundColor,s.color,s.borderRadius,s.fontWeight,s.fontFamily]; })()")
-        expect(style[0..3]).to eq(role == "admin" ? [ "rgb(37, 99, 235)", "rgb(255, 255, 255)", "8px", "600" ] : [ "rgb(255, 255, 255)", "rgb(37, 99, 235)", "8px", "600" ])
+        expect(style[0..3]).to eq([ "rgb(255, 255, 255)", "rgb(37, 99, 235)", "8px", "600" ])
         expect(style.last).not_to include("Nunito")
+        button.hover
+        expect(button.evaluate_script("[getComputedStyle(this).backgroundColor,getComputedStyle(this).color]"))
+          .to eq([ "rgb(239, 246, 255)", "rgb(29, 78, 216)" ])
         expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
         expect(page.evaluate_script(<<~JS)).to be(true)
           (() => {
@@ -86,7 +89,18 @@ RSpec.describe "Shared header wordmarks", type: :system do
         end
         find("header .app-brand").send_keys(:tab)
         expect(page.evaluate_script("document.activeElement.textContent")).to eq("ログアウト")
-        expect(page.evaluate_script("getComputedStyle(document.querySelector('.app-header-actions')).outlineColor")).to eq("rgb(255, 255, 255)")
+        expect_logout_focus(button, identity && ".#{role}-header-identity")
+        # Keep this click on the current page so its focus styling can be inspected.
+        # The real DELETE and revoked access are still exercised below.
+        page.execute_script("document.querySelector('header form').addEventListener('submit', event => event.preventDefault(), { once: true })")
+        page.driver.browser.action.move_to(button.native).click_and_hold.perform
+        expect_logout_focus(button, identity && ".#{role}-header-identity")
+        expect(button.evaluate_script("[getComputedStyle(this).backgroundColor,getComputedStyle(this).color]"))
+          .to eq([ "rgb(239, 246, 255)", "rgb(29, 78, 216)" ])
+        save_brand_evidence("#{role}-header-active-#{width}")
+        page.driver.browser.action.release.perform
+        expect(page).to have_current_path(destination)
+        expect_logout_focus(button, identity && ".#{role}-header-identity")
         save_brand_evidence("#{role}-header-#{width}")
       end
       button = find("header button", text: "ログアウト")
@@ -98,6 +112,32 @@ RSpec.describe "Shared header wordmarks", type: :system do
       visit destination
       expect(page).to have_current_path(logout)
     end
+  end
+
+  def expect_logout_focus(button, identity_selector)
+    expect(button.evaluate_script("document.activeElement === this")).to be(true)
+    expect(button.evaluate_script("(() => { const s=getComputedStyle(this); return [s.outlineStyle,s.outlineWidth,s.outlineColor]; })()"))
+      .to eq([ "solid", "3px", "rgb(255, 255, 255)" ])
+    # Neither the form nor any identity-containing wrapper should be highlighted.
+    expect(button.evaluate_script(<<~JS)).to be(true)
+      (() => {
+        for (let el=this.parentElement; el && el.tagName !== 'HEADER'; el=el.parentElement) {
+          const s=getComputedStyle(el);
+          if (s.outlineStyle !== 'none' || s.boxShadow !== 'none') return false;
+        }
+        return true;
+      })()
+    JS
+    return unless identity_selector
+
+    expect(page.evaluate_script(<<~JS)).to be(true)
+      (() => {
+        const b=document.querySelector('header button'), r=b.getBoundingClientRect();
+        const s=getComputedStyle(b), outset=parseFloat(s.outlineWidth)+parseFloat(s.outlineOffset);
+        const i=document.querySelector('#{identity_selector}').getBoundingClientRect();
+        return i.right <= r.left-outset || i.bottom <= r.top-outset || i.top >= r.bottom+outset;
+      })()
+    JS
   end
 
   it "loads the same local font in standalone error wordmarks without external font services" do

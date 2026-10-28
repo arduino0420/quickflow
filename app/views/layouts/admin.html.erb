@@ -15,7 +15,7 @@
         <% if current_admin %>
           <%= link_to "QuickFlow", guest_session? ? root_path : admin_root_path, class: "app-brand" %>
           <div class="app-header-actions">
-            <%= button_to "ログアウト", admin_logout_path, method: :delete %>
+            <%= button_to "ログアウト", admin_logout_path, method: :delete, class: "button-secondary" %>
           </div>
         <% else %>
           <span class="app-brand">QuickFlow</span>
