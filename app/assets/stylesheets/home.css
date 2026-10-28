@@ -1,15 +1,11 @@
 .home-page { text-align: center; padding-top: clamp(2rem, 8vh, 5rem); max-width: 74rem; }
 .home-intro { margin: 0 auto; }
-.home-page .app-brand { font-size: clamp(3.75rem, 9vw, 6.5rem); line-height: 1.2; margin: 0; white-space: nowrap; }
+.home-page .app-brand { font-size: clamp(3.4rem, 17vw, 7rem); line-height: 1.2; margin: 0; white-space: nowrap; }
 .home-wordmark a { color: inherit; text-decoration: none; }
 .home-wordmark a:focus-visible { outline: 3px solid var(--color-primary); outline-offset: .4rem; border-radius: .25rem; }
-.home-description { max-width: 70rem; margin: 1.5rem auto 0; line-height: 1.8; }
-.home-description p { margin: .35rem 0; }
 .home-login-options, .home-guest-options { display: grid; gap: 1rem; margin: 2rem auto 0; max-width: 30rem; }
-.home-login-options .button, .home-guest-options .button { min-height: 3.5rem; width: 100%; font-size: 1rem; }
-.home-login-options .button:disabled { opacity: 1; }
+.home-login-options .button, .home-guest-options .button { min-height: 3.75rem; width: 100%; padding: .85rem 1rem; border-radius: 1rem; border-color: var(--color-primary); background: var(--color-primary); color: var(--color-surface); font-size: 1rem; }
+.home-login-options .button:hover, .home-guest-options .button:hover { background: var(--color-primary-hover); border-color: var(--color-primary-hover); color: var(--color-surface); }
+.home-login-options .button:focus-visible, .home-guest-options .button:focus-visible { outline: 3px solid var(--color-primary-hover); outline-offset: 4px; }
+.home-login-options .button:disabled, .home-login-options .button:disabled:hover { opacity: 1; background: var(--color-soft-border); border-color: var(--color-border); color: #475569; cursor: not-allowed; }
 .home-guest-status { color: var(--color-muted); font-size: .875rem; }
-@media (max-width: 900px) {
-  .home-page .app-brand { font-size: clamp(3rem, 16vw, 6.5rem); }
-  .home-description { font-size: .875rem; }
-}

@@ -13,9 +13,9 @@ RSpec.describe "Home", type: :request do
     document = Nokogiri::HTML(response.body)
     expect(document.at_css("html")["lang"]).to eq("ja")
     expect(document.at_css("h1").text).to eq("QuickFlow")
-    expect(document.css(".home-description p").size).to eq(2)
+    expect(document.css(".home-description")).to be_empty
     expect(document.css(".home-letter, .home-bubble")).to be_empty
-    expect(document.text).to include("中学校数学の小テストを通じて、教師の負担を減らし、生徒の学びを支えるアプリです。",
+    expect(document.text).not_to include("中学校数学の小テストを通じて、教師の負担を減らし、生徒の学びを支えるアプリです。",
       "教師はPDF教材の配信・AI採点・得点集計・Excel出力を、生徒はPDFへの直接手書き・自動保存・提出・結果確認を行えます。")
     choices = document.css(".home-login-options > *")
     expect(choices.map(&:text)).to eq([ "教師としてログインする", "生徒としてログインする", "ゲストとしてログインする" ])

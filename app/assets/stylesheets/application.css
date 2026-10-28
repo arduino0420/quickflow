@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/nunito/Nunito-800-v32.ttf") format("truetype");
+}
+
 :root {
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
@@ -36,9 +44,12 @@ body {
 .app-shell > .app-main { flex: 1 0 auto; }
 .app-footer { flex: 0 0 auto; padding: 1rem; color: var(--color-muted); text-align: center; }
 .app-footer small { font-size: 0.875rem; }
-.app-header { background: var(--color-surface); border-bottom: 1px solid var(--color-soft-border); }
+.app-header { background: var(--color-primary); border-bottom: 1px solid var(--color-soft-border); }
 .app-header-inner { max-width: none; margin: 0 auto; padding: 1rem 1.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; }
-.app-brand { color: var(--color-primary); font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; }
+.app-brand { color: var(--color-primary); font-family: "Nunito", system-ui, sans-serif; font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; }
+.app-header .app-brand, .app-header .app-brand:hover, .app-header .app-brand:focus-visible,
+.app-header .teacher-header-identity, .app-header .student-header-identity { color: var(--color-surface); }
+.app-header .app-brand:focus-visible, .app-header-actions:focus-within { outline: 3px solid var(--color-surface); outline-offset: 6px; border-radius: .25rem; }
 .app-header--with-actions .app-header-inner { max-width: none; justify-content: space-between; }
 .app-header-actions { margin-left: auto; flex: 0 0 auto; }
 .app-header-actions form.button_to { margin: 0; }
@@ -50,7 +61,7 @@ body {
 .student-header-identity { white-space: nowrap; }
 .student-header-actions form.button_to { flex-shrink: 0; }
 a.app-brand { text-decoration: none; }
-.app-header--auth { background: var(--color-background); border-bottom: 0; }
+.app-header--auth { background: var(--color-primary); border-bottom: 0; }
 .app-header--auth .app-header-inner { justify-content: center; padding: 2rem 1rem 0.5rem; }
 .app-header--auth .app-brand { font-size: clamp(2.5rem, 8vw, 3.5rem); }
 .auth-heading { text-align: center; font-size: 1.4rem; }
@@ -164,6 +175,7 @@ legend { padding: 0 0.4rem; font-weight: 600; }
   .assignment-list--student .button { margin-left: 0; }
 }
 @media (max-width: 25rem) {
+  .app-header--with-actions .app-header-inner { column-gap: 1rem; }
   #classroom-selection input[type="submit"] { width: 100%; }
   .assignment-name-actions > * { flex: 1 1 auto; }
 }

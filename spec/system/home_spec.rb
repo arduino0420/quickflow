@@ -1,45 +1,57 @@
 require "rails_helper"
 require "capybara/rspec"
 require "selenium-webdriver"
+require_relative "../support/wordmark_checks"
 
 RSpec.describe "Home login choices", type: :system do
+  include WordmarkChecks
+
   before do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
   end
 
-  it "enlarges only the home logo while retaining existing brand typography" do
-    [ [ 1280, 900 ], [ 375, 812 ] ].each do |width, height|
-      page.current_window.resize_to(width, height)
+  it "uses the local rounded font for home and every login wordmark at their own sizes" do
+    [ [ 320, 812 ], [ 375, 812 ], [ 768, 1024 ], [ 1280, 900 ] ].each do |width, height|
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
         width: width, height: height, deviceScaleFactor: 1, mobile: false)
-      expect(page.evaluate_script("window.innerWidth")).to eq(width)
-      styles = [ root_path, login_path, student_login_path ].map do |path|
+      sizes = [ root_path, login_path, student_login_path, admin_login_path ].map do |path|
         visit path
-        page.evaluate_script(<<~JS)
-          (() => {
-            const style = getComputedStyle(document.querySelector('.app-brand'));
-            return ['fontFamily', 'fontWeight', 'color']
-              .map(property => style[property]);
-          })()
-        JS
-      end
-      expect(styles.uniq.length).to eq(1)
-      sizes = [ root_path, login_path, student_login_path ].map do |path|
-        visit path
+        expect_nunito_wordmark
+        expect(page.evaluate_script("getComputedStyle(document.body).fontFamily")).not_to include("Nunito")
+        expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+        save_brand_evidence("#{path.tr('/', '-')}-#{width}")
         page.evaluate_script("parseFloat(getComputedStyle(document.querySelector('.app-brand')).fontSize)")
       end
-      expect(sizes.first).to be > sizes[1]
-      expect(sizes.first).to be > sizes[2]
+      expect(sizes.first).to be > sizes[1..].max
     end
   end
 
-  it "keeps the logo still and places the two explanation rows below it" do
+  it "keeps the logo still and puts the choices directly after the introduction" do
     visit root_path
     expect(page).to have_css("h1[aria-label='QuickFlow']", text: "QuickFlow")
-    expect(page).not_to have_css(".home-letter, .home-bubble")
-    expect(page.all(".home-description p").size).to eq(2)
+    expect(page).not_to have_css(".home-description, .home-letter, .home-bubble")
     expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-wordmark')).animationName")).to eq("none")
-    expect(page.evaluate_script("document.querySelector('.home-description').getBoundingClientRect().top >= document.querySelector('.home-wordmark').getBoundingClientRect().bottom")).to be(true)
+    expect(page.evaluate_script("document.querySelector('.home-intro').nextElementSibling.matches('.home-login-options')")).to be(true)
+    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia", features: [ { name: "prefers-reduced-motion", value: "reduce" } ])
+    expect(page.evaluate_script("getComputedStyle(document.querySelector('.home-wordmark')).animationName")).to eq("none")
+  ensure
+    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia", features: [])
+  end
+
+  it "distinguishes enabled, hovered, keyboard-focused and disabled choices" do
+    visit root_path
+    teacher = find_link("教師としてログインする")
+    expect(teacher.evaluate_script("getComputedStyle(this).backgroundColor")).to eq("rgb(37, 99, 235)")
+    expect(teacher.evaluate_script("getComputedStyle(this).color")).to eq("rgb(255, 255, 255)")
+    teacher.hover
+    expect(teacher.evaluate_script("getComputedStyle(this).backgroundColor")).to eq("rgb(29, 78, 216)")
+    find("body").send_keys(:tab)
+    expect(page.evaluate_script("document.activeElement.textContent")).to eq("教師としてログインする")
+    expect(teacher.evaluate_script("getComputedStyle(this).outlineStyle")).to eq("solid")
+    disabled = find_button("ゲストとしてログインする", disabled: true)
+    expect(disabled.evaluate_script("getComputedStyle(this).backgroundColor")).to eq("rgb(226, 232, 240)")
+    disabled.hover
+    expect(disabled.evaluate_script("getComputedStyle(this).backgroundColor")).to eq("rgb(226, 232, 240)")
   end
 
   it "supports keyboard navigation and both login destinations" do
