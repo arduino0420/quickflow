@@ -67,14 +67,14 @@ RSpec.describe "Fictional guest browsing", type: :system do
       visit root_path
       # Compare the same available width even when only the normal page needs a scrollbar.
       page.execute_script("document.documentElement.style.overflowY = 'scroll'")
-      expect_nunito_wordmark
+      expect_comic_neue_wordmark
       normal_wordmark = page.evaluate_script("(() => { const s=getComputedStyle(document.querySelector('.app-brand')); return ['fontFamily','fontSize','fontWeight','letterSpacing','color','lineHeight'].map(k=>s[k]); })()")
       normal_style = page.evaluate_script("(() => { const el=document.querySelector('.home-login-options .button'), s=getComputedStyle(el), r=el.getBoundingClientRect(); return ['fontFamily','fontSize','fontWeight','lineHeight','color','backgroundColor','borderRadius'].map(k=>s[k]).concat([r.width,r.height]); })()")
       allow(Demo::Profile).to receive(:identity?).and_return(true)
       visit root_path
       # Compare the same available width even when only the normal page needs a scrollbar.
       page.execute_script("document.documentElement.style.overflowY = 'scroll'")
-      expect_nunito_wordmark
+      expect_comic_neue_wordmark
       expect(page.evaluate_script("(() => { const s=getComputedStyle(document.querySelector('.app-brand')); return ['fontFamily','fontSize','fontWeight','letterSpacing','color','lineHeight'].map(k=>s[k]); })()")).to eq(normal_wordmark)
       save_brand_evidence("guest-roles-#{width}")
       expect(page).not_to have_css(".home-description, .home-bubble")
@@ -110,7 +110,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
     expect(page).not_to have_button("提出")
   end
 
-  it "uses the rounded white wordmark in every existing guest header" do
+  it "uses the Comic Neue Bold white wordmark in every existing guest header" do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
     allow(Demo::Profile).to receive(:identity?).and_return(true)
     allow(Demo::Guest).to receive(:verify_target!) { Demo::Seed.new.verify_guest! }
@@ -120,7 +120,7 @@ RSpec.describe "Fictional guest browsing", type: :system do
       expect(page).to have_content("架空データの閲覧専用ゲスト（#{role}）")
       [ 320, 375, 768, 1280 ].each do |width|
         page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
-        expect_nunito_wordmark
+        expect_comic_neue_wordmark
         expect(page.evaluate_script("getComputedStyle(document.querySelector('header')).backgroundColor")).to eq("rgb(37, 99, 235)")
         expect(page.evaluate_script("getComputedStyle(document.querySelector('header .app-brand')).color")).to eq("rgb(255, 255, 255)")
         expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)

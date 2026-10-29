@@ -1,9 +1,9 @@
 @font-face {
-  font-family: "Nunito";
+  font-family: "Comic Neue";
   font-style: normal;
-  font-weight: 800;
+  font-weight: 700;
   font-display: swap;
-  src: url("/fonts/nunito/Nunito-800-v32.ttf") format("truetype");
+  src: url("/fonts/comic-neue/ComicNeue-Bold.ttf") format("truetype");
 }
 
 :root {
@@ -46,7 +46,7 @@ body {
 .app-footer small { font-size: 0.875rem; }
 .app-header { background: var(--color-primary); border-bottom: 1px solid var(--color-soft-border); }
 .app-header-inner { max-width: none; margin: 0 auto; padding: 1rem 1.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; }
-.app-brand { color: var(--color-primary); font-family: "Nunito", system-ui, sans-serif; font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; }
+.app-brand { color: var(--color-primary); font-family: "Comic Neue", system-ui, sans-serif; font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; }
 .app-header .app-brand, .app-header .app-brand:hover, .app-header .app-brand:focus-visible,
 .app-header .teacher-header-identity, .app-header .student-header-identity { color: var(--color-surface); }
 .app-header .app-brand:focus-visible { outline: 3px solid var(--color-surface); outline-offset: 6px; border-radius: .25rem; }

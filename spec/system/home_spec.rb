@@ -10,20 +10,52 @@ RSpec.describe "Home login choices", type: :system do
     driven_by :selenium, using: :headless_chrome, screen_size: [ 1280, 900 ]
   end
 
-  it "uses the local rounded font for home and every login wordmark at their own sizes" do
+  it "uses the local Comic Neue Bold font for home and every login wordmark at their own sizes" do
     [ [ 320, 812 ], [ 375, 812 ], [ 768, 1024 ], [ 1280, 900 ] ].each do |width, height|
       page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
         width: width, height: height, deviceScaleFactor: 1, mobile: false)
       sizes = [ root_path, login_path, student_login_path, admin_login_path ].map do |path|
         visit path
-        expect_nunito_wordmark
-        expect(page.evaluate_script("getComputedStyle(document.body).fontFamily")).not_to include("Nunito")
+        expect_comic_neue_wordmark
+        expect(page.evaluate_script("getComputedStyle(document.body).fontFamily")).not_to include("Comic Neue")
         expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
         save_brand_evidence("#{path.tr('/', '-')}-#{width}")
         page.evaluate_script("parseFloat(getComputedStyle(document.querySelector('.app-brand')).fontSize)")
       end
       expect(sizes.first).to be > sizes[1..].max
     end
+  end
+
+  it "keeps wordmarks readable when the local font cannot load" do
+    page.driver.browser.execute_cdp("Network.enable")
+    page.driver.browser.execute_cdp("Network.setCacheDisabled", cacheDisabled: true)
+    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [ "*/fonts/comic-neue/*" ])
+    [ 320, 1280 ].each do |width|
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
+        width: width, height: 900, deviceScaleFactor: 1, mobile: false)
+      [ root_path, login_path, student_login_path, admin_login_path, "/404.html" ].each do |path|
+        visit path
+        expect(page).to have_css(".app-brand", text: "QuickFlow", visible: true)
+        loaded = page.evaluate_async_script(<<~JS)
+          const done = arguments[arguments.length - 1];
+          document.fonts.ready.then(() => done([...document.fonts].some(face => face.status === 'loaded')));
+        JS
+        expect(loaded).to be(false)
+        page.driver.browser.execute_cdp("DOM.enable")
+        page.driver.browser.execute_cdp("CSS.enable")
+        root = page.driver.browser.execute_cdp("DOM.getDocument").fetch("root").fetch("nodeId")
+        node = page.driver.browser.execute_cdp("DOM.querySelector", nodeId: root, selector: ".app-brand").fetch("nodeId")
+        fonts = page.driver.browser.execute_cdp("CSS.getPlatformFontsForNode", nodeId: node).fetch("fonts")
+        expect(fonts).not_to be_empty
+        expect(fonts).to all(include("isCustomFont" => false))
+        expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
+        save_brand_evidence("font-fallback-#{path.tr('/', '-')}-#{width}")
+      end
+    end
+  ensure
+    page.driver.browser.execute_cdp("Network.setBlockedURLs", urls: [])
+    page.driver.browser.execute_cdp("Network.setCacheDisabled", cacheDisabled: false)
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
   end
 
   it "keeps the logo still and puts the choices directly after the introduction" do
