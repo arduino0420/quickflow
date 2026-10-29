@@ -13,8 +13,11 @@
 .pdf-preview-page canvas[hidden] { display: none; }
 .pdf-preview-page .pdf-preview-ink {
   position: absolute; inset: 0; width: 100%; height: 100%; background: transparent;
-  touch-action: pinch-zoom; cursor: crosshair;
+  touch-action: pinch-zoom; cursor: auto;
 }
+.pdf-preview-inking .pdf-preview-page .pdf-preview-ink { touch-action: none; cursor: crosshair; }
+.pdf-preview-workspace { overflow-x: auto; }
+.pdf-preview-input-help { margin: 0 0 0.75rem; }
 
 .pdf-preview [hidden] { display: none; }
 .pdf-preview .pdf-preview-draft-status { margin: 0 0 0.5rem; padding: 0; border: 0; background: transparent; color: var(--color-text); }

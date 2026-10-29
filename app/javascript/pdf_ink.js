@@ -48,13 +48,18 @@ export default class PdfInk {
       event.clientY >= rect.top && event.clientY <= rect.top + rect.height
   }
 
-  start(event) {
-    if (!this.viewport || this.stroke || !["mouse", "pen"].includes(event.pointerType) || event.button !== 0 || !this.contains(event)) return false
+  start(event, { allowTouch = false } = {}) {
+    if (!this.viewport || this.stroke ||
+        !(["mouse", "pen"].includes(event.pointerType) || (allowTouch && event.pointerType === "touch")) ||
+        event.button !== 0 || !this.contains(event)) return false
     this.pointerId = event.pointerId
+    // A touch may become the first half of a two-finger gesture. Keep its
+    // preview outside saved operations until a single-contact pointerup.
+    this.provisional = event.pointerType === "touch"
     // Array order is replay order; the ID identifies each operation within this session.
     this.stroke = { id: this.nextOperationId++, tool: this.tool, color: "#000000",
       width: this.tool === "eraser" ? this.eraserWidth : this.width, points: [this.point(event)] }
-    this.pages.get(this.pageNumber).push(this.stroke)
+    if (!this.provisional) this.pages.get(this.pageNumber).push(this.stroke)
     this.redraw()
     return true
   }
@@ -82,10 +87,13 @@ export default class PdfInk {
       if (point[0] !== previous[0] || point[1] !== previous[1]) this.stroke.points.push(point)
     }
     const completed = this.stroke
+    const commit = !this.provisional || event?.type === "pointerup"
+    if (this.provisional && commit) this.pages.get(this.pageNumber).push(completed)
     this.stroke = null
     this.pointerId = null
+    this.provisional = false
     if (this.viewport) this.redraw()
-    if (completed) this.onChange?.()
+    if (completed && commit) this.onChange?.()
   }
 
   redraw() {
@@ -96,7 +104,7 @@ export default class PdfInk {
     context.clearRect(0, 0, this.canvas.width, this.canvas.height)
     const operations = this.pages.get(this.pageNumber)
     if (this.cache) {
-      const count = operations.length - (this.stroke ? 1 : 0)
+      const count = operations.length - (this.stroke && !this.provisional ? 1 : 0)
       if (this.cachedOperations !== operations || this.cachedCount > count ||
           this.cache.width !== this.canvas.width || this.cache.height !== this.canvas.height) {
         this.cache.width = this.canvas.width
@@ -114,6 +122,7 @@ export default class PdfInk {
     } else {
       this.prepareContext(context)
       for (const stroke of operations) this.drawStroke(context, stroke)
+      if (this.stroke && this.provisional) this.drawStroke(context, this.stroke)
     }
     context.globalCompositeOperation = "source-over"
   }

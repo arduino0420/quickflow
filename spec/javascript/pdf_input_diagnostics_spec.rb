@@ -53,7 +53,7 @@ RSpec.describe "Opt-in PDF input diagnostics" do
       const state={ink,inkCanvas:canvas,renderedWidth:200,renderedDpr:1};
       c.statesByCanvas=new WeakMap([[canvas,state]]);
       c.element={contains:target=>target===canvas};
-      c.containerTarget={clientWidth:200}; c.draftEditable=true;
+      c.containerTarget={clientWidth:200}; c.draftEditable=true;c.tool='pen';
       c.showCursor=c.showDraftStatus=()=>{};
       const event=(type,extra={})=>({type,target:canvas,currentTarget:canvas,pointerId:1,pointerType:'pen',
         timeStamp:100,button:0,buttons:type==='pointerup'?0:1,clientX:20,clientY:20,cancelable:true,
@@ -138,7 +138,7 @@ RSpec.describe "Opt-in PDF input diagnostics" do
       }
       c.draftEditable=false; send('pointerdown',{timeStamp:220});
       assert(c.inputDiagnostics.snapshot().rows.some(r=>r.reason==='draft-not-editable'));
-      c.draftEditable=true; state.renderedWidth=100; send('pointerdown',{timeStamp:230});
+      c.draftEditable=true;c.tool='pen'; state.renderedWidth=100; send('pointerdown',{timeStamp:230});
       assert(c.inputDiagnostics.snapshot().rows.some(r=>r.reason==='viewport-mismatch'));
       const outside=event('pointerdown',{target:{},currentTarget:document,pointerType:'touch'});
       const before=c.inputDiagnostics.snapshot().total;
@@ -196,13 +196,14 @@ RSpec.describe "Opt-in PDF input diagnostics" do
       assert.equal(c.inputDiagnostics.snapshot().total,0);
       assert.equal(JSON.stringify([...ink.pages]),savedInk); assert.equal(changes,savedChanges);
       assert.equal(timers.size,1);
-      // Count actual acceptance even if a later pointer-capture operation throws.
+      // Count actual acceptance and preserve ink even when pointer capture fails.
       const capture=canvas.setPointerCapture;
-      canvas.setPointerCapture=()=>{throw Error('capture failed');};
-      assert.throws(()=>send('pointerdown'),/capture failed/);
+      canvas.setPointerCapture=()=>{throw Object.assign(Error('capture failed'),{name:'NotFoundError'});};
+      send('pointerdown');
       assert.equal(c.inputDiagnostics.summary().accepted,1);
       assert.equal(c.inputDiagnostics.summary().rejected,0);
-      assert(c.inputState); assert(ink.stroke,'diagnostics must preserve existing behavior after an exception');
+      assert.equal(c.inputState,null); assert.equal(ink.stroke,null);
+      assert(c.inputDiagnostics.snapshot().rows.some(r=>r.reason==='pointer-capture-failed'));
       canvas.setPointerCapture=capture;
       c.finishInput();
       c.startInputDiagnostics(); c.pageStates=[]; c.previousTurboSetting=null;

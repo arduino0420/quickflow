@@ -675,6 +675,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "draws separate mouse strokes and a dot on a transparent layer and keeps them aligned after resize" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     overlay = find('[data-pdf-preview-target="ink"]')
     bounds = page.evaluate_script(<<~JS)
       (() => {
@@ -725,7 +726,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "partially erases only ink and replays pen/eraser/pen after resize and high-DPI rendering" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
-    expect(find_button("ペン")["aria-pressed"]).to eq("true")
+    expect(find_button("ペン")["aria-pressed"]).to eq("false")
     expect(find_button("消しゴム")["aria-pressed"]).to eq("false")
     original_pdf = find('[data-pdf-preview-target="canvas"]').evaluate_script("this.toDataURL()")
     ink_drag(0.1, 0.1, 0.5, 0.1)
@@ -780,7 +781,13 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     end
   end
 
+  def select_pen_if_unselected
+    tools = all('button[data-pdf-preview-target="tool"]')
+    click_button "ペン" unless tools.any? { |button| button["aria-pressed"] == "true" }
+  end
+
   def ink_drag(x1, y1, x2, y2, number = nil)
+    select_pen_if_unselected
     scroll_page(number) if number
     prefix = number ? "[data-page-number='#{number}'] " : ""
     rect = page.evaluate_script(<<~JS)
@@ -874,6 +881,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     attach_preview("pdf_preview_three.pdf")
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     scroll_page(2)
     rect = find('[data-page-number="2"] [data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
     x = (rect["x"] + rect["width"] * 0.2).round
@@ -1518,7 +1526,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       expect(ink_alpha(0.2, 0.2)).to be > 0
     end
 
-    it "allows finger scrolling of submitted quizzes while preventing new pen strokes and drafts" do
+    it "allows two-finger navigation of submitted quizzes while preventing new strokes and drafts" do
       Submission.create!(student: Student.find_by!(attendance_number: 1), assignment: @assignment, submitted_at: Time.current)
       visit student_assignment_pdf_preview_path(@assignment)
       expect(page).to have_text("提出済みです。下書きは変更できません。", wait: 20)
@@ -1531,8 +1539,12 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       before = page.evaluate_script("scrollY")
       action = page.driver.browser.action
       action.add_pointer_input(:touch, "readonly-finger")
+      action.add_pointer_input(:touch, "readonly-second")
       action.move_to_location(x, y, device: "readonly-finger").pointer_down(:left, device: "readonly-finger")
-        .move_to_location(x, y - 90, device: "readonly-finger").pointer_up(:left, device: "readonly-finger").perform
+        .move_to_location(x - 100, y, device: "readonly-second").pointer_down(:left, device: "readonly-second")
+        .move_to_location(x, y - 90, device: "readonly-finger")
+        .move_to_location(x - 100, y - 90, device: "readonly-second")
+        .pointer_up(:left, device: "readonly-finger").pointer_up(:left, device: "readonly-second").perform
       Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("scrollY") > before }
       expect(AnswerDraft.where(assignment: @assignment)).to be_empty
     end
@@ -1905,7 +1917,173 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     JS
   end
 
-  it "keeps PDF coordinates after simulated viewport zoom and permits native pinch zoom" do
+  it "starts and returns unselected, supports keyboard toggles and never saves temporary erasing" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    %w[ペン 消しゴム].each { |label| expect(find_button(label)["aria-pressed"]).to eq("false") }
+    canvas = find('[data-pdf-preview-target="ink"]')
+    expect(canvas.evaluate_script("getComputedStyle(this).touchAction")).to eq("pinch-zoom")
+    bounds = canvas.evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = (bounds["x"] + bounds["width"] * 0.15).round
+    y = (bounds["y"] + bounds["height"] * 0.1).round
+    [ :mouse, :pen ].each do |type|
+      action = page.driver.browser.action
+      action.add_pointer_input(type, "unselected-#{type}")
+      action.move_to_location(x, y, device: "unselected-#{type}").pointer_down(:left, device: "unselected-#{type}")
+        .move_to_location(x + 30, y, device: "unselected-#{type}").pointer_up(:left, device: "unselected-#{type}").perform
+    end
+    expect(ink_alpha(0.15, 0.1)).to eq(0)
+    before_scroll = page.evaluate_script("scrollY")
+    dispatch_pdf_touch("touchStart", [ [ 1, x, y + 90 ] ])
+    dispatch_pdf_touch("touchMove", [ [ 1, x, y ] ])
+    dispatch_pdf_touch("touchEnd", [])
+    expect(page.evaluate_script("scrollY")).to be > before_scroll
+    expect(AnswerDraft.where(assignment: @assignment)).to be_empty
+    find_button("ペン").send_keys(:space)
+    expect(find_button("ペン")["aria-pressed"]).to eq("true")
+    expect(page.evaluate_script("document.activeElement.textContent.trim()")).to eq("ペン")
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("getComputedStyle(this).touchAction")).to eq("none")
+    touch_ink_drag(0.1, 0.1, 0.3, 0.1)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    original = AnswerDraft.find_by!(assignment: @assignment).page_data
+    find_button("ペン").send_keys(:space)
+    expect(find_button("ペン")["aria-pressed"]).to eq("false")
+    expect(page.evaluate_script("document.activeElement.textContent.trim()")).to eq("ペン")
+    expect(find('[data-pdf-preview-target="ink"]').evaluate_script("getComputedStyle(this).touchAction")).to eq("pinch-zoom")
+    find_button("消しゴム").send_keys(:enter)
+    expect(find_button("消しゴム")["aria-pressed"]).to eq("true")
+    rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = (rect["x"] + rect["width"] * 0.2).round
+    y = (rect["y"] + rect["height"] * 0.1).round
+    dispatch_pdf_touch("touchStart", [ [ 2, x, y ] ])
+    expect(ink_alpha(0.2, 0.1)).to eq(0)
+    click_button "消しゴム"
+    dispatch_pdf_touch("touchEnd", [])
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(original)
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    %w[ペン 消しゴム].each { |label| expect(find_button(label)["aria-pressed"]).to eq("false") }
+    expect(ink_alpha(0.2, 0.1)).to be > 0
+    other = Assignment.create!(teacher: @assignment.teacher, title: "別の架空課題", point_per_question: 5)
+    other.assignment_classrooms.create!(classroom: @assignment.assignment_classrooms.first.classroom)
+    other.material_file.attach(io: File.open(Rails.root.join("spec/fixtures/files/pdf_preview_single.pdf")),
+      filename: "other.pdf", content_type: "application/pdf")
+    click_button "ペン"
+    visit student_assignment_pdf_preview_path(other)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    %w[ペン 消しゴム].each { |label| expect(find_button(label)["aria-pressed"]).to eq("false") }
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(original)
+  ensure
+    dispatch_pdf_touch("touchEnd", []) if @pdf_touch_active
+  end
+
+  it "writes and erases with a touch-reported pen, restores the draft and submits matching PDF ink" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(page).to have_text("未選択では指で移動・拡大縮小")
+    expect(page).not_to have_css('[data-pdf-preview-target="inputMode"]')
+    touch_ink_drag(0.15, 0.15, 0.75, 0.15)
+    click_button "消しゴム"
+    click_button "大"
+    touch_ink_drag(0.3, 0.15, 0.3, 0.15)
+    click_button "ペン"
+    touch_ink_drag(0.6, 0.2, 0.6, 0.2)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    original = AnswerDraft.find_by!(assignment: @assignment).page_data
+    expect(original.first["operations"].map { |op| op["tool"] }).to eq(%w[pen eraser pen])
+    page.refresh
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.3, 0.15)).to eq(0)
+    expect(ink_alpha(0.5, 0.15)).to be > 0
+    expect(ink_alpha(0.6, 0.2)).to be > 0
+    click_button "提出する"
+    within("dialog.submission-confirmation") { click_button "はい", exact: true }
+    expect(page).to have_current_path(student_assignment_path(@assignment), wait: 30)
+    expect(Submission.find_by!(assignment: @assignment).answer_file).to be_attached
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(original)
+    pixels = page.evaluate_async_script(<<~JS)
+      const done=arguments[arguments.length-1];
+      (async()=>{
+        const {getDocument,PDFWorker}=await import('pdfjs');
+        const worker=new PDFWorker({port:new Worker('/vendor/pdfjs/6.4.299/pdf.worker.min.mjs',{type:'module'})});
+        try {
+          const bytes=await(await fetch(#{answer_student_assignment_path(@assignment).to_json})).arrayBuffer();
+          const pdf=await getDocument({data:new Uint8Array(bytes),worker}).promise;
+          const p=await pdf.getPage(1),v=p.getViewport({scale:3}),canvas=document.createElement('canvas');
+          canvas.width=v.width;canvas.height=v.height;const ctx=canvas.getContext('2d');
+          await p.render({canvasContext:ctx,viewport:v}).promise;
+          done([[.3,.15],[.5,.15],[.6,.2]].map(([x,y])=>Array.from(ctx.getImageData(Math.round(v.width*x),Math.round(v.height*y),1,1).data).slice(0,3)));
+        } finally {worker.destroy()}
+      })().catch(error=>done({error:String(error)}));
+    JS
+    expect(pixels.first).to eq([ 255, 255, 255 ])
+    expect(pixels.drop(1).map(&:max)).to all(be < 20)
+  end
+
+  it "rolls back provisional touch erasing for two-finger zoom and waits for all contacts to lift" do
+    visit student_assignment_pdf_preview_path(@assignment)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    ink_drag(0.1, 0.15, 0.8, 0.15)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    original = AnswerDraft.find_by!(assignment: @assignment).page_data
+    click_button "消しゴム"
+    click_button "大"
+    rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = (rect["x"] + rect["width"] * 0.3).round
+    y = (rect["y"] + rect["height"] * 0.15).round
+    dispatch_pdf_touch("touchStart", [ [ 1, x, y ] ])
+    expect(ink_alpha(0.3, 0.15)).to eq(0)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(original)
+    dispatch_pdf_touch("touchStart", [ [ 1, x, y ], [ 2, x + 100, y ] ])
+    expect(ink_alpha(0.3, 0.15)).to be > 0
+    dispatch_pdf_touch("touchMove", [ [ 1, x, y ], [ 2, x + 200, y ] ])
+    Timeout.timeout(5) do
+      sleep 0.02 until page.evaluate_script("window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'),'pdf-preview').pdfScale") > 1.99
+    end
+    expect(page.evaluate_script("visualViewport.scale")).to be_within(0.01).of(1)
+    dispatch_pdf_touch("touchEnd", [ [ 2, x + 200, y ] ])
+    dispatch_pdf_touch("touchMove", [ [ 2, x + 210, y + 10 ] ])
+    dispatch_pdf_touch("touchEnd", [])
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(original)
+    expect(ink_alpha(0.3, 0.15)).to be > 0
+    expect(page.evaluate_script("document.documentElement.scrollWidth<=innerWidth")).to be(true)
+    click_button "ペン"
+    touch_ink_drag(0.4, 0.15, 0.45, 0.15)
+    expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
+    updated = AnswerDraft.find_by!(assignment: @assignment).page_data
+    expect(updated.first["operations"][0...original.first["operations"].length]).to eq(original.first["operations"])
+    points = updated.first["operations"].last["points"]
+    [ points.first, points.last ].zip([ [ 80, 255 ], [ 90, 255 ] ]).each do |actual, expected|
+      actual.zip(expected).each { |value, intended| expect(value).to be_within(0.5).of(intended) }
+    end
+    page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 768, height: 1024, deviceScaleFactor: 1.5, mobile: false)
+    expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(ink_alpha(0.3, 0.15)).to be > 0
+    expect(AnswerDraft.find_by!(assignment: @assignment).page_data).to eq(updated)
+  ensure
+    page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    dispatch_pdf_touch("touchEnd", []) if @pdf_touch_active
+  end
+
+  def dispatch_pdf_touch(type, points)
+    page.driver.browser.execute_cdp("Input.dispatchTouchEvent", type: type,
+      touchPoints: points.map { |id, x, y| { id: id, x: x, y: y, radiusX: 1, radiusY: 1, force: 1 } })
+    @pdf_touch_active = points.any?
+  end
+
+  def touch_ink_drag(x1, y1, x2, y2)
+    select_pen_if_unselected
+    rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
+    x = ->(fraction) { (rect["x"] + rect["width"] * fraction).round }
+    y = ->(fraction) { (rect["y"] + rect["height"] * fraction).round }
+    dispatch_pdf_touch("touchStart", [ [ 1, x.call(x1), y.call(y1) ] ])
+    dispatch_pdf_touch("touchMove", [ [ 1, x.call(x2), y.call(y2) ] ])
+    dispatch_pdf_touch("touchEnd", [])
+  end
+
+  it "keeps PDF coordinates after simulated browser zoom with native paper gestures disabled" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
     expect(find('[data-pdf-preview-target="ink"]').evaluate_script("getComputedStyle(this).touchAction")).to eq("pinch-zoom")
@@ -1933,6 +2111,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "enables memory-only input diagnostics explicitly and correlates real document/controller events" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     expect(page.evaluate_script(<<~JS)).to be(true)
       (() => {
         window.diagnosticPreview = window.Stimulus.getControllerForElementAndIdentifier(
@@ -1968,6 +2147,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "shows opt-in pen counters outside the writing surface and resets only diagnostic data" do
     visit student_assignment_pdf_preview_path(@assignment, anchor: "pdf-input-diagnostics")
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     expect(page).to have_css('[data-pdf-preview-target="diagnostics"]')
     expect(page.evaluate_script(<<~JS)).to be(true)
       (()=>{
@@ -2014,7 +2194,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(page).to have_css('[data-pdf-preview-target="diagnosticSummary"]', text: "開始: 0 / イベントによる終了: 0 / 拒否: 0")
     expect(draft.reload.page_data).to eq(saved)
     expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")).to eq(before)
-    expect(page.evaluate_script("getComputedStyle(document.querySelector('[data-pdf-preview-target=ink]')).touchAction")).to eq("pinch-zoom")
+    expect(page.evaluate_script("getComputedStyle(document.querySelector('[data-pdf-preview-target=ink]')).touchAction")).to eq("none")
     click_button "診断終了"
     expect(page).to have_no_css('[data-pdf-preview-target="diagnostics"]')
     expect(page.evaluate_script(<<~JS)).to eq([ nil, nil ])
@@ -2042,6 +2222,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "starts real pen ink after two resting touch contacts and restores the saved stroke" do
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     rect = find('[data-pdf-preview-target="ink"]').evaluate_script("this.getBoundingClientRect().toJSON()")
     x = (rect["x"] + rect["width"] * 0.1).round
     y = (rect["y"] + rect["height"] * 0.1).round
@@ -2050,8 +2231,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       touch.add_pointer_input(:touch, name)
       touch.move_to_location(x + 80 + index * 30, y + 40, device: name).pointer_down(:left, device: name).perform
     end
-    # Chrome may cancel native touch pointers when it recognizes a pinch. The unit
-    # regression separately covers retained palm contacts; here check actual pen/render/save.
+    # The unit regression also covers retained palm contacts; here check browser pen/render/save.
     pen = page.driver.browser.action
     pen.add_pointer_input(:pen, "palm-first-pen")
     pen.move_to_location(x, y, device: "palm-first-pen").pointer_down(:left, device: "palm-first-pen")
@@ -2073,10 +2253,11 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     page.driver.quit
   end
 
-  it "accepts a browser-generated pen pointer while finger drags scroll without adding ink" do
+  it "accepts a browser-generated pen pointer while two-finger drags scroll without adding ink" do
     page.current_window.resize_to(1280, 900)
     visit student_assignment_pdf_preview_path(@assignment)
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     bounds = page.evaluate_script(<<~JS)
       (() => { const r = document.querySelector('[data-pdf-preview-target="ink"]').getBoundingClientRect();
         return {x:r.x, y:r.y, width:r.width, height:r.height}; })()
@@ -2138,13 +2319,11 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.15, 0.1)).to eq(0)
 
     before = find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")
-    actions = page.driver.browser.action
-    actions.add_pointer_input(:touch, "test-finger")
     x = (bounds["x"] + bounds["width"] * 0.8).round
-    actions.move_to_location(x, y + 100, device: "test-finger")
-      .pointer_down(:left, device: "test-finger")
-      .move_to_location(x, y, device: "test-finger")
-      .pointer_up(:left, device: "test-finger").perform
+    dispatch_pdf_touch("touchStart", [ [ 1, x, y + 100 ] ])
+    dispatch_pdf_touch("touchStart", [ [ 1, x, y + 100 ], [ 2, x - 100, y + 100 ] ])
+    dispatch_pdf_touch("touchMove", [ [ 1, x, y ], [ 2, x - 100, y ] ])
+    dispatch_pdf_touch("touchEnd", [])
     Timeout.timeout(5) { sleep 0.05 until page.evaluate_script("window.scrollY") > 0 }
     expect(find('[data-pdf-preview-target="ink"]').evaluate_script("this.toDataURL()")).to eq(before)
   end
@@ -2152,6 +2331,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
   it "scopes the stylus touch guard to connected ink canvases through reconnects" do
     click_link "表示試験"
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    click_button "ペン"
     page.execute_script(<<~JS)
       window.touchGuardCanvas = document.querySelector('[data-pdf-preview-target="ink"]');
       window.sendGuardTouch = (target, type, changed, active) => {
@@ -2177,7 +2357,7 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
         sendGuardTouch(touchGuardCanvas,'touchend',['stylus'],['direct'])
       ]
     JS
-    expect(page.evaluate_script("getComputedStyle(touchGuardCanvas).touchAction")).to eq("pinch-zoom")
+    expect(page.evaluate_script("getComputedStyle(touchGuardCanvas).touchAction")).to eq("none")
 
     # Target removal must detach its listeners even while the controller remains connected.
     page.execute_script("touchGuardCanvas.remove()")
@@ -2197,6 +2377,8 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
       canvas.evaluate_script("this !== window.touchGuardCanvas && this.width > 0")
     }
     expect(page).to have_css('.pdf-preview-pages[aria-busy="false"]', wait: 30)
+    expect(find_button("ペン")["aria-pressed"]).to eq("false")
+    click_button "ペン"
     expect(page.evaluate_script(<<~JS)).to eq([ [ false, 0 ], [ true, 1 ] ])
       [sendGuardTouch(touchGuardCanvas,'touchstart',['stylus'],['stylus']),
        sendGuardTouch(document.querySelector('[data-pdf-preview-target="ink"]'),'touchstart',['stylus'],['stylus'])]
