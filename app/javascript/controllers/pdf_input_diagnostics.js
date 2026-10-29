@@ -4,7 +4,7 @@ const TOUCH_EVENTS = ["touchstart", "touchend", "touchcancel"]
 const ALL_EVENTS = [...EVENTS, ...TOUCH_EVENTS]
 const BOUNDARIES = EVENTS.filter(type => type !== "pointermove")
 const REJECTIONS = new Set(["exporting", "canvas-hidden", "unknown-canvas", "unsupported-input", "pinch-active",
-  "draft-not-editable", "input-busy", "viewport-mismatch", "ink-start-rejected"])
+  "draft-not-editable", "input-busy", "viewport-mismatch", "ink-start-rejected", "tool-not-selected"])
 const CAPACITY = 2048
 const number = value => Number.isFinite(value) ? value : null
 

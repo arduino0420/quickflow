@@ -7,8 +7,8 @@ import { snapshotPages, generateAnswerPdf } from "pdf_export"
 
 // One document/worker, independent ink per page, sequential PDF rendering.
 export default class extends Controller {
-  static targets = ["status", "container", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus", "recovery", "resume",
-    "diagnostics", "diagnosticSummary", "diagnosticEvents"]
+  static targets = ["status", "container", "workspace", "canvas", "ink", "tool", "sizes", "size", "draftStatus", "retry", "submit", "submitStatus", "recovery", "resume",
+    "diagnostics", "diagnosticSummary", "diagnosticEvents", "inputHelp"]
   static values = { url: String, assetsUrl: String, assignmentId: Number, draftUrl: String, draftContext: String,
     recoveryUrl: String, recoveryContext: String, submissionUrl: String }
 
@@ -27,9 +27,15 @@ export default class extends Controller {
     this.pagesReady = false
     this.statesByCanvas = new WeakMap()
     this.touchIds = new Set()
+    this.touchPoints = new Map()
+    this.touchMode = "idle"
+    this.touchContacts = 0
+    this.awaitTouchRelease = false
+    this.pdfScale = 1
+    if (this.hasContainerTarget) this.containerTarget.style.width = ""
     this.multiTouch = false
     this.inputPointerType = null
-    this.tool = "pen"
+    this.tool = null
     this.eraserSize = "medium"
     this.revision = 0
     this.renderQueue = Promise.resolve()
@@ -57,6 +63,7 @@ export default class extends Controller {
   }
 
   preventStylusGesture(event) {
+    if (!this.tool) return
     // A resting palm must not turn an active, positively identified pen into a pinch.
     if (event.cancelable && this.inputPointerType === "pen" && this.inputState?.ink.stroke &&
         event.currentTarget === this.inputState.inkCanvas && event.changedTouches.length > 0 &&
@@ -174,6 +181,7 @@ export default class extends Controller {
       const original = state.page.getViewport({ scale: 1 })
       state.viewport = state.page.getViewport({ scale: width / original.width })
       state.sheet.querySelector(".pdf-preview-page").style.height = `${state.viewport.height}px`
+      state.canvas.style.height = `${state.viewport.height}px`
     }
   }
 
@@ -188,7 +196,7 @@ export default class extends Controller {
   }
 
   async renderPages(session) {
-    if (!this.current(session) || !this.pagesReady || !this.pageStates.length) return
+    if (!this.current(session) || !this.pagesReady || !this.pageStates.length || this.touchMode === "navigate") return
     const revision = this.revision
     const width = this.containerTarget.clientWidth
     const dpr = window.devicePixelRatio || 1
@@ -247,7 +255,12 @@ export default class extends Controller {
     if (this.exporting || this.confirming) return
     if (!["pen", "eraser"].includes(event.params.tool)) return
     this.finishInput()
-    this.tool = event.params.tool
+    this.tool = this.tool === event.params.tool ? null : event.params.tool
+    if (this.touchContacts > 0) {
+      this.awaitTouchRelease = true
+      this.touchMode = "blocked"
+      this.multiTouch = true
+    }
     for (const state of this.pageStates) state.ink.setTool(this.tool)
     this.updateTool()
   }
@@ -262,6 +275,10 @@ export default class extends Controller {
   }
 
   updateTool() {
+    this.element?.classList?.toggle("pdf-preview-inking", !!this.tool)
+    if (this.hasInputHelpTarget) this.inputHelpTarget.textContent = this.tool ?
+      "1本で書く・消す、2本で紙面を移動・拡大縮小。選択中のボタンをもう一度押すと解除します。手のひらは画面から離してください。" :
+      "ペン・消しゴムを選ぶと筆記できます。未選択では指で移動・拡大縮小します。"
     this.sizesTarget.hidden = this.tool !== "eraser"
     for (const button of this.sizeTargets) {
       button.setAttribute("aria-pressed", String(button.dataset.pdfPreviewSizeParam === this.eraserSize))
@@ -273,7 +290,7 @@ export default class extends Controller {
   }
 
   updateCursor(state) {
-    state.inkCanvas.style.cursor = "crosshair"
+    state.inkCanvas.style.cursor = this.tool ? "crosshair" : "auto"
     state.cursor.hidden = true
     if (this.tool !== "eraser" || !state.ink.viewport) return
     const viewport = state.ink.viewport
@@ -360,34 +377,45 @@ export default class extends Controller {
       return
     }
     if (event.pointerType === "touch") {
-      if (this.inputPointerType === "pen" && this.inputState?.ink.stroke) {
+      this.touchIds ||= new Set()
+      this.touchPoints ||= new Map()
+      this.touchIds.add(event.pointerId)
+      this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (this.awaitTouchRelease) return
+      if (!this.tool) { this.startTouchScroll(event, state); return }
+      if (event.cancelable) event.preventDefault()
+      if (this.inputState && this.inputPointerType !== "touch") {
+        this.touchMode = "blocked"
         this.inputDiagnostics?.record("controller", event, "palm-ignored")
         return
       }
-      this.touchIds ||= new Set()
-      this.touchIds.add(event.pointerId)
-      if (this.touchIds.size > 1) {
-        this.multiTouch = true
+      if (this.touchMode === "blocked" || this.touchPoints.size > 2) {
         this.finishInput()
-        this.inputDiagnostics?.record("controller", event, "pinch-delegated")
+        this.touchMode = "blocked"
+        this.multiTouch = true
         return
       }
-      if (!this.multiTouch && !this.inputState && !this.touch) {
-        this.touch = { id: event.pointerId, y: event.clientY, state }
-        state.inkCanvas.setPointerCapture(event.pointerId)
-        this.inputDiagnostics?.record("controller", event, "touch-scroll-started")
-      } else {
-        this.inputDiagnostics?.record("controller", event, "touch-busy")
+      if (this.touchPoints.size === 2) {
+        this.finishInput({ type: "touch-navigation" }) // Discard preview; retain capture for navigation.
+        this.touchMode = "navigate"
+        this.multiTouch = true
+        this.touchGesture = this.touchGeometry()
+        this.capturePointer(state, event.pointerId)
+        this.inputDiagnostics?.record("controller", event, "touch-navigation-started")
+        return
       }
-      return
+      this.touchMode = "ink"
+    } else if (event.pointerType === "pen" && (this.inputPointerType === "touch" || this.touchGesture)) {
+      this.finishInput() // An explicitly recognized pen supersedes touch previews/gestures.
     }
-    if (event.button !== 0 || !["mouse", "pen"].includes(event.pointerType)) {
+    if (!this.tool) { this.inputDiagnostics?.record("controller", event, "tool-not-selected"); return }
+    if (event.button !== 0 || !["mouse", "pen", "touch"].includes(event.pointerType)) {
       this.inputDiagnostics?.record("controller", event, "unsupported-input")
       return
     }
     // Keep native selection out of the ink surface even while drawing is unavailable.
     if (event.cancelable) event.preventDefault()
-    if (this.multiTouch && event.pointerType !== "pen") { this.inputDiagnostics?.record("controller", event, "pinch-active"); return }
+    if ((this.multiTouch || this.touchMode === "blocked") && event.pointerType !== "pen") { this.inputDiagnostics?.record("controller", event, "pinch-active"); return }
     if (!this.draftEditable) { this.inputDiagnostics?.record("controller", event, "draft-not-editable"); return }
     if (this.inputState || state.renderedWidth !== this.containerTarget.clientWidth || state.renderedDpr !== (window.devicePixelRatio || 1)) {
       this.inputDiagnostics?.record("controller", event, this.inputState ? "input-busy" : "viewport-mismatch")
@@ -395,29 +423,79 @@ export default class extends Controller {
     }
     // Only an explicit pen can supersede contacts already classified as a finger gesture.
     if (event.pointerType === "pen") this.multiTouch = false
-    this.finishInput()
-    if (state.ink.start(event)) {
+    if (event.pointerType !== "touch") this.finishInput()
+    if (state.ink.start(event, { allowTouch: true })) {
       this.inputState = state
       this.inputPointerType = event.pointerType
       this.inputDiagnostics?.record("controller", event, "stroke-accepted")
       this.showDraftStatus(this.draft?.failed ? this.draft.failureMessage : "未保存",
         !!this.draft?.failed && !this.draft.blocked && !this.draft.saveBlocked)
-      state.inkCanvas.setPointerCapture(event.pointerId)
+      if (!this.capturePointer(state, event.pointerId)) return
       this.inputDiagnostics?.record("controller", event, "stroke-started")
     } else {
       this.inputDiagnostics?.record("controller", event, "ink-start-rejected")
     }
   }
 
+  startTouchScroll(event, state) {
+    if (this.touchMode === "blocked") return
+    if (this.touchIds.size > 1) {
+      this.multiTouch = true
+      this.finishInput()
+      this.touchMode = "blocked"
+      return // Native pinch remains available when neither tool is selected.
+    }
+    if (!this.inputState && !this.touch) {
+      this.touch = { id: event.pointerId, y: event.clientY, state }
+      this.touchMode = "scroll"
+      this.capturePointer(state, event.pointerId)
+    }
+  }
+
+  capturePointer(state, pointerId) {
+    try {
+      state.inkCanvas.setPointerCapture(pointerId)
+      this.capturedInputs ||= new Map()
+      this.capturedInputs.set(pointerId, state.inkCanvas)
+      return true
+    } catch (error) {
+      // Keep recorded ink, but never leave a failed capture blocking the next stroke.
+      this.touchIds?.delete(pointerId)
+      this.touchPoints?.delete(pointerId)
+      if (!this.touchIds?.size) this.multiTouch = false
+      this.finishInput()
+      this.inputDiagnostics?.record("controller", null, "pointer-capture-failed")
+      if (!["NotFoundError", "InvalidStateError"].includes(error.name)) throw error
+      return false
+    }
+  }
+
+  releaseCapture(pointerId, canvas = this.capturedInputs?.get(pointerId)) {
+    this.capturedInputs?.delete(pointerId)
+    if (canvas?.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId)
+  }
+
   pointerMove(event) {
     this.inputDiagnostics?.record("controller", event, "move-enter")
     if (this.exporting || this.confirming) { this.inputDiagnostics?.record("controller", event, "exporting"); return }
     this.showCursor(event)
-    if (!this.multiTouch && event.pointerId === this.touch?.id) {
+    if (!this.tool && !this.multiTouch && event.pointerId === this.touch?.id) {
       window.scrollBy(0, this.touch.y - event.clientY)
       this.touch.y = event.clientY
-      this.inputDiagnostics?.record("controller", event, "touch-scrolled")
       return
+    }
+    if (event.pointerType === "touch") {
+      if (!this.touchPoints?.has(event.pointerId)) return
+      this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (this.touchMode === "navigate") {
+        if (event.cancelable) event.preventDefault()
+        if (!this.navigationFrame) this.navigationFrame = window.requestAnimationFrame(() => {
+          this.navigationFrame = null
+          if (this.active) this.navigateTouch()
+        })
+        return
+      }
+      if (this.touchMode !== "ink") return
     }
     const state = this.inputState
     if (!state || state.inkCanvas !== event.currentTarget || event.pointerId !== state.ink.pointerId) {
@@ -443,7 +521,7 @@ export default class extends Controller {
   scrolled() {
     this.inputDiagnostics?.record("controller", null, "window-scrolled")
     // A wheel/trackpad scroll must not extend a held pen stroke as the page moves.
-    // Finger scrolling has no inputState and keeps its own pointer capture.
+    // Two-finger navigation has no active ink stroke.
     if (this.inputState) this.finishInput()
   }
 
@@ -452,10 +530,6 @@ export default class extends Controller {
     const state = this.statesByCanvas.get(event.currentTarget)
     if (!state) { this.inputDiagnostics?.record("controller", event, "unknown-canvas"); return }
     const drawing = state === this.inputState && event.pointerId === state.ink.pointerId
-    if (event.pointerType === "touch") {
-      this.touchIds?.delete(event.pointerId)
-      if (!this.touchIds?.size) this.multiTouch = false
-    }
     if (drawing) {
       window.cancelAnimationFrame(this.inkFrame)
       this.inkFrame = null
@@ -464,18 +538,107 @@ export default class extends Controller {
     if (drawing) {
       this.inputState = null
       this.inputPointerType = null
+      this.restoreDraftStatus()
     }
-    if (event.pointerId === this.touch?.id) this.touch = null
-    if (state.inkCanvas.hasPointerCapture(event.pointerId)) state.inkCanvas.releasePointerCapture(event.pointerId)
+    if (event.type !== "lostpointercapture") this.releaseTouch(event)
+    else if (event.pointerType === "touch" && this.touchIds?.has(event.pointerId) &&
+        !["pen", "mouse"].includes(this.inputPointerType)) {
+      this.finishInput()
+    }
+    this.releaseCapture(event.pointerId, state.inkCanvas)
     this.inputDiagnostics?.record("controller", event, drawing ? "stroke-ended" : "end-without-matching-stroke")
+  }
+
+  releaseTouch(event) {
+    if (event.pointerType !== "touch" || !this.touchIds?.has(event.pointerId)) return
+    // Window-level up/cancel also catches contacts released outside the paper.
+    if (this.inputPointerType === "touch" && event.pointerId === this.inputState?.ink.pointerId) {
+      this.inputState.ink.end(event)
+      this.finishInput()
+    }
+    const navigating = this.touchMode === "navigate"
+    if (navigating) this.flushTouchNavigation()
+    this.touchIds?.delete(event.pointerId)
+    this.touchPoints?.delete(event.pointerId)
+    if (this.touch?.id === event.pointerId) this.touch = null
+    this.releaseCapture(event.pointerId)
+    if (navigating) this.scheduleRender()
+    this.touchGesture = null
+    this.touchMode = this.touchIds?.size ? "blocked" : "idle"
+    this.multiTouch = !!this.touchIds?.size
+  }
+
+  trackTouches(event) {
+    // Native pinch can cancel PointerEvents while the fingers remain down.
+    // TouchEvents let a tool change wait for that native gesture to really end.
+    this.touchContacts = event.touches.length
+    if (!this.touchContacts && this.awaitTouchRelease) {
+      this.awaitTouchRelease = false
+      this.touchIds?.clear()
+      this.touchPoints?.clear()
+      this.touchMode = "idle"
+      this.multiTouch = false
+    }
+  }
+
+  touchGeometry() {
+    const [a, b] = this.touchPoints.values()
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) }
+  }
+
+  flushTouchNavigation() {
+    window.cancelAnimationFrame(this.navigationFrame)
+    this.navigationFrame = null
+    if (this.touchMode === "navigate") this.navigateTouch()
+  }
+
+  navigateTouch() {
+    if (!this.touchGesture || this.touchPoints.size !== 2) return
+    const next = this.touchGeometry(), previous = this.touchGesture
+    const scale = Math.max(1, Math.min(3, (this.pdfScale || 1) *
+      (previous.distance > 10 && next.distance > 10 ? next.distance / previous.distance : 1)))
+    const anchor = this.pageStates.find(state => {
+      const rect = state.sheet.getBoundingClientRect()
+      return rect.top <= previous.y && rect.bottom >= previous.y
+    })?.sheet || this.containerTarget
+    const before = anchor.getBoundingClientRect()
+    if (!before.width || !before.height) { this.touchGesture = next; return }
+    const x = (previous.x - before.left) / before.width
+    const y = (previous.y - before.top) / before.height
+    if (scale !== this.pdfScale) {
+      this.pdfScale = scale
+      this.containerTarget.style.width = `${scale * 100}%`
+      this.layoutPages()
+    }
+    const after = anchor.getBoundingClientRect()
+    this.workspaceTarget.scrollLeft += after.left + x * after.width - next.x
+    window.scrollBy(0, after.top + y * after.height - next.y)
+    this.touchGesture = next
+  }
+
+  restoreDraftStatus() {
+    if (!this.draft || this.draft.failed || this.draft.blocked || !this.draft.ready || !this.draft.allowed) return
+    this.showDraftStatus(this.draft.saving ? "保存中…" : this.draft.dirty ? "未保存" : "保存済み")
+  }
+
+  visibilityChanged() {
+    if (document.visibilityState === "hidden") this.finishInput({ type: "visibilitychange" })
   }
 
   finishInput(event) {
     this.inputDiagnostics?.record("controller", null, event?.type === "blur" ? "window-blurred" : "finish-input-enter")
-    if (event?.type === "blur" || !this.multiTouch) {
+    const navigating = this.touchMode === "navigate"
+    this.flushTouchNavigation()
+    if (["blur", "visibilitychange"].includes(event?.type)) {
       this.touchIds?.clear()
-      this.multiTouch = false
+      this.touchPoints?.clear()
+      this.touchContacts = 0
+      this.awaitTouchRelease = false
     }
+    this.touchMode = this.touchIds?.size ? "blocked" : "idle"
+    this.multiTouch = !!this.touchIds?.size
+    this.touchGesture = null
+    if (navigating) this.scheduleRender()
     window.cancelAnimationFrame(this.inkFrame)
     this.inkFrame = null
     const state = this.inputState
@@ -485,7 +648,11 @@ export default class extends Controller {
     this.inputPointerType = null
     this.touch = null
     state?.ink.end()
-    if (pointerId != null && state.inkCanvas.hasPointerCapture(pointerId)) state.inkCanvas.releasePointerCapture(pointerId)
+    this.restoreDraftStatus()
+    if (event?.type !== "touch-navigation") {
+      if (pointerId != null) this.releaseCapture(pointerId, state.inkCanvas)
+      for (const id of this.capturedInputs?.keys() || []) this.releaseCapture(id)
+    }
     if (touch && touch.state.inkCanvas.hasPointerCapture(touch.id)) touch.state.inkCanvas.releasePointerCapture(touch.id)
     this.inputDiagnostics?.record("controller", null, "finish-input-exit")
   }
@@ -660,6 +827,10 @@ export default class extends Controller {
   async submitAnswer() {
     if (this.confirming || this.exporting || !this.active || !this.pagesReady || !this.pdf ||
         !this.draft?.ready || !this.draft.allowed || this.draft.blocked) return
+    if (this.touchIds?.size) {
+      this.submitStatusTarget.textContent = "紙面から指やペンを離してから提出してください。"
+      return
+    }
     this.finishInput()
     const session = this.session
     this.confirming = true

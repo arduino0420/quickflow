@@ -2,6 +2,75 @@ require "spec_helper"
 require "open3"
 
 RSpec.describe "PDF preview input isolation" do
+  it "preserves strokes and resumes after capture errors or document hiding" do
+    script = <<~JAVASCRIPT
+      const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+      const PdfInk=vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8')
+        .replace('export const','const').replace('export default class','class')+';PdfInk');
+      const document={visibilityState:'visible'};
+      const window={devicePixelRatio:1,cancelAnimationFrame(){},requestAnimationFrame:()=>1,scrollBy(){}};
+      const source=fs.readFileSync(process.argv[2],'utf8').replace(/^import .*$/gm,'')
+        .replace('export default class','class Preview');
+      const c=vm.runInNewContext(source+';new Preview()',{Controller:class{},window,document});
+      const captures=new Set();let captureError=null,changes=0;
+      const canvas={hidden:false,getBoundingClientRect:()=>({left:0,top:0,width:200,height:300}),
+        getContext:()=>new Proxy({},{get:()=>()=>{}}),
+        setPointerCapture(id){if(captureError)throw captureError;captures.add(id)},
+        hasPointerCapture:id=>captures.has(id),releasePointerCapture:id=>captures.delete(id)};
+      const ink=new PdfInk(canvas);
+      ink.setViewport({width:200,height:300,transform:[1,0,0,1,0,0],
+        convertToPdfPoint:(x,y)=>[x,y],convertToViewportPoint:(x,y)=>[x,y]},1);
+      ink.onChange=()=>changes++;
+      const state={inkCanvas:canvas,ink,renderedWidth:200,renderedDpr:1};
+      c.statesByCanvas=new WeakMap([[canvas,state]]);c.containerTarget={clientWidth:200};c.draftEditable=true;c.tool='pen';
+      c.showCursor=c.showDraftStatus=c.navigateTouch=()=>{};
+      const event=(extra={})=>({type:'pointerdown',currentTarget:canvas,pointerId:1,pointerType:'pen',
+        button:0,buttons:1,clientX:20,clientY:20,cancelable:true,preventDefault(){},...extra});
+      const idle=()=>{assert.equal(c.inputState,null);assert.equal(c.inputPointerType,null);
+        assert.equal(c.touch,null);assert.equal(ink.stroke,null);assert.equal(captures.size,0)};
+      for(const name of ['NotFoundError','InvalidStateError']) {
+        const before=ink.pages.get(1).length,saves=changes;
+        captureError=Object.assign(Error(name),{name});
+        c.pointerDown(event());idle();
+        assert.equal(ink.pages.get(1).length,before+1,'failed capture retains the initial recorded point');
+        assert.equal(changes,saves+1,'partial stroke is made available to autosave');
+        c.pointerDown(event({pointerType:'touch',pointerId:10}));idle();
+        assert.equal(c.touchIds.size,0,'failed finger capture must not poison later pinch state');
+        assert.equal(ink.pages.get(1).length,before+1,'failed touch capture cannot save a provisional dot');
+        captureError=null;c.pointerDown(event({pointerId:2}));
+        c.pointerMove(event({type:'pointermove',pointerId:2,clientX:40}));
+        c.pointerEnd(event({type:'pointerup',pointerId:2,buttons:0,clientX:50}));idle();
+        assert.equal(ink.pages.get(1).at(-1).points.length,3,'the next pen stroke remains independent');
+      }
+      captureError=Error('unexpected capture failure');
+      assert.throws(()=>c.pointerDown(event()),/unexpected capture failure/);idle();captureError=null;
+      c.pointerDown(event());c.pointerMove(event({type:'pointermove',clientX:40}));
+      c.visibilityChanged();assert(ink.stroke,'a visible document must keep the held stroke');
+      const saves=changes;
+      document.visibilityState='hidden';c.visibilityChanged();idle();
+      assert.equal(changes,saves+1);assert.equal(ink.pages.get(1).at(-1).points.length,2);
+      const saved=JSON.stringify([...ink.pages]);c.visibilityChanged();
+      assert.equal(changes,saves+1,'repeated hidden events cannot save an extra stroke');
+      document.visibilityState='visible';c.visibilityChanged();
+      assert.equal(JSON.stringify([...ink.pages]),saved);
+      c.pointerDown(event({pointerId:3}));c.pointerEnd(event({type:'pointerup',pointerId:3,buttons:0}));idle();
+      for(const id of [20,21])c.pointerDown(event({pointerType:'touch',pointerId:id}));
+      assert.equal(c.multiTouch,true);assert.equal(c.touchIds.size,2);
+      document.visibilityState='hidden';c.visibilityChanged();idle();
+      assert.equal(c.multiTouch,false);assert.equal(c.touchIds.size,0,'hiding clears interrupted pinch state');
+      document.visibilityState='visible';c.visibilityChanged();
+      c.pointerDown(event({pointerType:'touch',pointerId:30}));assert.equal(ink.pointerId,30);
+      c.pointerEnd(event({type:'pointerup',pointerType:'touch',pointerId:30,buttons:0}));idle();
+      const view=fs.readFileSync(process.argv[3],'utf8');
+      assert(view.includes('visibilitychange@document->pdf-preview#visibilityChanged'));
+    JAVASCRIPT
+    stdout, stderr, status = Open3.capture3("node", "-e", script,
+      File.expand_path("../../app/javascript/pdf_ink.js", __dir__),
+      File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__),
+      File.expand_path("../../app/views/student/pdf_previews/show.html.erb", __dir__))
+    expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
+  end
+
   it "records consecutive pen strokes and cancels native actions only for the ink input" do
     script = <<~JAVASCRIPT
       const fs = require('node:fs');
@@ -34,8 +103,8 @@ RSpec.describe "PDF preview input isolation" do
       const state = {inkCanvas:canvas, ink, renderedWidth:200, renderedDpr:1};
       c.statesByCanvas = new WeakMap([[canvas,state]]);
       c.element={contains:target=>target===canvas};
-      c.containerTarget = {clientWidth:200}; c.draftEditable = true;
-      c.showCursor = c.showDraftStatus = () => {};
+      c.containerTarget = {clientWidth:200}; c.draftEditable = true; c.tool = 'pen';
+      c.showCursor = c.showDraftStatus = c.navigateTouch = () => {};
       c.startInputDiagnostics();
       const event = (extra={}) => ({type:'pointerdown',target:canvas,currentTarget:canvas, pointerId:1, pointerType:'pen',
         button:0, buttons:1, clientX:20, clientY:20, cancelable:true, defaultPrevented:false,
@@ -69,7 +138,7 @@ RSpec.describe "PDF preview input isolation" do
         const before=ink.pages.get(1).length, down=event(); c.pointerDown(down);
         assert(down.defaultPrevented); assert.equal(ink.pages.get(1).length,before);
       }
-      c.draftEditable=true; state.renderedWidth=200;
+      c.draftEditable=true;c.tool='pen'; state.renderedWidth=200;
       const right=event({pointerType:'mouse',button:2}); c.pointerDown(right);
       assert.equal(right.defaultPrevented,false);
       const outside=event({currentTarget:{}}); c.pointerDown(outside);
@@ -77,10 +146,11 @@ RSpec.describe "PDF preview input isolation" do
       const finger=event({pointerType:'touch',pointerId:90});
       const count=ink.pages.get(1).length; c.pointerDown(finger);
       const drag=event({pointerType:'touch',pointerId:90,clientY:10}); c.pointerMove(drag);
-      assert.equal(finger.defaultPrevented,false); assert.equal(drag.defaultPrevented,false);
-      assert.equal(JSON.stringify(scrolls),JSON.stringify([[0,10]]));
+      assert.equal(finger.defaultPrevented,true); assert.equal(drag.defaultPrevented,true);
+      assert.equal(scrolls.length,0,'single touch previews ink instead of scrolling');
+      assert.equal(ink.pages.get(1).length,count,'preview is excluded from saved operations');
       c.pointerEnd(event({pointerType:'touch',pointerId:90,type:'pointerup'}));
-      assert.equal(ink.pages.get(1).length,count);
+      assert.equal(ink.pages.get(1).length,count+1);
       c.pointerDown(event());
       const unrelated=event({pointerId:99}); c.pointerMove(unrelated);
       assert.equal(unrelated.defaultPrevented,false);
@@ -119,7 +189,7 @@ RSpec.describe "PDF preview input isolation" do
       assert(c.inputDiagnostics.snapshot().rows.some(row=>row.reason==='pinch-active' && row.pointerType==='mouse'));
       assert.equal(summary.reasons['draft-not-editable'],1);
       assert.equal(summary.reasons['viewport-mismatch'],1);
-      assert.equal(summary.accepted,ink.pages.get(1).length,'diagnostics must not change stroke creation');
+      assert.equal(summary.accepted,ink.pages.get(1).length-1,'pen diagnostics exclude the one committed touch stroke');
       c.stopInputDiagnostics();
       for (const type of ['selectstart','contextmenu']) {
         const selection=event({type}); c.preventPageSelection(selection);
@@ -141,6 +211,7 @@ RSpec.describe "PDF preview input isolation" do
       const source = fs.readFileSync(process.argv[1], 'utf8').replace(/^import .*$/gm, '')
         .replace('export default class', 'class Preview');
       const c = vm.runInNewContext(source + '; new Preview()', {Controller: class {}});
+      c.tool='pen';
       const stylus={touchType:'stylus'}, finger={touchType:'direct'}, unknown={};
       const listeners=new Map(); let added=0, removed=0;
       const canvas={
@@ -196,7 +267,7 @@ RSpec.describe "PDF preview input isolation" do
       File.expand_path("../../app/javascript/controllers/pdf_preview_controller.js", __dir__))
     expect(status.success?).to be(true), "#{stdout}\n#{stderr}"
   end
-  it "prioritizes genuine pen input over palm contacts without turning fingers into ink" do
+  it "prioritizes genuine pen input over palm contacts and discards an earlier touch preview" do
     script = <<~JAVASCRIPT
       const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
       const PdfInk = vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8')
@@ -215,8 +286,8 @@ RSpec.describe "PDF preview input isolation" do
         convertToPdfPoint:(x,y)=>[x,y],convertToViewportPoint:(x,y)=>[x,y]},1);
       let saves=0;ink.onChange=()=>saves++;
       const state={inkCanvas:canvas,ink,renderedWidth:200,renderedDpr:1};
-      c.statesByCanvas=new WeakMap([[canvas,state]]);c.containerTarget={clientWidth:200};c.draftEditable=true;
-      c.showCursor=c.showDraftStatus=()=>{};
+      c.statesByCanvas=new WeakMap([[canvas,state]]);c.containerTarget={clientWidth:200};c.draftEditable=true;c.tool='pen';
+      c.showCursor=c.showDraftStatus=c.navigateTouch=()=>{};
       const event=(extra={})=>({type:'pointerdown',currentTarget:canvas,target:canvas,pointerId:1,pointerType:'pen',
         button:0,buttons:1,clientX:20,clientY:20,cancelable:true,preventDefault(){},...extra});
       c.pointerDown(event({pointerType:'touch',pointerId:10}));
@@ -224,7 +295,7 @@ RSpec.describe "PDF preview input isolation" do
       assert.equal(c.multiTouch,true);assert.equal(ink.pages.get(1).length,0);
       c.pointerDown(event());
       assert.equal(c.inputState,state,'a real pen must not be rejected as a pinch while the palm rests');
-      assert.equal(c.multiTouch,false);assert.equal(c.touch,null);assert.equal(c.touchIds.size,0);
+      assert.equal(c.touch,null);assert.equal(c.touchIds.size,2,'palm IDs remain tracked until lifted');
       assert(captured.has(1));assert(!captured.has(10));
       for(const id of [12,13]) {
         c.pointerDown(event({pointerType:'touch',pointerId:id}));
@@ -249,14 +320,15 @@ RSpec.describe "PDF preview input isolation" do
       for(const id of [10,11,12,13])c.pointerEnd(event({type:'pointerup',pointerType:'touch',pointerId:id}));
       c.pointerDown(event({pointerType:'touch',pointerId:20}));
       c.pointerMove(event({type:'pointermove',pointerType:'touch',pointerId:20,clientY:5}));
-      assert.equal(scrolls.length,1);assert.equal(ink.pages.get(1).length,1,'finger remains scroll-only');
+      assert.equal(scrolls.length,0);assert.equal(ink.pages.get(1).length,1,'single touch stays provisional until lifted');
       c.pointerEnd(event({type:'pointerup',pointerType:'touch',pointerId:20}));
+      assert.equal(ink.pages.get(1).length,2,'single touch commits a stroke on release');
       c.pointerDown(event({pointerType:'touch',pointerId:21}));c.pointerDown(event({pointerType:'touch',pointerId:22}));
       assert.equal(c.multiTouch,true,'genuine finger pinch remains available when no pen is down');
       c.pointerEnd(event({type:'pointercancel',pointerType:'touch',pointerId:21}));
       c.pointerEnd(event({type:'pointercancel',pointerType:'touch',pointerId:22}));
       c.draftEditable=false;c.pointerDown(event());assert.equal(c.inputState,null);
-      assert.equal(ink.pages.get(1).length,1,'submitted/read-only pages remain non-writing');
+      assert.equal(ink.pages.get(1).length,2,'submitted/read-only pages remain non-writing');
     JAVASCRIPT
     stdout, stderr, status = Open3.capture3("node", "-e", script,
       File.expand_path("../../app/javascript/pdf_ink.js", __dir__),

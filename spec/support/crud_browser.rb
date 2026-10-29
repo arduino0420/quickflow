@@ -39,6 +39,7 @@ module CrudBrowser
   end
 
   def draw_answer
+    click_button "ペン"
     canvas = find('[data-pdf-preview-target="ink"]')
     canvas.scroll_to(:center)
     rect = canvas.evaluate_script("this.getBoundingClientRect().toJSON()")
