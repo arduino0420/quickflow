@@ -62,7 +62,7 @@ body {
 .student-header-identity { white-space: nowrap; }
 .student-header-actions form.button_to { flex-shrink: 0; }
 a.app-brand { text-decoration: none; }
-.app-header--auth { background: var(--color-surface); border-bottom: 0; }
+.app-header--auth { background: var(--color-background); border-bottom: 0; }
 .app-header--auth .app-brand, .app-header--auth .app-brand:hover, .app-header--auth .app-brand:focus-visible { color: var(--color-primary); }
 .app-header--auth .app-brand:focus-visible { outline-color: var(--color-primary); }
 .app-header--auth .app-header-inner { justify-content: center; padding: 2rem 1rem 0.5rem; }
