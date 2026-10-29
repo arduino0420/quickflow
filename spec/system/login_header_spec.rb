@@ -106,6 +106,6 @@ RSpec.describe "Login header colors", type: :system do
     expect(page.evaluate_script("getComputedStyle(document.querySelector('header .app-brand')).color"))
       .to eq("rgb(37, 99, 235)")
     expect(page.evaluate_script("document.documentElement.scrollWidth <= innerWidth")).to be(true)
-    expect_comic_neue_wordmark
+    expect_nanum_square_round_wordmark
   end
 end
