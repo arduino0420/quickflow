@@ -1,6 +1,6 @@
 # Comic Neue wordmark font
 
-Comic Neue Bold, normal style, weight 700. Used only for existing QuickFlow wordmarks, including standalone error pages; interface text keeps its system fonts.
+Legacy Comic Neue Bold, normal style, weight 700, retained with its original license. Issue #186 replaces its wordmark usage with NanumSquareRound ExtraBold 800; current application pages do not load this face.
 
 - Distribution: https://github.com/google/fonts/tree/main/ofl/comicneue
 - Original font: https://raw.githubusercontent.com/google/fonts/main/ofl/comicneue/ComicNeue-Bold.ttf
