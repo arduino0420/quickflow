@@ -54,7 +54,7 @@ RSpec.describe "Shared header wordmarks", type: :system do
 
       [ [ 320, 812 ], [ 375, 812 ], [ 768, 1024 ], [ 1280, 900 ] ].each do |width, height|
         page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
-        expect_nunito_wordmark
+        expect_comic_neue_wordmark
         expect(page.evaluate_script("getComputedStyle(document.querySelector('header')).backgroundColor")).to eq("rgb(37, 99, 235)")
         brand = find("header .app-brand")
         expect(brand.evaluate_script("getComputedStyle(this).color")).to eq("rgb(255, 255, 255)")
@@ -66,7 +66,7 @@ RSpec.describe "Shared header wordmarks", type: :system do
         button = find("header button", text: "ログアウト")
         style = button.evaluate_script("(() => { const s=getComputedStyle(this); return [s.backgroundColor,s.color,s.borderRadius,s.fontWeight,s.fontFamily]; })()")
         expect(style[0..3]).to eq([ "rgb(255, 255, 255)", "rgb(37, 99, 235)", "8px", "600" ])
-        expect(style.last).not_to include("Nunito")
+        expect(style.last).not_to include("Comic Neue")
         button.hover
         expect(button.evaluate_script("[getComputedStyle(this).backgroundColor,getComputedStyle(this).color]"))
           .to eq([ "rgb(239, 246, 255)", "rgb(29, 78, 216)" ])
@@ -143,7 +143,7 @@ RSpec.describe "Shared header wordmarks", type: :system do
   it "loads the same local font in standalone error wordmarks without external font services" do
     %w[/400.html /404.html /406-unsupported-browser.html /422.html /500.html].each do |path|
       visit path
-      expect_nunito_wordmark
+      expect_comic_neue_wordmark
       expect(page).to have_link("トップページへ", href: "/")
       [ 320, 375, 768, 1280 ].each do |width|
         page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: 900, deviceScaleFactor: 1, mobile: false)
