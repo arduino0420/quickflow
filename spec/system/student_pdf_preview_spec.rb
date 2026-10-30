@@ -2050,9 +2050,27 @@ RSpec.describe "Student PDF preview in Chrome", type: :system do
     expect(ink_alpha(0.3, 0.15)).to be > 0
     expect(page.evaluate_script("document.documentElement.scrollWidth<=innerWidth")).to be(true)
     click_button "ペン"
+    # aria-busy can still describe the old bitmap during the resize debounce.
+    # Wait for actual input readiness; do not send/retry a stroke during rendering.
+    ready = <<~JS
+      (()=>{
+        const c=window.Stimulus.getControllerForElementAndIdentifier(document.querySelector('[data-controller=pdf-preview]'),'pdf-preview');
+        const s=c.pageStates[0];
+        return c.touchMode==='idle' && c.touchIds.size===0 && c.touchContacts===0 && !c.awaitTouchRelease &&
+          !s.inkCanvas.hidden && s.renderedWidth===c.containerTarget.clientWidth &&
+          s.renderedDpr===(window.devicePixelRatio||1) && c.containerTarget.getAttribute('aria-busy')==='false';
+      })()
+    JS
+    Timeout.timeout(30) { sleep 0.02 until page.evaluate_script(ready) }
     touch_ink_drag(0.4, 0.15, 0.45, 0.15)
+    # An unchanged "saved" label is not acknowledgment of this new operation.
+    expected_operations = original.first["operations"].length + 1
+    Timeout.timeout(10) do
+      sleep 0.02 until AnswerDraft.find_by!(assignment: @assignment).page_data.first["operations"].length == expected_operations
+    end
     expect(page).to have_css('[data-pdf-preview-target="draftStatus"]', text: "保存済み", wait: 10)
     updated = AnswerDraft.find_by!(assignment: @assignment).page_data
+    expect(updated.first["operations"].length).to eq(expected_operations)
     expect(updated.first["operations"][0...original.first["operations"].length]).to eq(original.first["operations"])
     points = updated.first["operations"].last["points"]
     [ points.first, points.last ].zip([ [ 80, 255 ], [ 90, 255 ] ]).each do |actual, expected|
