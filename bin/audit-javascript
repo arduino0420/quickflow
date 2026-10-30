@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+require_relative "../config/boot"
+require_relative "../script/lib/javascript_dependency_audit"
+
+begin
+  auditor = JavascriptDependencyAudit.new(root: File.expand_path("..", __dir__))
+  entries = auditor.inventory
+  puts JSON.generate(event: "javascript_audit_inventory", dependencies: entries)
+  result = auditor.audit(entries)
+  vulnerable = result[:advisories].values.any?(&:any?)
+  puts JSON.generate(event: vulnerable ? "javascript_vulnerabilities_found" : "javascript_audit_passed", **result)
+  exit(vulnerable ? 1 : 0)
+rescue JavascriptDependencyAudit::InvalidInventory => error
+  warn JSON.generate(event: "javascript_inventory_invalid", reason: error.message)
+  exit 2
+rescue JavascriptDependencyAudit::Unavailable => error
+  warn JSON.generate(event: "javascript_audit_unavailable", reason: error.message)
+  exit 2
+end

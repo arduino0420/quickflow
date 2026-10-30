@@ -84,7 +84,8 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 ## 検証状況
 
-- 通常・guestの稼働sourceは [0812708](https://github.com/arduino0420/quickflow/commit/0812708fcc4d82dca02eb7d9e9c4594716d64e0b)。[配備版CI40079428699](https://github.com/arduino0420/quickflow/actions/runs/40079428699)は全4成功、RSpec 2,062件・失敗0件です。通常停止85.8秒・guest停止16.3秒で、データ・認証情報・network/TLSを維持しました。文書更新のheadと稼働sourceは区別しています。
+- 2026-10-30の読み取り専用確認時、通常の稼働revisionは [c2e1d52（PR #188）](https://github.com/arduino0420/quickflow/commit/c2e1d529b976d0d2984ce6830eed4517d3e1f567)。手書き処理4ファイルのSHA-256も同revisionのソースと一致しました。guestは意図的に閲覧専用の旧ベース（container `quickflow-issue186-guest-57012aa`）を維持しています。通常・guestの版が異なることは不具合ではありません。リポジトリのheadと稼働版は区別します。
+- 過去の配備基準 [0812708](https://github.com/arduino0420/quickflow/commit/0812708fcc4d82dca02eb7d9e9c4594716d64e0b)と[CI40079428699](https://github.com/arduino0420/quickflow/actions/runs/40079428699)（全4成功・RSpec 2,062件）は履歴です。その際の通常停止85.8秒・guest停止16.3秒、データ・認証情報・network/TLS維持の記録を、現在の稼働版の検証と混同しません。
 - TLS・Secure cookie、DB/PDF保全と隔離復元、worker・queue、限定した公開/guestフローを確認し、[運用監査 #51](https://github.com/arduino0420/quickflow/issues/51)と[限定フロー検証 #99](https://github.com/arduino0420/quickflow/issues/99)に完了根拠を記録しました。`/up` は起動確認であり、AI・DB・queue全体の健全性を保証しません。
 - 通常の実AI配信・提出・採点、および新版の手書き・保存の成功は所有者からの報告です。担当者によるLenovo実機の独立検証、すべての端末・PDF・実通信障害、AIの数学的正確性を保証するものではありません。
 - 今回の撮影では閲覧だけを行い、実生徒データの変更、答案提出、AI実行はしていません。旧表示試験用の長文画像や失敗履歴は、[検証資料](docs/implementation/issue103_submission_evidence.md)に残しています。
@@ -155,7 +156,9 @@ bundle exec rspec
 bin/rubocop
 bin/brakeman --no-pager
 bin/bundler-audit
-bin/importmap audit
+bin/audit-javascript
+# 全体の集約チェックも、上で実接続を照合した同じ隔離環境で実行する
+# RAILS_ENV=test bin/ci
 # 完了後はこのターミナルで作った専用クラスタだけを停止する
 "$QF_PG_BIN/pg_ctl" -D "$QF_TEST_ROOT/data" -m fast -w stop
 )
@@ -164,6 +167,8 @@ bin/importmap audit
 コマンドが失敗したらその先を実行せず、接続先を再確認してください。上のtrust認証は架空データだけの一時的なloopback/専用ソケット用です。実データを入れたり公開アドレスへbindしたりしません。`db:test:prepare`やRSpecは対象DBを書き換えます。`db:drop`/`db:reset`/`demo:seed`で既存DBを掃除・再利用する手順ではありません。クラスタの停止先は記録した`QF_TEST_ROOT/data`だけとし、既存サービスや他タスクのクラスタを停止しないでください。
 
 RSpecでは実OpenAIクライアントを禁止し、stubを使用します。実APIキーは不要です。demo/load専用の`QUICKFLOW_DEMO_*`、`QUICKFLOW_GUEST_LOGIN`、`QUICKFLOW_HTTP_LOAD_RUN_ID`等を通常テストに引き継がないでください。CIの実行コマンドとOS依存パッケージは[workflow](.github/workflows/ci.yml)が基準です。モデル/リクエストだけなら`bundle exec rspec spec/models spec/requests`でも実行できます。
+
+JavaScriptの脆弱性検査は `bin/audit-javascript` を使います。`config/javascript_dependencies.json` がimportmapの外部配信元・固定版・ファイルSHA-256を照合し、npmの実パッケージ名（`pdfjs` の実体は `pdfjs-dist`）を公開npm advisory APIへ照会します。gem付属のStimulus読み込み補助は同一覧でgem版・ファイルを確認し、`bin/bundler-audit` と組み合わせます。依存更新時は一覧も更新してください。未登録・空の検査対象やファイル不一致は成功になりません。終了コードは0=照会成功・該当なし、1=脆弱性検出、2=対象不備または照会不能で、JSONのeventが理由を区別します。`bin/importmap audit` 単体はローカル配信の依存を列挙しないため、代わりに使わないでください。
 
 ## 運用・設計資料
 

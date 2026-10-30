@@ -1,0 +1,48 @@
+[
+  {
+    "pin": "@hotwired/turbo-rails",
+    "registry": "npm",
+    "package": "@hotwired/turbo",
+    "version": "8.0.23",
+    "asset": "turbo.min.js",
+    "sha256": "16b926211f18ab2744bfb37073038c36fe3a91e0a4a8a007f8a807b542377208",
+    "gem": "turbo-rails",
+    "gem_version": "2.0.23"
+  },
+  {
+    "pin": "@hotwired/stimulus",
+    "registry": "npm",
+    "package": "@hotwired/stimulus",
+    "version": "3.2.2",
+    "asset": "stimulus.min.js",
+    "sha256": "0acd633353c5a12959e474aad56300cab93554eed5d8033d02de800701ca7d59",
+    "gem": "stimulus-rails",
+    "gem_version": "1.3.4"
+  },
+  {
+    "pin": "@hotwired/stimulus-loading",
+    "registry": "rubygems",
+    "package": "stimulus-rails",
+    "version": "1.3.4",
+    "asset": "stimulus-loading.js",
+    "sha256": "6480747bf3025ea2ac4780cb4e4dda3c98b5d74911d7a07ce66c211f3247e59c",
+    "gem": "stimulus-rails",
+    "gem_version": "1.3.4"
+  },
+  {
+    "pin": "pdfjs",
+    "registry": "npm",
+    "package": "pdfjs-dist",
+    "version": "6.4.299",
+    "asset": "/vendor/pdfjs/6.4.299/pdf.min.mjs",
+    "sha256": "bccc24ea711db8e44503629519904a5292d73b9daaa214bbe7cdcc282b0f4259"
+  },
+  {
+    "pin": "pdf-lib",
+    "registry": "npm",
+    "package": "pdf-lib",
+    "version": "1.17.1",
+    "asset": "/vendor/pdf-lib/1.17.1/pdf-lib.esm.min.js",
+    "sha256": "72c052d97b4d5d9fa6cdbdcb7ad709f03d4ddb1122390cb3afeba4d88651d969"
+  }
+]
