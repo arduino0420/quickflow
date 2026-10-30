@@ -1,18 +1,20 @@
-# Run using bin/ci
+# Run using RAILS_ENV=test bin/ci against the isolated DB verified in README.
+abort "Use RAILS_ENV=test and the isolated test database described in README." unless ENV["RAILS_ENV"] == "test"
 
 CI.run do
-  step "Setup", "bin/setup --skip-server"
+  step "Dependencies", "bundle check"
+  step "PDF parser", "bin/install-qpdf"
+  step "Test schema", "bin/rails db:test:prepare"
 
   step "Style: Ruby", "bin/rubocop"
 
   step "Security: Gem audit", "bin/bundler-audit"
-  step "Security: Importmap vulnerability audit", "bin/importmap audit"
+  step "Security: JavaScript dependencies", "bin/audit-javascript"
   step "Security: Brakeman code analysis", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
-  step "Tests: Rails", "bin/rails test"
-  step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"
+  step "Tests: RSpec (including system tests)", "bundle exec rspec"
 
-  # Optional: Run system tests
-  # step "Tests: System", "bin/rails test:system"
+  # Demo seeds are opt-in and have their own isolated fixture specs in RSpec.
+  # Do not clear logs/storage or replant database rows in this quality command.
 
   # Optional: set a green GitHub commit status to unblock PR merge.
   # Requires the `gh` CLI and `gh extension install basecamp/gh-signoff`.
