@@ -2,8 +2,6 @@ require "json"
 require "digest"
 require "pathname"
 require "net/http"
-require "importmap-rails"
-require "importmap/map"
 
 # Maintenance only: do not boot Rails or load credentials to inspect static assets.
 class JavascriptDependencyAudit
@@ -18,6 +16,11 @@ class JavascriptDependencyAudit
   end
 
   def inventory
+    # Loading this before Rails boots can skip importmap's Railtie registration.
+    # Keep standalone CLI dependencies lazy so configuration specs can coexist
+    # with the full eager-loaded Rails suite.
+    require "importmap-rails"
+    require "importmap/map"
     entries = JSON.parse(@root.join("config/javascript_dependencies.json").read)
     raise InvalidInventory, "empty_inventory" unless entries.is_a?(Array) && entries.any?
 
