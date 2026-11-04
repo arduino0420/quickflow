@@ -1,8 +1,10 @@
 require "rails_helper"
 require_relative "../../support/ai_grading_context"
+require_relative "../../support/legacy_backfill_fixture"
 
 RSpec.describe TeacherClassrooms::LegacyBackfill do
   include_context "AI grading records"
+  include LegacyBackfillFixture
 
   let(:colleague) { Teacher.create!(school: school, user_id: "colleague", password: "password123") }
   let(:classroom) { Classroom.create!(school: school, teacher_id: teacher.id, grade: 1, class_number: 1) }
@@ -13,6 +15,7 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
   let(:connection) { ActiveRecord::Base.connection }
 
   before do
+    prepare_legacy_backfill_fixture
     classroom
     other_classroom
   end
@@ -168,11 +171,15 @@ RSpec.describe TeacherClassrooms::LegacyBackfill do
   end
 
   it "fails immediately without inserting while another connection holds a write lock" do
+    connection.execute("SET LOCAL lock_timeout = '2s'")
     other = PG.connect(connection.raw_connection.conninfo_hash.reject { |_key, value| value.blank? })
     begin
       other.exec("BEGIN")
+      other.exec("SET LOCAL lock_timeout = '2s'")
       other.exec("LOCK TABLE teacher_classrooms IN ROW EXCLUSIVE MODE")
-      expect { diagnosed_backfill_call }.to raise_error(ActiveRecord::LockWaitTimeout)
+      # A NOWAIT rejection has a different message from an expired lock_timeout.
+      expect { diagnosed_backfill_call }.to raise_error(ActiveRecord::LockWaitTimeout,
+        /could not obtain lock on relation "teacher_classrooms"/)
       expect(TeacherClassroom.count).to eq(0)
     ensure
       other.exec("ROLLBACK")
