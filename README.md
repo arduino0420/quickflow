@@ -87,16 +87,6 @@ AI処理には永続要求台帳とclaimによる重複・競合対策を用い�
 
 PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テスト前に `bin/install-qpdf` を実行してください（curl/unzipが必要）。公式配布物のSHA-256を検証し、`vendor/qpdf` 内だけに配置します。[PDFの受入条件・実行上限](docs/implementation/operations_details.md#pdf読み取り事前確認issue-48)を確認してください。
 
-## ネットワーク・アプリ構成
-
-通常利用のブラウザ、AWS EC2上のWeb・バックグラウンド処理、データ保存先、外部OpenAI APIのつながりを示します。閲覧専用ゲストは学校用と別のDB・保存領域を使い、実AI処理は行いません。
-
-[![QuickFlowのネットワーク・アプリ構成図。ブラウザからCaddy・Railsへ接続し、WebとJobがPostgreSQL・PDF保存領域を共用。バックグラウンド処理からOpenAI APIを利用する](docs/design/network_architecture.png)](docs/design/network_architecture.pdf)
-
-[構成図の原本PDFを開く・拡大する](docs/design/network_architecture.pdf)
-
-図は2026-11-07、main `17e6b186` のコードと運用記録を基に作成された資料です。本番の稼働状態・配置を今回確認したものではありません。図の内容は原本PDFのまま掲載しています。
-
 ## 検証状況
 
 - リポジトリの比較基準は [dabaf56（PR #189統合後）](https://github.com/arduino0420/quickflow/commit/dabaf56c613aed934cd4f8b2ece09c8e536a4346)です。同revisionの[CI40994476917](https://github.com/arduino0420/quickflow/actions/runs/40994476917)は2026-10-30に全4ジョブ成功。統合前headの全RSpec 2,246件・失敗0件は[PR #189の既存検証記録](https://github.com/arduino0420/quickflow/pull/189)にあります。いずれも今回のREADME見直しで再実行した結果ではありません。
