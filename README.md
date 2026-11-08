@@ -87,6 +87,16 @@ AI処理には永続要求台帳とclaimによる重複・競合対策を用い�
 
 PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テスト前に `bin/install-qpdf` を実行してください（curl/unzipが必要）。公式配布物のSHA-256を検証し、`vendor/qpdf` 内だけに配置します。[PDFの受入条件・実行上限](docs/implementation/operations_details.md#pdf読み取り事前確認issue-48)を確認してください。
 
+### ネットワーク構成（通常版）
+
+通常版の主要な通信経路とコンテナ構成を示します。CaddyがHTTPS通信を受け、アプリコンテナ内のThrusterを通して、Puma上で動くRailsへ渡します。PostgreSQLは別コンテナで動作し、RailsからOpenAI APIを利用します。
+
+![QuickFlow通常版の構成図。AWS EC2上のCaddy、Thruster・Puma・Railsを含むアプリ、PostgreSQLの各コンテナと、ブラウザー、OpenAI API、EBS、GitHub Actionsの関係](docs/design/network_architecture.png)
+
+[構成図をPDFで開く](docs/design/network_architecture.pdf)
+
+図は通常版の概略です。ゲスト版の隔離構成と、アプリコンテナ内で動くSolid Queueの処理プロセスは省略しています。GitHub ActionsはCIを示し、本番への自動デプロイを意味しません。
+
 ## 検証状況
 
 - リポジトリの比較基準は [dabaf56（PR #189統合後）](https://github.com/arduino0420/quickflow/commit/dabaf56c613aed934cd4f8b2ece09c8e536a4346)です。同revisionの[CI40994476917](https://github.com/arduino0420/quickflow/actions/runs/40994476917)は2026-10-30に全4ジョブ成功。統合前headの全RSpec 2,246件・失敗0件は[PR #189の既存検証記録](https://github.com/arduino0420/quickflow/pull/189)にあります。いずれも今回のREADME見直しで再実行した結果ではありません。
