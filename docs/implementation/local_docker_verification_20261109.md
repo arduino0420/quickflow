@@ -100,3 +100,16 @@ checkは学校3件・提出4件・blob8件、devは学校2件・提出2件・blo
 - アプリ本体・Gemfile/lock・本番Dockerfileは基準mainから変更なし。普段のquickflowと先行app checkoutも未変更。
 - 独立レビューで指摘された古いイメージ誤検証・停止中環境の誤PASSを修正し、追加の重大な問題は見つからなかった。
 - dev/check/testの今回専用コンテナは検証後に停止。DB・保存volume・image・証跡は保持。再開は手順書に従う。
+
+## PR段階の追記（2026-11-09）
+
+上記は第2段階終了時点の記録です。その後の承認で、専用ブランチから確認用draft [PR #203](https://github.com/arduino0420/quickflow/pull/203)を作成しました。mainへのマージ・普段のquickflowへの統合・AWS変更は行っていません。
+
+- 初回commit `72ad76a4a20b372ff782a06d30076c4506b1f2fd` の[CI run 42593621078](https://github.com/arduino0420/quickflow/actions/runs/42593621078)は全5ジョブ成功。
+- GitHub runnerでsystem除外なしの全RSpecを実行し、**2,263件・失敗0**（10分33秒）。ローカルDockerのChromium制約を安全設定の緩和で回避したものではありません。
+- 通常版check Composeの実ブラウザでも手書き・下書き・再読込・取消・正式提出・模擬採点・教師修正・Excelの10項目が成功。
+- このブラウザ試験では、条件付き承認のもと専用Caddyの公開証明書と実TLSの一致を確認し、専用ChromeだけにSPKI限定例外を使用。全面的な証明書検証無効化、OS変更、sandbox解除はなし。
+- 再現用の証明書proof生成helper、10分期限・Caddy再照合・localhost起点制限を追加。許可なし／違うpinの2条件ではChrome起動前に拒否することを確認。
+- 本追記とブラウザ強化は後続コミットに含まれるため、初回CI成功だけで最終head成功とは判断しない。**マージ判断ではPRの最新headのCI結果を必ず確認する。**
+
+実AI・EBS・ゲスト版・負荷・復旧などの未確認事項は引き続き残ります。mainへのマージとAWS配備には別途判断が必要です。

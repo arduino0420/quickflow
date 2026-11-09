@@ -6,16 +6,61 @@ require "pathname"
 require "fileutils"
 require "open3"
 require "uri"
+require "openssl"
+require "socket"
+require "base64"
+require "timeout"
+require "time"
+require_relative "certificate-proof"
 gem "selenium-webdriver", "4.52.0"
 require "selenium-webdriver"
 require "zip"
 require "rexml/document"
-BASE = "http://localhost:18080"
+MODE = ARGV.fetch(0, "dev")
+raise "Mode must be dev or check" unless %w[dev check].include?(MODE)
+BASE = MODE == "dev" ? "http://localhost:18080" : "https://localhost:18444"
 ROOT = Pathname.new(__dir__).join("../..").expand_path
-fixture_path = ROOT.join(".local/dev/http-fixture.private.json")
+fixture_path = ROOT.join(".local/#{MODE}/http-fixture.private.json")
 identity = JSON.parse(fixture_path.read)
-raise "Not a synthetic dev fixture" unless identity["mode"] == "dev" && identity["run"].start_with?("HTTPLOCAL")
-run_root = ROOT.join(".local/dev/browser-#{SecureRandom.hex(6)}")
+raise "Not a synthetic fixture for this mode" unless identity["mode"] == MODE && identity["run"].start_with?("HTTPLOCAL")
+# SPKI is a public-key pin, not a leaf pin. First verify the exact current leaf,
+# and never use accept_insecure_certs or a broad ignore-certificate-errors flag.
+spki_pin = nil
+if MODE == "check"
+  raise "Certificate-specific opt-in required" unless ENV["QF_LOCAL_PINNED_CERT_OPT_IN"] == "1"
+  proof = JSON.parse(ROOT.join(".local/check/browser-certificate-proof.json").read)
+  raise "Wrong certificate proof" unless proof["base_url"] == BASE && proof["project"] == "qfl-check-#{OpenSSL::Digest::SHA256.hexdigest(ROOT.to_s)[0, 10]}" &&
+    proof["container_id"].to_s.match?(/\A[0-9a-f]{64}\z/) && proof["der_sha256"].to_s.match?(/\A[0-9a-f]{64}\z/) &&
+    proof["san_dns"] == [ "localhost" ] && proof["spki_sha256_base64"].to_s.match?(/\A[A-Za-z0-9+\/]{43}=\z/)
+  generated_at = Time.iso8601(proof.fetch("generated_at"))
+  raise "Certificate proof expired or from future" unless (0..600).cover?(Time.now - generated_at)
+  _docker, caddy = LocalCertificateProof.current_caddy
+  raise "Caddy changed since certificate proof" unless caddy["Id"] == proof["container_id"] && caddy["Image"] == proof["image_id"]
+  raise "Explicit SPKI does not match proof" unless ENV["QF_LOCAL_CERT_SPKI"] == proof["spki_sha256_base64"]
+  cert = Timeout.timeout(10) do
+    tcp = TCPSocket.new("127.0.0.1", 18444)
+    context = OpenSSL::SSL::SSLContext.new
+    context.verify_mode = OpenSSL::SSL::VERIFY_NONE # public certificate inspection only; pin checks below are mandatory
+    ssl = OpenSSL::SSL::SSLSocket.new(tcp, context)
+    ssl.sync_close = true
+    ssl.hostname = "localhost"
+    begin
+      ssl.connect
+      ssl.peer_cert
+    ensure
+      ssl.close
+    end
+  end
+  actual_der = OpenSSL::Digest::SHA256.hexdigest(cert.to_der)
+  actual_spki = Base64.strict_encode64(OpenSSL::Digest::SHA256.digest(cert.public_key.public_to_der))
+  sans = cert.extensions.select { |ext| ext.oid == "subjectAltName" }.flat_map { |ext| ext.value.split(/,\s*/) }
+  raise "Leaf certificate mismatch" unless actual_der == proof["der_sha256"]
+  raise "Public-key mismatch" unless actual_spki == proof["spki_sha256_base64"]
+  raise "Wrong SAN" unless sans == [ "DNS:localhost" ]
+  raise "Certificate is not currently valid" unless cert.not_before <= Time.now && Time.now < cert.not_after
+  spki_pin = actual_spki
+end
+run_root = ROOT.join(".local/#{MODE}/browser-#{SecureRandom.hex(6)}")
 FileUtils.mkdir_p(run_root, mode: 0700)
 profile = run_root.join("profile")
 downloads = run_root.join("downloads")
@@ -32,6 +77,12 @@ module BrowserProof
     raise "Check failed: #{name}" unless ok
     puts JSON.generate(check: name, passed: true); STDOUT.flush
   end
+  def self.local_uri(value)
+    uri = URI(value)
+    base = URI(BASE)
+    raise "Navigation outside fixed local origin refused" unless uri.scheme == base.scheme && uri.host == base.host && uri.port == base.port && uri.userinfo.nil?
+    uri
+  end
   def self.pdf
     stream = "BT /F1 18 Tf 40 700 Td (SYNTHETIC BROWSER TEST: 1+1=2) Tj ET\n"
     objects = [ "<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>", "<< /Length #{stream.bytesize} >>\nstream\n#{stream}endstream", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>" ]
@@ -44,6 +95,8 @@ module BrowserProof
 end
 options = Selenium::WebDriver::Chrome::Options.new
 options.binary = chrome
+options.accept_insecure_certs = false
+options.add_argument("--ignore-certificate-errors-spki-list=#{spki_pin}") if spki_pin
 [ "--headless=new", "--window-size=1280,1000", "--user-data-dir=#{profile}", "--no-first-run", "--disable-background-networking" ].each { |arg| options.add_argument(arg) }
 options.add_preference(:download, default_directory: downloads.to_s, prompt_for_download: false)
 options.add_preference(:credentials_enable_service, false)
@@ -53,14 +106,20 @@ stage = "browser_start"
 begin
   driver = Selenium::WebDriver.for(:chrome, options: options, service: Selenium::WebDriver::Service.chrome(path: driver_path))
   wait = Selenium::WebDriver::Wait.new(timeout: 120, interval: 0.2)
-  element = ->(css) { wait.until { driver.find_elements(css: css).find(&:displayed?) } }
-  button = ->(text) { wait.until { driver.find_elements(xpath: "//button[normalize-space(.)='#{text}'] | //input[@type='submit' and @value='#{text}']").find { |e| e.displayed? && e.enabled? } }.click }
+  element = ->(css) { wait.until { BrowserProof.local_uri(driver.current_url); driver.find_elements(css: css).find(&:displayed?) } }
+  button = lambda do |text|
+    BrowserProof.local_uri(driver.current_url)
+    target = wait.until { driver.find_elements(xpath: "//button[normalize-space(.)='#{text}'] | //input[@type='submit' and @value='#{text}']").find { |e| e.displayed? && e.enabled? } }
+    form = target.find_elements(xpath: "ancestor::form[1]").first
+    BrowserProof.local_uri(form.attribute("action")) if form
+    target.click
+  end
   teacher_login = lambda do
     driver.navigate.to(BASE + "/login")
     element.call("#session_user_id").send_keys(identity.fetch("teacher_user"))
     element.call("#session_password").send_keys(identity.fetch("password"))
     button.call("ログイン")
-    wait.until { URI(driver.current_url).path == "/assignments" }
+    wait.until { BrowserProof.local_uri(driver.current_url).path == "/assignments" }
   end
   stage = "teacher_login"
   teacher_login.call
@@ -75,7 +134,7 @@ begin
   element.call("#classroom_#{identity.fetch('classroom_id')}").click
   button.call("配信")
   assignment_link = wait.until { driver.find_elements(css: ".assignment-card-link").find { |e| e.text.include?(title) } }
-  assignment_path = URI(assignment_link.attribute("href")).path
+  assignment_path = BrowserProof.local_uri(assignment_link.attribute("href")).path
   aid=assignment_path.split("/").last
   BrowserProof.check(stage, true)
   driver.manage.delete_all_cookies
@@ -84,7 +143,7 @@ begin
   element.call("#student_session_school_code").send_keys(identity.fetch("school_code"))
   %w[grade class_number attendance_number].each { |field| Selenium::WebDriver::Support::Select.new(element.call("#student_session_#{field}")).select_by(:value, "1") }
   element.call("#student_session_password").send_keys(identity.fetch("password")); button.call("ログイン")
-  wait.until { URI(driver.current_url).path == "/student/assignments" }
+  wait.until { BrowserProof.local_uri(driver.current_url).path == "/student/assignments" }
   BrowserProof.check(stage, true)
   preview_path="/student/assignments/#{aid}/pdf_preview"
   stage = "pdfjs_render"
@@ -114,10 +173,10 @@ begin
   stage = "submission_cancel_keeps_ink"
   button.call("提出する");element.call("dialog[open]");button.call("いいえ")
   wait.until { driver.find_elements(css: "dialog[open]").empty? }
-  BrowserProof.check(stage, has_ink.call && URI(driver.current_url).path == preview_path)
+  BrowserProof.check(stage, has_ink.call && BrowserProof.local_uri(driver.current_url).path == preview_path)
   stage = "formal_handwritten_submission"
   button.call("提出する");element.call("dialog[open]");button.call("はい")
-  wait.until { URI(driver.current_url).path == "/student/assignments/#{aid}" }
+  wait.until { BrowserProof.local_uri(driver.current_url).path == "/student/assignments/#{aid}" }
   wait.until { driver.find_element(tag_name: "body").text.include?("5点") }
   BrowserProof.check(stage, true)
   driver.save_screenshot(run_root.join("submitted-result.png").to_s)
@@ -126,18 +185,21 @@ begin
   stage="teacher_review_and_excel"
   driver.navigate.to(BASE+assignment_path)
   review_link=wait.until { driver.find_elements(css: "a").find { |e| e.attribute("href").to_s.match?(%r{/assignments/#{aid}/submissions/\d+}) } }
+  BrowserProof.local_uri(review_link.attribute("href"))
   review_link.click
   select=element.call('select[name^="final_judgments["]')
   Selenium::WebDriver::Support::Select.new(select).select_by(:value, "incorrect")
   button.call("保存");wait.until { driver.find_element(tag_name: "body").text.include?("0点") }
   driver.navigate.to(BASE+assignment_path+"?classroom_id=#{identity.fetch('classroom_id')}")
-  wait.until { driver.find_elements(tag_name: "a").find { |e| e.text=="Excel出力" } }.click
+  export_link = wait.until { driver.find_elements(tag_name: "a").find { |e| e.text=="Excel出力" } }
+  BrowserProof.local_uri(export_link.attribute("href"))
+  export_link.click
   xlsx=wait.until { Dir.glob(downloads.join("*.xlsx").to_s).first }
   xml=nil;Zip::File.open(xlsx) { |z| xml=z.read("xl/worksheets/sheet1.xml") }
   document=REXML::Document.new(xml)
   score=REXML::XPath.first(document, "//*[local-name()='c' and @r='C2']/*[local-name()='v']")
   BrowserProof.check(stage, score&.text=="0")
-  puts JSON.generate(outcome: "PASS", scope: "Host Chrome sandbox enabled; actual local dev browser handwriting/draft/submit/review/Excel; synthetic AI only", evidence_directory: run_root.to_s, assignment_id: aid.to_i)
+  puts JSON.generate(outcome: "PASS", scope: "Host Chrome sandbox enabled; actual local configured-mode browser handwriting/draft/submit/review/Excel; synthetic AI only", evidence_directory: run_root.to_s, mode: MODE, certificate_scope: (MODE == "check" ? "Exact leaf preflight + session public-key exception" : "none"), assignment_id: aid.to_i)
 rescue StandardError => error
   driver&.save_screenshot(run_root.join("failure.png").to_s) rescue nil
   puts JSON.generate(outcome: "FAIL", stage: stage, error_class: error.class.name, evidence_directory: run_root.to_s)

@@ -129,3 +129,22 @@ test用イメージだけにNode、プロセス検査、ブラウザ/driverな�
 5. [AWS Compose移行計画](aws_compose_migration_plan.md)を現在の稼働状態に合わせ、実配備の直前に別途承認。
 
 問題があれば次の段階へ進みません。既存のネイティブ開発環境は確認が終わるまで残し、古い本番コードを最新mainへ上書きしません。
+
+## 本番確認用Composeの実ブラウザ手書き試験
+
+通常のdev試験と別に、checkのproduction assets・Solid Queue・実HTTPS経路でも確認できます。Macの既存Chrome、Selenium 4.52.0と対応するキャッシュ済みdriverを使います。
+
+自己署名証明書の例外は、事前に利用者が許可した場合だけ使用します。`certificate-proof.rb`が`bin/local check verify`を実行し、専用Caddyの識別・image・volume・loopbackポートを確認したうえで、公開証明書と実TLSのDER指紋・SAN・期限を照合します。秘密鍵は読みません。
+
+```sh
+bin/local check up
+bin/local check smoke
+rbenv exec ruby docker/local/certificate-proof.rb
+# 次は承認済みの検証セッションでのみ実行する
+QF_LOCAL_PINNED_CERT_OPT_IN=1 \
+QF_LOCAL_CERT_SPKI="$(rbenv exec ruby -rjson -e 'puts JSON.parse(File.read(".local/check/browser-certificate-proof.json")).fetch("spki_sha256_base64")')" \
+rbenv exec ruby docker/local/browser-smoke.rb check
+bin/local check stop
+```
+
+ブラウザは10分以内のproof、同一Caddy、実証明書を再照合します。新規専用Chromeプロファイル内でその公開鍵だけに例外を限定し、`accept_insecure_certs=false`を維持します。SPKI例外は証明書の公開鍵単位なので、厳密なleaf証明書限定ではありません。このため起動直前のleaf指紋一致も必須にしています。通常Chrome・OS信頼ストア・sandboxは変更しません。画面・リンク・フォームは固定localhost起点を確認します。proof、profile、実行ログは`.local/`内だけに保持し、コミットしません。
