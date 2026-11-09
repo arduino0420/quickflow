@@ -6,6 +6,8 @@
 
 ## 今回の範囲と本番配備ゲート
 
+最終目標は、AWS通常版のRails・PostgreSQL・共有Caddyも、Macを編集元とするGit管理の `compose.yaml` 1枚から再現・更新できる状態にすること。共有Caddyはguestの入口も保持し、guestのweb/DB/gateway自体の移行は今回の対象外とする。移行中は現在のCaddyを保全し、両公開経路を引き継げる単一ComposeとCaddyfileを検証してから、別承認した順序で3役の管理元を揃える。通常版の別Composeや手動 `docker run` を恒久的に併用する完成形にはしない。
+
 **現 `docker/Caddyfile` は通常版のみ。これをAWSの共有Caddyにそのまま適用するとguest公開経路が失われるため、置換・reload・新Caddy起動による入口切替を禁止する。通常版のコード/image/DB構成を共通化しても、AWS入口の引継ぎは未完了であり、本番全体の単一Compose化完了とはしない。**
 
 次回は既存の共有Caddyを保持したまま、新通常webと既存ネットワークをどう接続するかを個別に設計・承認する。現Composeの `app` ネットワークは新規作成なので、既存共有Caddyが自動で新webへ到達できるとは限らない。既存alias `web` の競合・切替、公開ポート、TLS、guest経路維持を検証してから配備可否を判断する。現ComposeをAWSでそのまま `up` する手順は未承認・未検証。
@@ -38,7 +40,9 @@ AWS作業フォルダ `/home/ec2-user/quickflow` のHEADは `a8816b66ecde35695b1
 - 共有Caddy `quickflow-caddy-1` のラベルは `/home/ec2-user/quickflow/compose.yaml` と `/home/ec2-user/quickflow/compose.public.yaml` を指す。projectは `quickflow`、serviceは `caddy`。`/home/ec2-user/quickflow/Caddyfile` を `/etc/caddy/Caddyfile` にbindしている。これは通常版とguestの共通公開入口。
 - guest gatewayは別の `/home/ec2-user/quickflow-guests/qfguest-public-4c18332acca47671/Caddyfile` を使用する。共有Caddyと取り違えない。
 
-ラベルはコンテナ作成時の管理元を示すもので、ファイル内容が現在の全コンテナに一致することを保証しない。ここに挙げたAWSファイルは今回いずれも変更・再実行していない。
+通常DB `quickflow-db-1` のラベルはproject=`quickflow`、service=`db`、config_files=`/home/ec2-user/quickflow/compose.yaml`。通常RailsにはCompose管理ラベルがなく、`quickflow_default`のalias `web`に接続し、共有Caddyは `web:80`へ転送している。通常版に関係する稼働はこの3コンテナで、Caddyはguest共用。観測時のAWS全体はguest側3コンテナを含め6コンテナだった。
+
+ラベルはコンテナ作成時の管理元を示すもので、ファイル内容が現在の全コンテナに一致することや安全に更新できることを保証しない。**通常AWSのCompose本文・web定義は今回未読**で、現Railsのimage/起動設定との一致は未確認。具体的な切替前に秘密値を公開せず本文と実稼働を照合し、正しい単一Composeへ取り込む設計を確定する。ここに挙げたAWSファイルは今回いずれも変更・再実行していない。
 
 上記sha256はDockerのローカルimage ID。registryのRepoDigestと混同せず、移送する場合は配布可能なdigestと対応を別途記録する。guestの残存compose.jsonはさらに古いweb image `a097...` を参照しているため、そのまま再起動しない。
 
