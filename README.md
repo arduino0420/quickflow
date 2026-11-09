@@ -109,6 +109,22 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 提出準備は[39項目の対応表](docs/implementation/issue103_submission_evidence.md)に集約しています。技術的な確認と、本人によるDPro再投稿・メンター通知・最終提出、学校側の受入判定は分けています。
 
+## Dockerで開発・本番相当確認
+
+`compose.yaml`は日々の開発、`compose.check.yaml`は本番相当の確認、`compose.test.yaml`は専用DBでの自動テスト用です。操作は `bin/local` にまとめ、開発・確認・テストのDB、保存領域、network、ポートを分けます。
+
+```sh
+bin/local dev build
+bin/local dev init
+bin/local dev up
+# Mac側のコードを編集。作業後はデータを残して停止
+bin/local dev stop
+```
+
+開発では編集したソースを読み込み、本番相当確認ではbuildしたimageを使います。GemやDockerfileの変更は再buildが必要です。AIは架空応答が初期値で、本番データや鍵を持ち込みません。これはAWSへの自動デプロイではありません。
+
+[起動・編集反映・検証・再起動の手順](docs/implementation/local_docker_workflow.md)と[将来のAWS移行・切戻し計画](docs/implementation/aws_compose_migration_plan.md)を確認してください。以下のネイティブ起動手順も残しています。既存DBを削除・移行する指示ではありません。
+
 ## ローカル起動とテスト
 
 Ruby 4.0.6、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意します。Linuxではgemのビルド用にlibffiの開発ヘッダー（CIでは `libffi-dev`）も必要です。JavaScriptのRSpecは `node` コマンドを直接使うため、テスト用にNode.jsも用意してください。System SpecにはChrome/Chromiumと対応Selenium driver（Selenium Manager利用時は取得可能なネットワーク）が必要です。既存DBと共有しない新しいclone・専用DB/Storageを使ってください。通常の開発は`storage/`、テストはclone内`tmp/storage/`です。

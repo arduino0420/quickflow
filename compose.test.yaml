@@ -1,0 +1,64 @@
+# Local only. Use bin/local; never combine these standalone Compose files.
+# The wrapper fixes the local Docker endpoint, project, env file and DB guards.
+services:
+  db:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: quickflow
+      POSTGRES_PASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
+      POSTGRES_DB: quickflow_test
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks: [isolated]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U quickflow -d quickflow_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  test:
+    image: ${QF_TEST_IMAGE:-quickflow-local-test:a3acc0f6}
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      labels:
+        io.quickflow.local.mode: ${QF_LOCAL_MODE:?Use bin/local}
+        io.quickflow.local.source: ${QF_SOURCE_SHA:?Use bin/local}
+        io.quickflow.local.dependencies: ${QF_DEPS_SHA:?Use bin/local}
+        io.quickflow.local.lock: ${QF_LOCK_SHA:?Use bin/local}
+      args:
+        APP_IMAGE: ${QF_CHECK_IMAGE:-quickflow-local-check:a3acc0f6}
+    init: true
+    shm_size: 1gb
+    entrypoint: []
+    command: ["bundle", "exec", "rspec"]
+    environment:
+      RAILS_ENV: test
+      PGHOST: db
+      PGUSER: quickflow
+      PGPASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
+      DATABASE_URL: postgresql://quickflow:${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}@db/quickflow_test
+      SECRET_KEY_BASE: ${QF_LOCAL_SECRET_KEY_BASE:?Run bin/local setup first}
+      QF_LOCAL_STACK: quickflow-local-v1
+      QF_LOCAL_MODE: test
+      SE_CHROMEDRIVER: /usr/bin/chromedriver
+      CHROME_BIN: /usr/bin/chromium
+      SE_OFFLINE: "true"
+      SE_AVOID_STATS: "true"
+    volumes:
+      # No fake AI initializer or production storage is mounted in RSpec.
+      - ./docker/local:/local:ro
+      - app_tmp:/rails/tmp
+      - app_log:/rails/log
+      - storage:/rails/storage
+    networks: [isolated]
+    depends_on:
+      db:
+        condition: service_healthy
+networks:
+  isolated:
+    internal: true
+volumes:
+  db_data:
+  app_tmp:
+  app_log:
+  storage:

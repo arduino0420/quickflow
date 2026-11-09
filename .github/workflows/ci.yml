@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   scan_ruby:
     runs-on: ubuntu-latest
@@ -70,7 +73,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -106,3 +109,79 @@ jobs:
           # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
           # REDIS_URL: redis://localhost:6379/0
         run: bin/rails db:test:prepare && bundle exec rspec
+
+  docker_check:
+    name: Production-image isolated HTTP check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # No production credentials, external AI key, registry push or deployment.
+      # The wrapper fixes the Compose file/project/connection and accepts only
+      # a local Unix Docker endpoint. Build and smoke use the same image.
+      - name: Build the production application image
+        run: bin/local check build
+
+      - name: Prepare a new isolated database and storage
+        run: bin/local check init
+
+      - name: Start the prepared stack without implicit migrations
+        run: bin/local check up
+
+      - name: Verify runtime identity and isolation
+        run: bin/local check verify
+
+      - name: Check actual HTTPS flows with synthetic AI responses
+        run: bin/local check smoke
+
+      # Never print raw Rails logs, fixture credentials, runtime.env or private JSON.
+      - name: Show allowlisted failure diagnostics
+        if: failure()
+        run: |
+          python3 - <<'PYDIAG'
+          import json
+          import re
+          from pathlib import Path
+          root = Path('.local/check/evidence')
+          fields = {
+              'build.json': ('image', 'source', 'lock'),
+              'isolation.json': ('mode', 'project', 'containers', 'network_configuration_observed', 'required_services_verified'),
+              'smoke.json': ('mode', 'image', 'passed', 'inprocess_checked', 'real_http_checked', 'real_ai', 'browser_canvas'),
+          }
+          for name, keys in fields.items():
+              path = root / name
+              if not path.is_file():
+                  print(name + ': not produced')
+                  continue
+              try:
+                  data = json.loads(path.read_text())
+                  safe = {k: v for k in keys if (v := data.get(k)) is not None and
+                          (isinstance(v, (bool, int)) or
+                           isinstance(v, str) and re.fullmatch(r'[a-z0-9:_-]{1,128}', v))}
+                  print(name + ': ' + json.dumps(safe))
+              except (ValueError, OSError, AttributeError):
+                  print(name + ': unreadable summary')
+          for name in ('inprocess.log', 'http-smoke.log'):
+              path = root / name
+              checks = []
+              if path.is_file():
+                  for line in path.read_text(errors='replace').splitlines():
+                      try:
+                          data = json.loads(line)
+                          if isinstance(data, dict) and isinstance(data.get('check'), str) and re.fullmatch(r'[a-z0-9_]{1,100}', data['check']) and isinstance(data.get('passed'), bool):
+                              checks.append({'check': data['check'], 'passed': data['passed']})
+                      except ValueError:
+                          pass
+              print(name + ': structured check results only')
+              for check in checks[-40:]:
+                  print(json.dumps(check))
+          PYDIAG
+
+      - name: Stop only this isolated stack, retaining evidence
+        if: always()
+        run: bin/local check stop

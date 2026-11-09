@@ -1,0 +1,74 @@
+# Local only. Use bin/local; never combine these standalone Compose files.
+# The wrapper fixes the local Docker endpoint, project, env file and DB guards.
+services:
+  db:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: quickflow
+      POSTGRES_PASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
+      POSTGRES_DB: quickflow_production
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks: [isolated]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U quickflow -d quickflow_production"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  web:
+    image: ${QF_CHECK_IMAGE:-quickflow-local-check:a3acc0f6}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      labels:
+        io.quickflow.local.mode: ${QF_LOCAL_MODE:?Use bin/local}
+        io.quickflow.local.source: ${QF_SOURCE_SHA:?Use bin/local}
+        io.quickflow.local.dependencies: ${QF_DEPS_SHA:?Use bin/local}
+        io.quickflow.local.lock: ${QF_LOCK_SHA:?Use bin/local}
+    init: true
+    # Override the image's automatic migration entrypoint. Initial preparation
+    # is an explicit guarded bin/local action, never a restart side effect.
+    entrypoint: []
+    command: ["./bin/thrust", "./bin/rails", "server"]
+    environment:
+      RAILS_ENV: production
+      PGHOST: db
+      QUICKFLOW_DATABASE_PASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
+      SECRET_KEY_BASE: ${QF_LOCAL_SECRET_KEY_BASE:?Run bin/local setup first}
+      SOLID_QUEUE_IN_PUMA: "true"
+      QUICKFLOW_GRADING_RECOVERY_ENABLED: "true"
+      QF_LOCAL_ONLY: "1"
+      QF_LOCAL_STACK: quickflow-local-v1
+      QF_LOCAL_MODE: check
+    volumes:
+      # The application source is the built image, not a host bind mount.
+      - ./docker/local:/local:ro
+      - ./docker/local/fake_ai_initializer.rb:/rails/config/initializers/zz_local_fake_ai.rb:ro
+      - app_tmp:/rails/tmp
+      - app_log:/rails/log
+      - storage:/rails/storage
+    networks: [isolated]
+    depends_on:
+      db:
+        condition: service_healthy
+  caddy:
+    image: caddy:2@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
+    volumes:
+      - ./docker/local/Caddyfile.check:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "127.0.0.1:18444:443"
+    networks: [isolated, ingress]
+    depends_on: [web]
+networks:
+  isolated:
+    internal: true
+  ingress: {}
+volumes:
+  db_data:
+  app_tmp:
+  app_log:
+  storage:
+  caddy_data:
+  caddy_config:

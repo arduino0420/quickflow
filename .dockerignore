@@ -50,3 +50,20 @@
 # Ignore Docker-related files
 /.dockerignore
 /Dockerfile*
+
+# Local-only workflow and credentials must never enter release images
+/.local/
+/docker/local/
+/proof-local/
+/bin/local
+/compose*.yaml
+**/*.private.json
+**/*.key
+**/*.pem
+**/.env*
+**/id_rsa*
+**/id_ed25519*
+**/*backup*/
+
+**/__pycache__/
+*.pyc
