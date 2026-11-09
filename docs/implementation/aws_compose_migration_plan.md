@@ -15,7 +15,7 @@
 ## 共通条件と残る違い
 
 - 通常版で共通化する対象はComposeのアプリ/DB構成、Dockerfile、リリースのコード・Gemfile.lock、Thrust → Puma/Rails production、Puma内Solid Queue、PostgreSQL、PDF永続化。共有Caddyへの本番接続は上記ゲートが残る。RSpecはこの通常起動構成の外で、テストDB・テスト保存先に隔離する。
-- Macは新規の架空データ・独立した秘密情報・loopback公開。ローカル入口は通常HTTPを基本とし、TLS検証の有無は実施結果に分けて記録する。AWSは既存DB/PDF・本番秘密情報・公開HTTPSを保持する。実AI通信は検証用キー、架空教材、費用上限、範囲の承認まで行わない。
+- Macは新規の架空データ・独立した秘密情報・loopback公開。ローカル入口もSecure sessionを維持するためHTTPSを使う。MacはCaddy内蔵CA、AWSは公開CAという証明書発行元の違いがある。ローカルCAの信頼設定をOSや通常ブラウザへ自動追加しない。AWSは既存DB/PDF・本番秘密情報・公開HTTPSを保持する。実AI通信は検証用キー、架空教材、費用上限、範囲の承認まで行わない。
 - guestのMac実行環境作成は延期した。AWS guestの旧image・旧schema・manifest・保存先は保持し、guestの同一構成・同一コードを達成したとは報告しない。将来再開する場合も、新しい架空データでのローカル検証と既存AWS guest更新は別の判断とする。
 - 調査時のMac/AWSはともにx86_64。ただしOS、保存装置、資源、実データ量は異なる。別CPU向けの再ビルドは別成果物として検証する。
 
@@ -30,6 +30,15 @@ AWS作業フォルダ `/home/ec2-user/quickflow` のHEADは `a8816b66ecde35695b1
 | PostgreSQL（両版） | 18.6。image `sha256:29754c7520f4b9654cf8ff98e19ac73b88e255c3a53f6236ebe9d52249bb6df3` |
 | 共有Caddy | v2.11.7。image `sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77` |
 | guest gateway | v2.10.2。image `sha256:5fa33078825ec3e496ee93754a3ac6eaeb1e01e3b1bd4d0ff67e789a64f6f83f` |
+
+### Composeファイルと現在の管理範囲
+
+- guest DB `qfguest-public-4c18332acca47671-db-1` とgateway `qfguest-public-4c18332acca47671-gateway-1` の `com.docker.compose.project.config_files` は `/home/ec2-user/quickflow-guests/qfguest-public-4c18332acca47671/compose.json`。YAMLではなくJSON形式のComposeで、projectは `qfguest-public-4c18332acca47671`、serviceはそれぞれ `db` / `gateway`。
+- 現guest web `quickflow-deps-20261104-guest-d0fd943` にはCompose管理ラベルがない。上記JSONにweb定義は残るが旧imageであり、現webを含めて一括管理する正しい起動定義とは扱わない。現在のwebを作成した実コマンドは今回未確認。
+- 共有Caddy `quickflow-caddy-1` のラベルは `/home/ec2-user/quickflow/compose.yaml` と `/home/ec2-user/quickflow/compose.public.yaml` を指す。projectは `quickflow`、serviceは `caddy`。`/home/ec2-user/quickflow/Caddyfile` を `/etc/caddy/Caddyfile` にbindしている。これは通常版とguestの共通公開入口。
+- guest gatewayは別の `/home/ec2-user/quickflow-guests/qfguest-public-4c18332acca47671/Caddyfile` を使用する。共有Caddyと取り違えない。
+
+ラベルはコンテナ作成時の管理元を示すもので、ファイル内容が現在の全コンテナに一致することを保証しない。ここに挙げたAWSファイルは今回いずれも変更・再実行していない。
 
 上記sha256はDockerのローカルimage ID。registryのRepoDigestと混同せず、移送する場合は配布可能なdigestと対応を別途記録する。guestの残存compose.jsonはさらに古いweb image `a097...` を参照しているため、そのまま再起動しない。
 
