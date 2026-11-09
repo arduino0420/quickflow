@@ -37,16 +37,25 @@ module LocalCertificateProof
     raise "Wrong Caddy ingress" unless ports == [ { "HostIp" => "127.0.0.1", "HostPort" => "18444" } ]
     [ cli, c ]
   end
-  def self.live_certificate
+  def self.verified_live_certificate(cli, container)
+    # Trust only this verified local Caddy's public CA, in this process only.
+    # No default/system trust store is loaded or modified; no private key is read.
+    root_pem = run(*cli, "exec", container.fetch("Id"), "cat", "/data/caddy/pki/authorities/local/root.crt")
+    root_ca = OpenSSL::X509::Certificate.new(root_pem)
+    store = OpenSSL::X509::Store.new
+    store.add_cert(root_ca)
     Timeout.timeout(10) do
       tcp = TCPSocket.new("127.0.0.1", 18444)
       context = OpenSSL::SSL::SSLContext.new
-      context.verify_mode = OpenSSL::SSL::VERIFY_NONE # Inspect public leaf; exact pin comparison follows.
+      context.verify_mode = OpenSSL::SSL::VERIFY_PEER
+      context.verify_hostname = true
+      context.cert_store = store
       ssl = OpenSSL::SSL::SSLSocket.new(tcp, context)
       ssl.sync_close = true
       ssl.hostname = "localhost"
       begin
         ssl.connect
+        ssl.post_connection_check("localhost")
         ssl.peer_cert
       ensure
         ssl.close
@@ -63,7 +72,7 @@ module LocalCertificateProof
     cli, container = current_caddy
     pem = run(*cli, "exec", container.fetch("Id"), "cat", "/data/caddy/certificates/local/localhost/localhost.crt")
     cert = OpenSSL::X509::Certificate.new(pem)
-    live = live_certificate
+    live = verified_live_certificate(cli, container)
     raise "Live TLS leaf differs from dedicated Caddy certificate" unless cert.to_der == live.to_der
     sans = cert.extensions.select { |e| e.oid == "subjectAltName" }.flat_map { |e| e.value.split(/,\s*/) }
     raise "Unexpected certificate SAN" unless sans == [ "DNS:localhost" ]

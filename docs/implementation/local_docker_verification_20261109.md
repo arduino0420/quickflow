@@ -113,3 +113,7 @@ checkは学校3件・提出4件・blob8件、devは学校2件・提出2件・blo
 - 本追記とブラウザ強化は後続コミットに含まれるため、初回CI成功だけで最終head成功とは判断しない。**マージ判断ではPRの最新headのCI結果を必ず確認する。**
 
 実AI・EBS・ゲスト版・負荷・復旧などの未確認事項は引き続き残ります。mainへのマージとAWS配備には別途判断が必要です。
+
+### 追加監査指摘への修正
+
+中間head `be6aded` のCIでは、証明書preflightの検証無効化がBrakemanに検出されました。警告のignore/suppressは追加せず、専用Caddyの公開CAだけを一時OpenSSLストアへ登録し、`VERIFY_PEER`・証明書チェーン・localhost名検証を行う方式へ修正しました。OSの信頼設定や通常Chromeは変更していません。修正後のローカルBrakemanはエラー0・警告0で、最終headのCIはPR上で別途確認します。

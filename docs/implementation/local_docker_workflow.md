@@ -134,7 +134,7 @@ test用イメージだけにNode、プロセス検査、ブラウザ/driverな�
 
 通常のdev試験と別に、checkのproduction assets・Solid Queue・実HTTPS経路でも確認できます。Macの既存Chrome、Selenium 4.52.0と対応するキャッシュ済みdriverを使います。
 
-自己署名証明書の例外は、事前に利用者が許可した場合だけ使用します。`certificate-proof.rb`が`bin/local check verify`を実行し、専用Caddyの識別・image・volume・loopbackポートを確認したうえで、公開証明書と実TLSのDER指紋・SAN・期限を照合します。秘密鍵は読みません。
+自己署名証明書の例外は、事前に利用者が許可した場合だけ使用します。`certificate-proof.rb`が`bin/local check verify`を実行し、専用Caddyの識別・image・volume・loopbackポートを確認したうえで、専用Caddyの公開CAだけをプロセス内の一時的な信頼先にして、VERIFY_PEERで証明書チェーンとlocalhost名を検証します。その後、公開証明書と実TLSのDER指紋・SAN・期限も照合します。OSの信頼ストアは変更せず、秘密鍵は読みません。
 
 ```sh
 bin/local check up

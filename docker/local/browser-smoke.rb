@@ -34,23 +34,10 @@ if MODE == "check"
     proof["san_dns"] == [ "localhost" ] && proof["spki_sha256_base64"].to_s.match?(/\A[A-Za-z0-9+\/]{43}=\z/)
   generated_at = Time.iso8601(proof.fetch("generated_at"))
   raise "Certificate proof expired or from future" unless (0..600).cover?(Time.now - generated_at)
-  _docker, caddy = LocalCertificateProof.current_caddy
+  docker, caddy = LocalCertificateProof.current_caddy
   raise "Caddy changed since certificate proof" unless caddy["Id"] == proof["container_id"] && caddy["Image"] == proof["image_id"]
   raise "Explicit SPKI does not match proof" unless ENV["QF_LOCAL_CERT_SPKI"] == proof["spki_sha256_base64"]
-  cert = Timeout.timeout(10) do
-    tcp = TCPSocket.new("127.0.0.1", 18444)
-    context = OpenSSL::SSL::SSLContext.new
-    context.verify_mode = OpenSSL::SSL::VERIFY_NONE # public certificate inspection only; pin checks below are mandatory
-    ssl = OpenSSL::SSL::SSLSocket.new(tcp, context)
-    ssl.sync_close = true
-    ssl.hostname = "localhost"
-    begin
-      ssl.connect
-      ssl.peer_cert
-    ensure
-      ssl.close
-    end
-  end
+  cert = LocalCertificateProof.verified_live_certificate(docker, caddy)
   actual_der = OpenSSL::Digest::SHA256.hexdigest(cert.to_der)
   actual_spki = Base64.strict_encode64(OpenSSL::Digest::SHA256.digest(cert.public_key.public_to_der))
   sans = cert.extensions.select { |ext| ext.oid == "subjectAltName" }.flat_map { |ext| ext.value.split(/,\s*/) }
