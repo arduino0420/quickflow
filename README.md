@@ -109,21 +109,24 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 提出準備は[39項目の対応表](docs/implementation/issue103_submission_evidence.md)に集約しています。技術的な確認と、本人によるDPro再投稿・メンター通知・最終提出、学校側の受入判定は分けています。
 
-## Dockerで開発・本番相当確認
+## MacのVS Codeから開発・検証する
 
-`compose.yaml`は日々の開発、`compose.check.yaml`は本番相当の確認、`compose.test.yaml`は専用DBでの自動テスト用です。操作は `bin/local` にまとめ、開発・確認・テストのDB、保存領域、network、ポートを分けます。
+編集の出発点はMacのローカルcheckoutです。VS Codeで編集し、同じフォルダの`Dockerfile`と`compose.yaml`で通常版を再ビルドします。Caddy → Thrust → Puma/Rails production＋Solid Queue → PostgreSQLの3役構成を使い、RSpecはMacの別テストDB・保存先で実行します。
+
+[初回準備](docs/implementation/local_docker_workflow.md)が終わった後の日常操作:
 
 ```sh
-bin/local dev build
-bin/local dev init
-bin/local dev up
-# Mac側のコードを編集。作業後はデータを残して停止
-bin/local dev stop
+code .
+# VS Codeで編集・保存した後
+docker --context desktop-linux compose build web
+docker --context desktop-linux compose up -d
+# https://localhost:18443 で確認（.envのHTTPSポート。証明書の信頼方法は手順書参照）
+docker --context desktop-linux compose stop
 ```
 
-開発では編集したソースを読み込み、本番相当確認ではbuildしたimageを使います。GemやDockerfileの変更は再buildが必要です。AIは架空応答が初期値で、本番データや鍵を持ち込みません。これはAWSへの自動デプロイではありません。
+停止してもDB/PDFを残します。再開は`docker --context desktop-linux compose up -d`です。編集は再ビルド後に反映され、ホットリロード用の別環境はありません。通常アプリへfake AIを差し込みません。実AI確認は検証用キー・架空教材・費用上限・範囲の別承認が必要です。
 
-[起動・編集反映・検証・再起動の手順](docs/implementation/local_docker_workflow.md)と[将来のAWS移行・切戻し計画](docs/implementation/aws_compose_migration_plan.md)を確認してください。以下のネイティブ起動手順も残しています。既存DBを削除・移行する指示ではありません。
+**MacのVS Code → Docker確認 → 分離したRSpec → GitHub PR/CI → 別承認でmain → 別承認でAWS** の順に進めます。ゲスト版のローカル作成・共通化は今回は延期し、AWSのゲスト版をそのまま維持します。通常専用のCaddyfileでAWSの共有Caddyを置き換えてはいけません。[AWS移行計画](docs/implementation/aws_compose_migration_plan.md)の入口・ネットワーク引継ぎは別途確認が必要です。
 
 ## ローカル起動とテスト
 

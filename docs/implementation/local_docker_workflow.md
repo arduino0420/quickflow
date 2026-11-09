@@ -1,150 +1,123 @@
-# Dockerによるローカル開発と本番相当確認
+# MacのVS Codeから始める単一Compose運用
 
-目的は、**Macで編集 → Dockerで検証 → PRとCI → 承認後mainへ統合 → 別途承認してAWSへ配備**という流れを再現可能にすることです。この設定はローカル専用であり、AWSのCompose置換や自動デプロイではありません。
+## 目的と今回の範囲
 
-最新mainを基準に整備します。古い本番コードをmainへ上書きせず、普段の作業フォルダ・未コミット変更・既存DBを保護した独立checkoutで先に検証してください。PRの公開・マージ、普段のフォルダへの同期、AWS変更はそれぞれ結果を見て判断します。
+**MacのVS Codeで編集 → Dockerで確認 → MacのRSpec → GitHub PR/CI → 別承認でmain → 別承認でAWS** を同じリリースのコードから進める。編集元はMacのローカルcheckoutであり、AWSの作業フォルダから古いコードを戻さない。
 
-## 3つの用途を混ぜない
+通常版はルートの`compose.yaml`1枚と`Dockerfile`を使う。`db`、`web`、`caddy`の3役だけで、profiles、override、用途別サービス、Compose生成は使わない。Caddy → Thrust → Puma/Rails production、Puma内Solid Queue、primary/cache/queue/cableのPostgreSQLとPDF保存が基本構成。開発専用のホットリロードより単純さを優先する。
 
-| モード | 構成 | 用途と意図的な差 |
-|---|---|---|
-| `dev` / `compose.yaml` | Caddy → Puma/Rails development → 専用PostgreSQL | コード再読込・詳しいエラー表示。既存developmentのasyncジョブを維持し、Thrustは使わない |
-| `check` / `compose.check.yaml` | HTTPS Caddy → Thrust → Puma/Rails production＋Solid Queue → 専用PostgreSQL | 本番用イメージのアセット・起動・永続ジョブ・PDF・認証を確認 |
-| `test` / `compose.test.yaml` | 試験専用イメージ＋別のPostgreSQLクラスタ | RSpec・JavaScript・system試験。試験ツールを本番イメージへ追加しない |
+ユーザーの後続指示で、**guestのローカル環境作成・共通化は今回延期**した。AWSguestは削除・更新・統合しない。通常版の共通化を本番全体の完全一致と呼ばない。
 
-入口はdevが `http://localhost:18080`、checkが `https://localhost:18444` です。testはホストへポートを公開しません。
+## 初回のMac準備
 
-DB、保存volume、network、project、公開ポートを分離します。テストDBは既存specの安全ガードが要求する `quickflow_test` ですが、**この名前はtest用Dockerクラスタの内部だけ**です。Macの既存PostgreSQLやdevelopment/checkのDBへ接続しません。
+既存作業を保護した新しいcheckoutで実行する。今回の作業先は`~/workspace/quickflow-single-compose-20261109`。普段の`~/workspace/quickflow`への取り込みは別承認であり、まだ行わない。
 
-日々の開発で画面が動いただけでは、Solid Queueによる本番の採点連携まで確認したことになりません。`check`でも確認してください。
-
-## 前提と安全境界
-
-- Docker DesktopとDocker Compose、Python 3を利用します。Docker接続先はローカルUnix socketだけを受け入れ、remote SSH/TCP接続を拒否します。
-- 操作は `bin/local` を入口にします。Composeファイル、project名、envファイルを固定し、他の作業のDocker/Compose環境変数を無条件に継承しません。
-- 本番のmaster key、APIキー、DB/PDF、バックアップをコピーしません。ローカル用secretは新規生成し、Git・build context・CI artifactへ含めません。
-- 本番キーを含み得るrepo全体やconfig全体をbind mountしません。必要なソース・設定だけを読み取り専用で反映し、tmp/log/storageは専用volumeに分けます。
-- アプリ/DBは内部network、Caddyだけ入口networkにも接続します。公開はlocalhostに限定し、DBポートは公開しません。
-- `dev`/`check`は架空AI応答が初期値です。実AIキーを渡したり、実生徒情報を投入したりしません。架空AIや検証用mountが配備イメージへ混入しないことを確認します。
-- OSへローカルCAを勝手に信頼登録しません。ローカルTLSの検証方法は専用クライアントの範囲に限定します。
-
-## 操作の順番
-
-リポジトリのルートで実行します。ポートや接続先の衝突時は、既存サービスを止めて解消するのではなく、理由を確認してください。
+Docker Desktop、Docker Compose、MacのRuby/PostgreSQL等の既存テスト環境を使う。`docker --context desktop-linux info`で接続先が自分のMacのDocker Desktopであることを確認する。AWSやremote contextで以下を実行しない。
 
 ```sh
-# 開発環境: image作成 → 専用DB初期準備 → 起動
-bin/local dev build
-bin/local dev init
-bin/local dev up
-bin/local dev verify
-bin/local dev smoke
-bin/local dev status
-
-# 作業後はこのモードだけ停止。DB/PDFは保持
-bin/local dev stop
+cd ~/workspace/quickflow-single-compose-20261109
+code .
+cp .env.example .env
+mkdir -p .local
+chmod 700 .local
+# 本番の鍵は入れない。初期の通常UI検証ではAPI keyなし。
+printf '# Local only: no production credentials\n' > .local/app.env
+chmod 600 .local/app.env
 ```
 
-`init`は新規専用DBの準備と対象確認です。既存DBをreset/dropするコマンドではありません。`up`は準備済みのDBで起動するだけで、意図せず `db:prepare` を実行しません。既存volumeの由来やschemaが不明なら処理を進めません。
-
-再開は `bin/local dev up`、停止は `bin/local dev stop` です。DB/PDFの永続化を確認してから日常的に使います。マイグレーションが追加された場合は、対象と変更内容を確認して別途適用します。
-
-### コード編集はどう反映されるか
-
-- Mac側で編集した、mount対象の `app` / `lib` / 設定ファイルをコンテナが読み取ります。Rails developmentの再読込により反映します。
-- コンテナ側は読み取り専用なので、ホストのコードを勝手に書き換えません。generatorや `credentials:edit` のようなファイル作成をコンテナ内で実行する手順ではありません。
-- devの主なmount対象は `app` / `lib` / `db` / `public` / `spec` と安全な設定ファイルです。initializerも既存の許可対象だけをmountし、新しいinitializerはallowlistの見直しが必要です。
-- mount対象外の追加設定ファイルは、自動で反映されるとは限りません。対象一覧を確認し、設定変更・起動し直し・再buildのどれが必要か判断します。
-- Gemfile/Gemfile.lock、Ruby、OS依存、Dockerfileを変更したら再buildが必要です。現在のlockとimage内bundleがずれた状態を起動検査で拒否します。
-- `check`はソースをimageへ取り込むため、Macの編集は既存コンテナへ自動反映しません。変更後はbuildし直し、その新imageを検証します。
-
-## 本番相当の確認
+`.env`へ新規のsecret・image識別・保存volume名を設定する。次は見本を一度だけ新規ローカル値に置き換える例。すでに設定済みの`.env`では実行しない。
 
 ```sh
-bin/local check build
-bin/local check init
-bin/local check up
-bin/local check verify
-bin/local check smoke
-bin/local check stop
+ruby -rsecurerandom -e '
+  p = ".env"; text = File.read(p)
+  abort "Already configured" unless text.include?("REPLACE_WITH_NEW_RANDOM_HEX")
+  token = SecureRandom.hex(4)
+  text = text.gsub("quickflow-local", "quickflow-local-#{token}")
+    .gsub("quickflow:local", "quickflow:local-#{token}")
+    .gsub("REPLACE_WITH_NEW_RANDOM_HEX", SecureRandom.hex(32))
+    .gsub("REPLACE_WITH_NEW_128_HEX", SecureRandom.hex(64))
+    .gsub("REPLACE_WITH_GIT_COMMIT", "#{`git rev-parse HEAD`.strip}-working-tree")
+  File.write(p, text); File.chmod(0600, p)
+'
 ```
 
-`check`は通常版の処理構成を対象とします。guestの専用DB・読み取り専用制限・共有Caddyを含む本番全体を置き換えるものではありません。
+`COMPOSE_PROJECT_NAME`、image、4つのvolume名が他の作業と重ならないこと、公開先が127.0.0.1であることを確認する。`QF_HTTP_PORT`の初期値18080または`QF_HTTPS_PORT`の初期値18443が使用中なら既存サービスを止めず未使用ポートに変える。秘密値を含む`docker compose config`全文を共有ログへ出さない。
 
-`dev smoke` は開発環境の実HTTP経路だけを検証します。developmentではリクエスト文脈が異なるため、ActionDispatchのHTTPS模擬試験を代用しません。`check smoke` はアプリ内統合19項目と実HTTPS17項目を別々に実施します。これらはブラウザでの手書き操作の証明ではありません。
-
-試験結果では次を区別します。
-
-1. **アプリ内統合**: ActionDispatchによるHTTPS模擬・CSRF・アプリ処理と実workerの連携。
-2. **実HTTP/HTTPS**: localhostからCaddy/Thrust/Pumaを経由したログイン、PDF、提出、採点待ち、教師修正、Excelなど。
-3. **実ブラウザ**: JavaScript、手書きCanvas、下書き保存、PDF生成、遷移・再提出など。
-4. **実AI**: 今回は実施しません。架空応答での成功は精度・レート制限・課金・外部障害の検証ではありません。
-
-`/up`の200だけで全機能成功とは判断しません。外部通信についても、internal network構成の検査と特定宛先への通信拒否試験を区別します。
-
-### Mac Chromeで手書き操作を再確認する
-
-`dev`を準備済みのMacで、リポジトリのルートから実行します。`smoke`はブラウザ試験が使う架空データのprivate fixtureも準備します。
+DB/PDF/Caddyは`external: true`のvolumeを明示指定する。空volumeへの意図しない置換を防ぐため、Composeが勝手に作成しない。次は**新規Mac初回だけ**。既存名を検出したら止まり、由来を確認する。既存volumeの初期化や削除はしない。
 
 ```sh
-bin/local dev up
-bin/local dev smoke
-rbenv exec ruby docker/local/browser-smoke.rb
-bin/local dev stop
+python3 - <<'PYVOLUME'
+from pathlib import Path
+import subprocess
+values = dict(line.split('=', 1) for line in Path('.env').read_text().splitlines()
+              if line and not line.startswith('#'))
+docker = ['docker', '--context', 'desktop-linux']
+names = [values[k] for k in ('QF_DB_VOLUME', 'QF_STORAGE_VOLUME',
+                            'QF_CADDY_DATA_VOLUME', 'QF_CADDY_CONFIG_VOLUME')]
+for name in names:
+    result = subprocess.run(docker + ['volume', 'inspect', name], capture_output=True)
+    if result.returncode == 0:
+        raise SystemExit('Existing volume: stop and inspect ' + name)
+for name in names:
+    subprocess.run(docker + ['volume', 'create', name], check=True)
+PYVOLUME
+
+docker --context desktop-linux compose config --quiet
+docker --context desktop-linux compose build web
+docker --context desktop-linux compose up -d --wait db
+# 0件であることを確認。既存テーブルがあれば初回準備を止める。
+docker --context desktop-linux compose exec -T db psql -U quickflow -d quickflow_production \
+  -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+# 新規の空DBと照合した場合だけ、明示的にschemaを作る。
+docker --context desktop-linux compose run --rm --no-deps --entrypoint bin/rails web db:prepare
+docker --context desktop-linux compose up -d
 ```
 
-既存のMac版Google Chrome、rbenv側のRubyから使える `selenium-webdriver 4.52.0`、対応するキャッシュ済みChromeDriverが前提です。driverがなければ失敗して止まり、勝手にダウンロードしません。現在のスクリプトは `~/.cache/selenium/chromedriver/mac-x64` の対応major versionを探します。別CPU/driver配置では前提を確認してください。
+起動自体に`db:prepare`は含めない。既存本番DockerfileのentrypointはCompose側で無効化し、Thrust→Railsを明示する。将来migrationが増えた場合は、対象DB・変更内容・バックアップを確認して別工程で適用する。単なる再起動にDB変更を混ぜない。
 
-毎回新しいprofileを作り、普段のChrome profileを使いません。sandboxは有効のままです。証跡は `.local/dev/browser-<識別子>/` に分離されます。実AIは使いません。これはdevの実ブラウザ試験であり、checkの実ブラウザ試験やfull system RSpecの代替ではありません。
+新規DBは空で、既存の学校・生徒・PDFをコピーしない。UI検証用アカウントや教材を作る際も架空データだけにし、本番や普段の開発DBへ向けない。通常構成は架空の採点結果を自動投入しない。
 
-## 自動テストとCI
+## 日々の編集と再開・停止
 
 ```sh
-bin/local test build
-bin/local test init
-bin/local test test
-bin/local test stop
+code .
+# VS Codeでコードを編集・保存
+docker --context desktop-linux compose build web
+docker --context desktop-linux compose up -d
+# ブラウザ確認。入口は https://localhost:<.envのQF_HTTPS_PORT> 。
+docker --context desktop-linux compose ps
+# 作業後は停止だけ。volumeやPDFは残す。
+docker --context desktop-linux compose stop
+# 次回
+docker --context desktop-linux compose up -d
 ```
 
-Linux Chromiumを標準sandboxで起動できない場合は、`bin/local test test-core` による非system試験とMac Chromeでの実ブラウザ検証を別々に記録します。`test-core` の成功はfull RSpec成功ではありません。Mac Chromeの検証結果も、実行が終わるまで未確認です。
+再ビルドしてもDB/PDFはexternal volumeを継続使用する。Compose名やvolume名を変更すると別データを指し得るので、更新時に勝手に変えない。`down -v`、volume prune、DB drop/resetを日常手順にしない。ソースはimageへ取り込むため、編集直後の自動反映ではない。
 
-test用イメージだけにNode、プロセス検査、ブラウザ/driverなど必要な試験ツールを持たせます。本番相当のアプリ/Gemを勝手に変更しません。ブラウザ試験が実行できなければ、非ブラウザ試験の成功で代替せず未実施として報告します。OSのセキュリティ設定を弱めて通すことはしません。
+## RSpec・品質検査
 
-既存CIの監査・lint・RSpecを維持し、PostgreSQLイメージを固定します。追加の `docker_check` は本番用imageをbuildし、**その同じimage**で専用DB・保存先を使った実HTTP smokeを実施します。本番secret、APIキー、registryへのpush、AWS配備はありません。失敗時はCIログにallowlistされたimage/lock識別情報・隔離検査結果と、構造化されたcheck名/成否だけを表示します。Railsログ全文・fixture・秘密値をartifactに公開しません。
+RSpecはMacのRubyで実行し、専用Dockerfile・Compose・アプリコンテナを作らない。[READMEの分離テスト手順](../../README.md#ローカル起動とテスト)で新規PostgreSQLクラスタと`quickflow_test`を用意し、接続先・クラスタ実体を照合してから実行する。保存先は当該checkoutの`tmp/storage`であり、Docker通常アプリの`/rails/storage`volumeとは別。
 
-証跡はモードごとの `.local/<mode>/evidence/` に残します。共有時は検証結果・runtime識別情報だけを選び、`runtime.env`、secret、`*.private.json`などは含めません。実際に実行したcommit/image ID、件数、失敗・未実施項目を報告し、過去の成功を現在の成功と混同しません。
+READMEの括弧付きテストブロックを**全体で**実行する。新規クラスタ作成 → 実接続照合 → RSpec/品質検査 → 専用クラスタ停止が同じsubshell内で完結する。ブロック外へRSpecコマンドだけを抜き出すと接続URLが引き継がれず、既存の同名DBへ接続し得るため実行しない。再試験も同じ完全な隔離手順から開始する。
 
-## 本番との比較と、配備判断
+実OpenAI clientは禁止した既存RSpec stubを維持する。systemテストのChrome sandboxや証明書検査を弱めない。systemを実行できない場合は非system成功とは分けて報告する。既存GitHub ActionsのRSpec/system、Ruby・JavaScript監査、lintを維持し、Docker確認は同じ通常Composeを使う。旧構成の過去テスト成功を新構成の結果へ流用しない。
 
-揃える対象は、コード、Gemfile.lock、Ruby、PostgreSQL/Caddy image digest、Thrust/Puma/Solid Queue、PDF処理、DB/PDFの永続化です。Rails developmentの再読込、async、エラー表示は本番と意図的に違います。localhostのTLS、架空データ、secret、MacのCPU/メモリ、EBS、実AIは本番と同一ではありません。
+## AI・HTTPS・本番との差
 
-最新mainには現在の本番より新しいRails/OpenAIなどの依存があります。同じアプリコードでもAPI・依存の差があるため、最新lockで再検証します。必要なら実SDKとローカル模擬HTTPで形式互換を確認しますが、それでも実AI動作の保証ではありません。
+- 通常アプリは本番と同じSolid Queueでjobを実行する。API key未設定時の失敗を実AI成功と呼ばない。
+- 現AiClientの鍵はRails credentialsの`openai.api_key`から取得する。`OPENAI_API_KEY`を.envへ足すだけでは使えない。実AIは検証用鍵・架空教材・費用上限・範囲の承認後、秘密値供給方法も確認して行う。本番master keyや実生徒答案はMacへコピーしない。
+- Macも`https://localhost`を使う。本番のSecure session設定ではHTTPでsessionが発行されずCSRF検証が通らないため、cookie設定を弱めずHTTPSへ揃える。MacはCaddy内蔵CA、AWSの公開hostnameは公開CAを使う。ローカルCAは通常ブラウザから未信頼なので、初回の信頼方法は利用者の判断・明示承認が必要。OSの信頼ストアや通常Chromeは自動変更しない。API/通信検証はCaddyの公開CAだけを指定した専用クライアントで行う。検証専用Chromeの公開鍵限定例外も、対象証明書を照合して別承認後だけ使用する。HTTPの/up成功はログイン成功ではない。
+- Mac/AWSとも調査時x86_64だが、Docker VM/Linux、EBS/ローカル保存、ネットワーク、資源、実データ量は異なる。
+- 現AWS通常版と最新mainには既存Gem差がある。今回Gemを更新していないことと、現本番と全依存が同一であることは別。
+- AWSは通常版とguestが共有Caddyを使う。今回の通常専用Caddyfileで置換するとguest経路を失うため、**このファイル一式をAWSで無条件にupしない**。入口・ネットワーク引継ぎは[AWS計画](aws_compose_migration_plan.md)の別承認ゲート。
 
-次の順番を守ります。
+## GitHubからAWSへ進める条件
 
-1. 独立checkoutで整備・検証し、結果と残る差を報告。
-2. 承認後にPRを作成し、CI・レビュー。
-3. 承認後にmainへ統合し、普段のquickflowの未コミット変更・DB・保存先を再確認して同期。
-4. 普段のフォルダでも起動・編集反映・停止・再起動を確認。
-5. [AWS Compose移行計画](aws_compose_migration_plan.md)を現在の稼働状態に合わせ、実配備の直前に別途承認。
+1. Macの独立checkoutで差分と検証結果を確認し、専用branchからdraft PRを作る。
+2. 最終commitのRSpec/system/監査/lint・共通image検証と差分レビューを確認する。
+3. ユーザーの別承認後にmainへマージする。普段のquickflowへの取り込みも別承認。
+4. 配備commit、Dockerfile/lock hash、image ID/registry digest、CPUを記録し、検証と配備対象を一致させる。再buildした別imageは再検証する。
+5. AWSのDB/PDF/queue、backup隔離復元、必要migration、共有Caddyとguest影響、切戻しを確認し、具体的な本番変更の承認を得る。
+6. 承認した範囲だけ配備し、本番で機能・保存・jobを確認する。
 
-問題があれば次の段階へ進みません。既存のネイティブ開発環境は確認が終わるまで残し、古い本番コードを最新mainへ上書きしません。
-
-## 本番確認用Composeの実ブラウザ手書き試験
-
-通常のdev試験と別に、checkのproduction assets・Solid Queue・実HTTPS経路でも確認できます。Macの既存Chrome、Selenium 4.52.0と対応するキャッシュ済みdriverを使います。
-
-自己署名証明書の例外は、事前に利用者が許可した場合だけ使用します。`certificate-proof.rb`が`bin/local check verify`を実行し、専用Caddyの識別・image・volume・loopbackポートを確認したうえで、専用Caddyの公開CAだけをプロセス内の一時的な信頼先にして、VERIFY_PEERで証明書チェーンとlocalhost名を検証します。その後、公開証明書と実TLSのDER指紋・SAN・期限も照合します。OSの信頼ストアは変更せず、秘密鍵は読みません。
-
-```sh
-bin/local check up
-bin/local check smoke
-rbenv exec ruby docker/local/certificate-proof.rb
-# 次は承認済みの検証セッションでのみ実行する
-QF_LOCAL_PINNED_CERT_OPT_IN=1 \
-QF_LOCAL_CERT_SPKI="$(rbenv exec ruby -rjson -e 'puts JSON.parse(File.read(".local/check/browser-certificate-proof.json")).fetch("spki_sha256_base64")')" \
-rbenv exec ruby docker/local/browser-smoke.rb check
-bin/local check stop
-```
-
-ブラウザは10分以内のproof、同一Caddy、実証明書を再照合します。新規専用Chromeプロファイル内でその公開鍵だけに例外を限定し、`accept_insecure_certs=false`を維持します。SPKI例外は証明書の公開鍵単位なので、厳密なleaf証明書限定ではありません。このため起動直前のleaf指紋一致も必須にしています。通常Chrome・OS信頼ストア・sandboxは変更しません。画面・リンク・フォームは固定localhost起点を確認します。proof、profile、実行ログは`.local/`内だけに保持し、コミットしません。
+「ローカル簡素化」「main統合」「普段のフォルダ同期」「AWS適用・稼働確認」は別々に報告する。未確認や保留を残したまま全完了とはしない。

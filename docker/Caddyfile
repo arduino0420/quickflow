@@ -1,0 +1,5 @@
+# Local localhost uses Caddy internal TLS; public hostnames use public certificates.
+# AWS shared-Caddy/guest routing must be preserved in the approved migration.
+{$QF_SITE_ADDRESS} {
+  reverse_proxy web:80
+}
