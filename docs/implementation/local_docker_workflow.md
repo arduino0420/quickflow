@@ -113,11 +113,17 @@ READMEの括弧付きテストブロックを**全体で**実行する。新規�
 
 ## GitHubからAWSへ進める条件
 
-1. Macの独立checkoutで差分と検証結果を確認し、専用branchからdraft PRを作る。
-2. 最終commitのRSpec/system/監査/lint・共通image検証と差分レビューを確認する。
-3. ユーザーの別承認後にmainへマージする。普段のquickflowへの取り込みも別承認。
-4. 配備commit、Dockerfile/lock hash、image ID/registry digest、CPUを記録し、検証と配備対象を一致させる。再buildした別imageは再検証する。
-5. AWSのDB/PDF/queue、backup隔離復元、必要migration、共有Caddyとguest影響、切戻しを確認し、具体的な本番変更の承認を得る。
-6. 承認した範囲だけ配備し、本番で機能・保存・jobを確認する。
+1. コード・Dockerfile・Compose・Caddyfileの修正は必ずMacのVS CodeからGitHubへ送る。AWSの作業フォルダや稼働コンテナで直接編集しない。独立checkoutの差分と検証結果を確認し、専用branchからPRを作る。
+2. 最新PRのRSpec/system/監査/lint・共通image検証と差分レビューを確認する。PRの仮merge commitと、承認後に確定するmain commitは区別する。
+3. ユーザーの別承認後にmainへマージし、確定main commitのCIを確認する。普段のquickflowへの取り込みも別承認。
+4. 配備候補は確定mainの追跡ファイルだけから、未コミット・未追跡・無視対象のローカルファイルを混入させない新しいbuild場所で作る。配備commit、Dockerfile/Compose/Caddyfile/lockのhash、CPU、生成image IDを記録する。本番の秘密やDB/PDFはbuild contextへ入れない。
+5. 候補imageを検証後、承認済みの配布先registryに保存し、その**同じ成果物**を `repository@sha256:...` のdigest指定でAWSへ渡す。AWSで再buildしたり、可変タグだけで選んだりしない。別imageを作った場合は再検証する。
+6. 同じcommitのCompose/Caddyfileを使用し、AWSとの差は承認済みの環境値・秘密情報・保存先・公開先に限定する。秘密値はGitへ入れず、非秘密の設定仕様はGitで管理する。配備前後にimage digestと実image ID、構成ファイルhash、起動コマンド、networkと保存先を記録・照合する。不一致や由来不明があれば自動修正せず停止して調査する。
+7. AWSのDB/PDF/queue、backup隔離復元、必要migration、共有Caddyとguest影響、切戻しを確認し、具体的な本番変更の承認を得る。既存共有Caddyの引継ぎが未解決なら配備へ進まない。
+8. 承認した範囲だけ配備し、本番で機能・保存・jobと版の一致を確認する。
+
+`QF_SOURCE_REVISION`のimageラベルは識別の補助であり、設定者の自己申告である。ラベル一致だけではソースのclean状態やimage内容の一致を保証しない。ソースからの生成記録、内容hash、配布digestと組み合わせる。
+
+**現在のCIは検査と一時的なimage buildまでで、imageの永続保存・registryへの配布・AWS適用は未実装。** 上記は目標の配備手順であり、配布先・アクセス権・秘密情報の供給と具体的な切替手順は次工程で確定する。AWSの稼働構成もまだ移行していないため、ローカルから本番までの一貫運用が完成したとは扱わない。
 
 「ローカル簡素化」「main統合」「普段のフォルダ同期」「AWS適用・稼働確認」は別々に報告する。未確認や保留を残したまま全完了とはしない。

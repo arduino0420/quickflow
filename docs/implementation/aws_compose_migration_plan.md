@@ -90,7 +90,7 @@ Docker volumeとguest bind先は実測時どちらもroot `/dev/nvme0n1p1`（xfs
 
 ## 4. 配備前の残作業と実行順（すべて別承認後）
 
-1. 配備するGit commit、コード/Gem/schema差分、検証済みimage ID/配布digest、CPU、Dockerfile・lockハッシュを確定する。CI最終headと一致させる。再buildしたら新成果物を再検証する。
+1. [Mac起点の配備条件](local_docker_workflow.md#githubからawsへ進める条件)に従い、承認後の確定main commit、コード/Gem/schema差分、追跡ソースから生成・検証したimage ID/registry digest、CPU、Dockerfile/Compose/Caddyfile/lockのhashを確定する。現在はimage保存・配布工程が未実装なので、承認済みの配布先と取得方法が確立するまで配備へ進まない。AWSではコードや構成を直接編集せず、同じcommitの構成と同じ検証済みimageを使用し、再buildしない。設定値以外の差分や識別不一致は停止条件とする。
 2. 読み取りpreflightで現container/image/mount/network/公開ポート/設定指紋を再測定。通常queueのready/claimed/scheduled/blocked/failedは2026-11-09観測時すべて0だったが、切替直前に再測定する。処理中ジョブの終了待ち、受付停止、タイムアウト時中止条件を決める。
 3. DBとPDFを整合した時点でバックアップし、**隔離した保存先で復元確認**する。過去のbackup/restore-verificationディレクトリは存在したが、この移行用の復元試験はまだ行っていない。EBS識別とsnapshotを含め保全範囲を記録する。
 4. 既存共有Caddyを保持する入口引継ぎ・ネットワーク接続計画を別途承認してから、新しいreleaseディレクトリへ通常版Composeと検証済み設定を置く。旧作業フォルダのCompose/Caddyfileを上書きしない。external volumeとbind先の実体・所有者・DB/system identifier/guest manifestを照合する。空の置換volumeを作らない。
