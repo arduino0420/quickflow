@@ -1,0 +1,103 @@
+# Local only. Use bin/local; never combine these standalone Compose files.
+# The wrapper fixes the local Docker endpoint, project, env file and DB guards.
+services:
+  db:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: quickflow
+      POSTGRES_PASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
+      POSTGRES_DB: quickflow_development
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks: [isolated]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U quickflow -d quickflow_development"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  web:
+    image: ${QF_DEV_IMAGE:-quickflow-local-dev:a3acc0f6}
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      labels:
+        io.quickflow.local.mode: ${QF_LOCAL_MODE:?Use bin/local}
+        io.quickflow.local.source: ${QF_SOURCE_SHA:?Use bin/local}
+        io.quickflow.local.dependencies: ${QF_DEPS_SHA:?Use bin/local}
+        io.quickflow.local.lock: ${QF_LOCK_SHA:?Use bin/local}
+    init: true
+    # No implicit db:prepare. bin/local init/migrate is the explicit DB step.
+    entrypoint: []
+    command: ["./bin/rails", "server", "-b", "0.0.0.0"]
+    environment:
+      RAILS_ENV: development
+      PGHOST: db
+      PGUSER: quickflow
+      PGPASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
+      DATABASE_URL: postgresql://quickflow:${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}@db/quickflow_development
+      SECRET_KEY_BASE: ${QF_LOCAL_SECRET_KEY_BASE:?Run bin/local setup first}
+      QF_LOCAL_ONLY: "1"
+      QF_LOCAL_STACK: quickflow-local-v1
+      QF_LOCAL_MODE: dev
+    volumes:
+      # Read-only code mounts still reflect edits made by the host editor.
+      # Never mount the repository/config root: it may contain master.key.
+      - ./app:/rails/app:ro
+      - ./lib:/rails/lib:ro
+      - ./db:/rails/db:ro
+      - ./public:/rails/public:ro
+      - ./spec:/rails/spec:ro
+      - ./config/environments:/rails/config/environments:ro
+      - ./config/locales:/rails/config/locales:ro
+      - ./config/application.rb:/rails/config/application.rb:ro
+      - ./config/boot.rb:/rails/config/boot.rb:ro
+      - ./config/environment.rb:/rails/config/environment.rb:ro
+      - ./config/routes.rb:/rails/config/routes.rb:ro
+      - ./config/database.yml:/rails/config/database.yml:ro
+      - ./config/puma.rb:/rails/config/puma.rb:ro
+      - ./config/queue.yml:/rails/config/queue.yml:ro
+      - ./config/recurring.yml:/rails/config/recurring.yml:ro
+      - ./config/storage.yml:/rails/config/storage.yml:ro
+      - ./config/cache.yml:/rails/config/cache.yml:ro
+      - ./config/cable.yml:/rails/config/cable.yml:ro
+      - ./config/importmap.rb:/rails/config/importmap.rb:ro
+      - ./config/javascript_dependencies.json:/rails/config/javascript_dependencies.json:ro
+      - ./config/initializers/answer_draft_request_limit.rb:/rails/config/initializers/answer_draft_request_limit.rb:ro
+      - ./config/initializers/assets.rb:/rails/config/initializers/assets.rb:ro
+      - ./config/initializers/content_security_policy.rb:/rails/config/initializers/content_security_policy.rb:ro
+      - ./config/initializers/filter_parameter_logging.rb:/rails/config/initializers/filter_parameter_logging.rb:ro
+      - ./config/initializers/http_load_test.rb:/rails/config/initializers/http_load_test.rb:ro
+      - ./config/initializers/inflections.rb:/rails/config/initializers/inflections.rb:ro
+      - ./config/initializers/production_demo.rb:/rails/config/initializers/production_demo.rb:ro
+      - ./config/initializers/submission_request_body_limit.rb:/rails/config/initializers/submission_request_body_limit.rb:ro
+      # Initializers are individually allowlisted; add new ones explicitly.
+      - ./docker/local:/local:ro
+      - ./docker/local/fake_ai_initializer.rb:/rails/config/initializers/zz_local_fake_ai.rb:ro
+      - app_tmp:/rails/tmp
+      - app_log:/rails/log
+      - storage:/rails/storage
+    networks: [isolated]
+    depends_on:
+      db:
+        condition: service_healthy
+  caddy:
+    image: caddy:2@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
+    volumes:
+      - ./docker/local/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "127.0.0.1:18080:80"
+    networks: [isolated, ingress]
+    depends_on: [web]
+networks:
+  isolated:
+    internal: true
+  ingress: {}
+volumes:
+  db_data:
+  app_tmp:
+  app_log:
+  storage:
+  caddy_data:
+  caddy_config:

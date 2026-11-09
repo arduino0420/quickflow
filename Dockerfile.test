@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+# Test tooling only; the deployable application image is not changed.
+ARG APP_IMAGE=quickflow-local-check:a3acc0f6
+FROM ${APP_IMAGE}
+USER root
+RUN apt-get update -qq && apt-get install --no-install-recommends -y \
+    procps nodejs chromium chromium-driver chromium-sandbox && rm -rf /var/lib/apt/lists/*
+ENV RAILS_ENV=test \
+    SE_CHROMEDRIVER=/usr/bin/chromedriver \
+    CHROME_BIN=/usr/bin/chromium \
+    SE_OFFLINE=true \
+    SE_AVOID_STATS=true
+USER 1000:1000
+ENTRYPOINT []
+CMD ["bundle", "exec", "rspec"]

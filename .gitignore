@@ -36,3 +36,11 @@
 
 
 .DS_Store
+
+# Local Docker state, synthetic credentials, and validation artifacts
+/.local/
+/proof-local/
+*.private.json
+
+**/__pycache__/
+*.pyc
