@@ -31,7 +31,7 @@ RSpec.describe "Assignment deletion", type: :request do
     expect(form.at_css("input[name='_method']")[:value]).to eq("delete")
     expect(form["data-turbo-confirm"]).to include(assignment.title, "提出答案・採点結果・成績も削除され、元に戻せません")
     expect(document.at_css(".page-card").element_children.last[:class]).to eq("assignment-delete-actions")
-    expect(form.at_css("button").text).to eq("この小テストを削除する")
+    expect(form.at_css("button").text).to eq("小テストを削除")
   end
 
   [ :unpublished, :distributed, :submitted, :grading, :completed, :needs_review, :failed ].each do |state|

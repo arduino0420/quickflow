@@ -94,7 +94,7 @@
     <p id="guest-delete-unavailable">閲覧専用のため削除できません。</p>
     </div>
   <% else %>
-  <%= button_to "この小テストを削除する", assignment_path(@assignment), method: :delete,
+  <%= button_to "小テストを削除", assignment_path(@assignment), method: :delete,
     form: { data: { turbo_confirm: "「#{@assignment.title}」を削除します。提出答案・採点結果・成績も削除され、元に戻せません。削除してよろしいですか？" } }, class: "button button-danger" %>
   <% end %>
 </div>
