@@ -42,7 +42,7 @@ RSpec.describe "Assignment CRUD in Chrome", type: :system do
     expect(page).not_to have_content(assignment.title)
     visit assignment_path(assignment)
     expect(page).not_to have_content(assignment.title)
-    expect(page).not_to have_button("この小テストを削除する")
+    expect(page).not_to have_button("小テストを削除")
   end
 
   it "cancels or rejects renaming, changes only the title, and deletes only the confirmed quiz graph" do
@@ -86,11 +86,11 @@ RSpec.describe "Assignment CRUD in Chrome", type: :system do
     expect(submission.reload.score).to eq(5)
     expect(ActiveStorage::Attachment.where(record: [ assignment, submission ]).pluck(:id, :blob_id)).to eq(attachments)
 
-    dismiss_confirm { click_button "この小テストを削除する" }
+    dismiss_confirm { click_button "小テストを削除" }
     expect(page).to have_content("変更済み小テスト")
     expect(assignment.reload).to be_persisted
     expect(records.map { |record| record.reload.attributes }).to eq(snapshot)
-    accept_confirm { click_button "この小テストを削除する" }
+    accept_confirm { click_button "小テストを削除" }
     expect(page).to have_content("小テスト・提出答案・採点結果・成績を削除しました。")
     expect(Assignment.exists?(assignment.id)).to be(false)
     records.each { |record| expect(record.class.exists?(record.id)).to be(false) }
