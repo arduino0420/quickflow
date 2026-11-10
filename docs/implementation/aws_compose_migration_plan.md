@@ -8,9 +8,19 @@
 
 最終目標は、AWS通常版のRails・PostgreSQL・共有Caddyも、Macを編集元とするGit管理の `compose.yaml` 1枚から再現・更新できる状態にすること。共有Caddyはguestの入口も保持し、guestのweb/DB/gateway自体の移行は今回の対象外とする。移行中は現在のCaddyを保全し、両公開経路を引き継げる単一ComposeとCaddyfileを検証してから、別承認した順序で3役の管理元を揃える。通常版の別Composeや手動 `docker run` を恒久的に併用する完成形にはしない。
 
-**現 `docker/Caddyfile` は通常版のみ。これをAWSの共有Caddyにそのまま適用するとguest公開経路が失われるため、置換・reload・新Caddy起動による入口切替を禁止する。通常版のコード/image/DB構成を共通化しても、AWS入口の引継ぎは未完了であり、本番全体の単一Compose化完了とはしない。**
+2026-11-10の未commit候補では、通常3サービスを維持し、app/guest_routeを両方external networkとして参照する。AWSはapp=`quickflow_default`、guest_route=`qfguest-public-4c18332acca47671_isolated`を予定。Macは独立app networkと空のinternal guest-routeを使い、guestアプリは作らない。Caddyだけが両networkに接続する。webにhealthcheckを設けるが、共有Caddyの起動はwebの状態に依存させず、通常版の準備完了待ちは検証・配備コマンド側で行う。
 
-次回は既存の共有Caddyを保持したまま、新通常webと既存ネットワークをどう接続するかを個別に設計・承認する。現Composeの `app` ネットワークは新規作成なので、既存共有Caddyが自動で新webへ到達できるとは限らない。既存alias `web` の競合・切替、公開ポート、TLS、guest経路維持を検証してから配備可否を判断する。現ComposeをAWSでそのまま `up` する手順は未承認・未検証。
+共通 `docker/Caddyfile` は通常HTTPSと引数付きimportを持つ。Macは `QF_CADDY_EXTRA_CONFIG=/dev/null`、AWSは固定 `/etc/caddy/aws-shared.caddy` を選び、公開設定の通常host・guest host・upstream・公開CAパスを引数として渡す。`docker/aws-shared.caddy` は既存の通常HTTP301とguest blockを保持する。これは別Composeや用途別アプリ環境を増やすものではない。
+
+**候補設定は現共有Caddyの経路を引き継ぐ設計になったが、AWSへの適用は未実施。importを省略した通常ルートだけの設定で本番共有Caddyを置換してはならない。** 既存alias `web`/`db`、公開port、証明書volume、両external network、短時間の共有入口停止を含む切替と切戻しは、[バックアップ・隔離復元・切替計画](aws_backup_cutover_plan.md)の具体的停止時間承認後に行う。
+
+### 候補設定の検証と限界（2026-11-10）
+
+- 読み取り原本Caddyfile SHA-256 `d44eb206e1eae8cf5fd4d4e594ed33a505a6f548979acbe9c25109dbb12695c4` と候補のadapt JSONはCaddy2.11.7で完全同値。
+- 架空host・独立mock HTTPSで16項目成功：301のpath/query保持、7種の不信header拒否、body 64000 byte受理/64001 byte拒否、正CA/SNIで200、誤CA/SNIで502。これは実guestの作成・変更やAWS疎通の検証ではない。
+- CA欠落等をadaptだけでは拒否しない場合がある。配備前は **validate、固定import path、ファイルhash、生成JSONの期待host/upstream/CA/SNI照合** を全て必須とする。adapt成功だけを受入条件にしない。
+- Mac通常HTTPSはHTTP/2 health 200を確認。初期起動中の応答エラーを検証側の準備完了待ちで避ける設計にしたが、この変更を含む最終QA/CIは未完了。
+- 実ACME更新、AWSでのguest疎通・Caddy切替・復元・本番受入は未実施。過去の成功を新しいcommit/imageの結果として流用しない。
 
 ローカルguest用の途中成果は非公開の延期用保管場所へ移し、実行対象・PR対象から外す。guest DB・containerの新規作成は0件。既存AWS guestのimage/DB/storage/設定/稼働はそのまま保持する。
 
@@ -46,6 +56,13 @@ AWS作業フォルダ `/home/ec2-user/quickflow` のHEADは `a8816b66ecde35695b1
 
 上記sha256はDockerのローカルimage ID。registryのRepoDigestと混同せず、移送する場合は配布可能なdigestと対応を別途記録する。guestの残存compose.jsonはさらに古いweb image `a097...` を参照しているため、そのまま再起動しない。
 
+### 旧Compose本文の追加確認（2026-11-10）
+
+`/home/ec2-user/quickflow/compose.yaml` はdb/webのみ。webは `quickflow:latest`、entrypoint/command上書きなし。`compose.public.yaml` がCaddyと公開80/443を追加する。後者にguest networkの宣言はなく、実共有Caddyにはその接続が追加されている。旧ファイルの再実行は現状態の安全な再現ではない。ラベルは作成元の記録であり、現ファイルで安全更新できる証明ではない。
+
+- compose.yaml SHA-256: `4daf8dddcce133bb763be92fc54e684d6ada1e945075a9724d7be09ee3f3d644`
+- compose.public.yaml SHA-256: `bea0f96dfa3bc93f08e930fbb45e80c5b9b0c0d85854b8cb9f743049c4f316a6`
+
 ### コード・Gem・DBの差
 
 両稼働appはRuby4.0.6、Rails8.1.4、OpenAI0.106.0。調査時main `fe607634ef75f1f7d6a4fd1b130f3720ddc86cb4` はRails8.1.4.1、OpenAI0.115.0。これは既に存在する差であり、今回新たにGemを更新する理由にはしない。通常/guest/配備候補それぞれの完全なコード・Gem差分レビューは配備前の残作業。
@@ -69,8 +86,13 @@ AWS作業フォルダ `/home/ec2-user/quickflow` のHEADは `a8816b66ecde35695b1
 | `QF_DB_VOLUME` | `quickflow_postgres_data` → `/var/lib/postgresql`（PGDATA `/var/lib/postgresql/18/docker`） |
 | `QF_STORAGE_VOLUME` | `quickflow_quickflow_storage` → `/rails/storage` |
 | `QF_CADDY_DATA_VOLUME` / `QF_CADDY_CONFIG_VOLUME` | `quickflow_caddy_data` / `quickflow_caddy_config` |
+| `QF_APP_NETWORK` / `QF_GUEST_NETWORK` | `quickflow_default` / `qfguest-public-4c18332acca47671_isolated`。既存external参照 |
+| `QF_CADDY_EXTRA_CONFIG` | AWSは固定 `/etc/caddy/aws-shared.caddy`、Macは `/dev/null` |
+| `QF_SHARED_NORMAL_HOST` | `13-231-93-159.sslip.io` |
+| `QF_GUEST_HOST` / `QF_GUEST_UPSTREAM` | `qfd-4c18332acca47671.13-231-93-159.sslip.io` / `172.31.241.2:18443` |
+| `QF_GUEST_CA_FILE` | `/data/caddy/qfguest-public-4c18332acca47671/front-ca.crt`（Caddy内の既存公開CA） |
 | `QF_SITE_ADDRESS` | `https://13-231-93-159.sslip.io`。HTTP→HTTPS転送も検証 |
-| `QF_BIND_ADDRESS` / `QF_HTTP_PORT` / `QF_HTTPS_PORT` | `0.0.0.0` / `80` / `443`。現在のIPv6公開との差も確認 |
+| `QF_HTTP_BIND` / `QF_HTTPS_BIND` | `80` / `443`。host IPを省略して既存のTCP IPv4/IPv6公開を表現し、適用時にも実bindを照合。UDP443・管理portは追加しない |
 
 通常DBはprimary/cache/queue/cableの4DBを保持。guestは `quickflow_demo_4c18332acca47671` の別DB、別権限、別manifest。既存匿名volumeも今回削除しない。
 
@@ -94,14 +116,14 @@ Docker volumeとguest bind先は実測時どちらもroot `/dev/nvme0n1p1`（xfs
 
 ## 4. 配備前の残作業と実行順（すべて別承認後）
 
-1. [Mac起点の配備条件](local_docker_workflow.md#githubからawsへ進める条件)に従い、承認後の確定main commit、コード/Gem/schema差分、追跡ソースから生成・検証したimage ID/registry digest、CPU、Dockerfile/Compose/Caddyfile/lockのhashを確定する。現在はimage保存・配布工程が未実装なので、承認済みの配布先と取得方法が確立するまで配備へ進まない。AWSではコードや構成を直接編集せず、同じcommitの構成と同じ検証済みimageを使用し、再buildしない。設定値以外の差分や識別不一致は停止条件とする。
+1. [Mac起点の配備条件](local_docker_workflow.md#githubからawsへ進める条件)に従い、承認後の確定main commit、コード/Gem/schema差分、追跡ソースから生成・検証したimage ID/配布tar SHA-256、CPU、Dockerfile/Compose/Caddyfile/lockのhashを確定する。現在はimage保存・配布工程が未実装なので、承認済みの配布先と取得方法が確立するまで配備へ進まない。AWSではコードや構成を直接編集せず、同じcommitの構成と同じ検証済みimageを使用し、再buildしない。設定値以外の差分や識別不一致は停止条件とする。
 2. 読み取りpreflightで現container/image/mount/network/公開ポート/設定指紋を再測定。通常queueのready/claimed/scheduled/blocked/failedは2026-11-09観測時すべて0だったが、切替直前に再測定する。処理中ジョブの終了待ち、受付停止、タイムアウト時中止条件を決める。
 3. DBとPDFを整合した時点でバックアップし、**隔離した保存先で復元確認**する。過去のbackup/restore-verificationディレクトリは存在したが、この移行用の復元試験はまだ行っていない。EBS識別とsnapshotを含め保全範囲を記録する。
 4. 既存共有Caddyを保持する入口引継ぎ・ネットワーク接続計画を別途承認してから、新しいreleaseディレクトリへ通常版Composeと検証済み設定を置く。旧作業フォルダのCompose/Caddyfileを上書きしない。external volumeとbind先の実体・所有者・DB/system identifier/guest manifestを照合する。空の置換volumeを作らない。
 5. 共通Composeの通常webはentrypointを空にしてThrustを明示し、自動 `db:prepare` を回避する。必要migrationを差分から別工程として審査・承認し、guest旧DBへ実行しない。調査時schema差がないことを将来の配備commitへ流用しない。
 6. 停止対象と停止時間を合意し、新旧workerが同じqueueを同時処理しない順序で通常版を切り替える。旧コンテナ/image/設定を保持する。DBを同じPGDATAで二重起動しない。
 7. guestの3コンテナ・namespace・subnet・保存先は切り替えない。通常版の新ネットワークと既存共有Caddyの接続方法、alias衝突、切替時の到達性を別途確定する。既存ネットワークを無承認で削除しない。
-8. 既存共有Caddyと証明書volumeを保持する。通常版だけの `docker/Caddyfile` に置換しない。入口の変更が必要ならguest経路・CA・公開TLS・SNI・Host・header境界・HTTP転送を維持する具体的な変更内容を別途承認し、両経路を検証する。
+8. 既存共有Caddyと証明書volumeを保持する。固定importと引数の照合を省いた通常ルートだけの設定に置換しない。入口の変更が必要ならguest経路・CA・公開TLS・SNI・Host・header境界・HTTP転送を維持する具体的な変更内容を別途承認し、両経路を検証する。
 9. HTTPS、ログイン、PDF、手書き、下書き、提出、採点queue、教師修正、Excel、再起動後の永続性、guest各roleの閲覧・書込拒否・no-AI/no-jobを確認する。実AIは別途承認範囲のみ。`/up`の200だけで受入完了にしない。
 
 安全な読み取りpreflightの例（秘密値を含む `docker inspect` 全文や `docker compose config` 全文を共有ログへ出さない）:
@@ -125,7 +147,7 @@ sudo docker network inspect --format '{{.Name}} {{.Internal}} {{json .IPAM.Confi
 
 ## 参考: 延期した6役案（今回の実装・配備対象ではない）
 
-将来guest共通化を再開するときの案は `web/db/caddy/guest_web/guest_db/guest_gateway` の6役。guest用途はdev/check/testの検証環境ではなく実際の提供機能である。以下の `QF_GUEST_*` は延期案の対応名であり、現3役Composeの有効な設定変数ではない。設定するだけではguestは起動しない。
+将来guest共通化を再開するときの案は `web/db/caddy/guest_web/guest_db/guest_gateway` の6役。guest用途はdev/check/testの検証環境ではなく実際の提供機能である。以下は延期したguestアプリ管理案の対応名。入口保全に使用する `QF_GUEST_HOST` / `QF_GUEST_UPSTREAM` / `QF_GUEST_CA_FILE` / `QF_GUEST_NETWORK` は現在の3役Composeにもあるが、guestアプリ作成用ではない。その他の延期変数を設定してもguestは起動しない。
 
 | 延期案の変数 | 読み取り時のAWS対象 |
 |---|---|
@@ -143,7 +165,15 @@ guestのAWSルートを以下では `G=/home/ec2-user/quickflow-guests/qfguest-p
 - `QF_GUEST_CONTROL_DIR`: `G/release-4667c7c/guest/control` → `/rails/tmp/production-demo-control-<QF_GUEST_ID>`（読取専用）
 - `QF_GUEST_STORAGE_DIR`: `G/release-4667c7c/guest/storage` → `/rails/tmp/production-demo-<QF_GUEST_ID>`（読取専用）
 - `QF_GUEST_GATEWAY_TLS_DIR`: `G/gateway-tls` → `/proof-tls`（読取専用）
-- `QF_GUEST_CA_FILE`: 既存公開CAの内容・指紋を照合したサーバー内ファイル。現共有Caddyは `/data/caddy/qfguest-public-4c18332acca47671/front-ca.crt` を使用し、旧app監査mountには`G/authority/front-ca.crt`がある。両者の一致を未確認のまま代用しない。秘密鍵はMacへ持ち出さない。
+- 延期案での公開CA bind元（現 `QF_GUEST_CA_FILE` の意味とは異なる）: 既存公開CAの内容・指紋を照合したサーバー内ファイル。現共有Caddyは `/data/caddy/qfguest-public-4c18332acca47671/front-ca.crt` を使用し、旧app監査mountには`G/authority/front-ca.crt`がある。両者の一致を未確認のまま代用しない。秘密鍵はMacへ持ち出さない。
 
 
 再開時はguest DB変更に伴うweb/gateway namespaceの同時切替、旧subnetとの衝突、既存manifest・DB権限・readonly保存先・両段TLSを再検証する。旧imageを新mainへ差し替える承認を含めず、今回はいずれも実施しない。
+
+## 検証済みimageの移送案（保存・転送は未実施）
+
+確定mainのcleanな追跡ソースからAWS向けimageを作り、その同じimageを検証する。固有commit tagとimage ID、元commit、Dockerfile/lock/Compose/Caddy設定のhash、CPUを記録する。AWS上の再buildや検証後の別image作成で置き換えない。
+
+新規registryや常設credentialの作成は必須にしない。基本案は、その1つのimageを `docker save` でtar化し、既存のホスト鍵照合済みSSH経由でサーバーの新規release領域へ移送する。転送前後のtar SHA-256を照合してからloadし、読み込んだimage IDと固有commit tagの対応を元と照合する。tar hashは転送同一性、image IDはimage識別であり、registry配布digestとは別物。曖昧なlatestを使わず、配備時は `--pull never` / `--no-build` を基本とし、確定したproject/env/serviceだけを操作する。
+
+この経路で移すのは検証済みアプリimageとGit管理の非秘密設定だけ。本番secret/DB/PDFをMacへ戻さず、build contextにも含めない。保存・転送・load・起動はまだ行っていない。最新backup・隔離restore・停止窓・最終QA/CIを満たしてから、[具体的な切替計画](aws_backup_cutover_plan.md)の順序へ進む。

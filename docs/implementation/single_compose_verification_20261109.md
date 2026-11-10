@@ -42,3 +42,14 @@ Chrome157に対応する公式driverを標準Selenium経路で利用し、sandbo
 - AWSの共有Caddyはguest経路を持つ。今回の通常専用Caddyfileで無条件に置換しない。backup隔離復元・queue静止・既存保存先・切戻しを含む移行計画は別ゲート。
 
 実AIの送信・採点精度・課金、実生徒データ、EBS性能、負荷・障害復旧は検証していない。過去のdev/check/test成功を新Compose成功へ転用していない。
+
+## 2026-11-10: 共有入口と同一image移送の追加検証
+
+- Mac独立checkoutだけで、通常3役・Compose1枚のまま共有入口の候補を実装。appとguest_routeはexternal名を参照し、Macの追加接続先は空のinternal network。Caddyだけが両方へ接続し、web/dbはappだけ。guestアプリ・DBは作成しない。
+- 共通Caddyfileは通常HTTPS、引数付きimportの追加設定は既存AWSの通常HTTP301とguest route。AWS原本hash `d44eb206e1eae8cf5fd4d4e594ed33a505a6f548979acbe9c25109dbb12695c4` を照合し、Caddy2.11.7のadapt JSONが完全一致。
+- 独立HTTPS mockの16項目が成功。301のpath/query保持、転送header7種の400拒否と上流への削除、64,000bytes受理・64,001bytesの413拒否、正しいCA/SNIの200、不正CA/SNIの502を確認。本番hostへ通信せず、公開ACMEや実guestの受入とは区別。
+- 必須4引数の欠落はvalidateで拒否。CA欠落や空importはadaptだけでは見逃し得るため、固定import path、ファイルhash、validate、期待host/upstream等のJSON照合を組み合わせる。CIへ入れる同じ検査コマンドをMacでも実行し成功。
+- 正規3コンテナ名でnetwork境界を照合。検証用mockはUUIDで識別し、停止・内容保全を確認して今回作成分だけ整理。既存container・DB・PDF・volume・backupは削除していない。
+- 通常HTTPSは準備完了後にHTTP/2のhealth/loginを確認。起動初期のエラーを成功扱いせず、webのhealthcheckと検証側のbounded waitを使用する。共有Caddyはwebの起動成功へ依存させず、guest入口を通常版障害へ連動させない。
+- 配布方式のリハーサルは既検証image `sha256:85fc47086ad3448877678018f99556b08e7a04c2814599fbc44f524fbf90b921`（実装commit `e1e9d45`、amd64）で行った。save/load前後のimage IDとCPUが一致。archive 218,586,624 bytes、SHA-256 `879525cbf5395105625ae517952f06cc1eeaaa755548eee98d4ca7018effc6b6`。これはMac内の試験であり、最終mainの配布imageでもAWS移送済み成果物でもない。
+- この追加候補を含む最終PR CIとexact-head imageの通常ブラウザQAは、結果をPRへ対応づけて報告する。AWSの設定適用・停止・backup・復元・移送・配備は未実施。具体的な判断欄は [backup・切替計画](aws_backup_cutover_plan.md) に残す。

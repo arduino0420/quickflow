@@ -41,9 +41,9 @@ ruby -rsecurerandom -e '
 '
 ```
 
-`COMPOSE_PROJECT_NAME`、image、4つのvolume名が他の作業と重ならないこと、公開先が127.0.0.1であることを確認する。`QF_HTTP_PORT`の初期値18080または`QF_HTTPS_PORT`の初期値18443が使用中なら既存サービスを止めず未使用ポートに変える。秘密値を含む`docker compose config`全文を共有ログへ出さない。
+`COMPOSE_PROJECT_NAME`、image、4つのvolume名が他の作業と重ならないこと、公開先が127.0.0.1であることを確認する。`QF_HTTP_BIND`の初期値127.0.0.1:18080または`QF_HTTPS_BIND`の初期値127.0.0.1:18443が使用中なら既存サービスを止めず未使用ポートに変える。秘密値を含む`docker compose config`全文を共有ログへ出さない。
 
-DB/PDF/Caddyは`external: true`のvolumeを明示指定する。空volumeへの意図しない置換を防ぐため、Composeが勝手に作成しない。次は**新規Mac初回だけ**。既存名を検出したら止まり、由来を確認する。既存volumeの初期化や削除はしない。
+DB/PDF/Caddyは`external: true`のvolumeを明示指定する。通常app networkとCaddyの追加接続先もexternal名で指定する。追加接続先はMacでは空のinternal network、AWSでは既存guest networkであり、MacにguestアプリやDBを作るものではない。空volumeへの意図しない置換を防ぐため、Composeが勝手に作成しない。次は**新規Mac初回だけ**。既存名を検出したら止まり、由来を確認する。既存volumeの初期化や削除はしない。
 
 ```sh
 python3 - <<'PYVOLUME'
@@ -58,8 +58,16 @@ for name in names:
     result = subprocess.run(docker + ['volume', 'inspect', name], capture_output=True)
     if result.returncode == 0:
         raise SystemExit('Existing volume: stop and inspect ' + name)
+networks = [values[k] for k in ('QF_APP_NETWORK', 'QF_GUEST_NETWORK')]
+for name in networks:
+    result = subprocess.run(docker + ['network', 'inspect', name], capture_output=True)
+    if result.returncode == 0:
+        raise SystemExit('Existing network: stop and inspect ' + name)
 for name in names:
     subprocess.run(docker + ['volume', 'create', name], check=True)
+subprocess.run(docker + ['network', 'create', networks[0]], check=True)
+subprocess.run(docker + ['network', 'create', '--internal', '--opt',
+                        'com.docker.network.bridge.inhibit_ipv4=true', networks[1]], check=True)
 PYVOLUME
 
 docker --context desktop-linux compose config --quiet
@@ -70,7 +78,7 @@ docker --context desktop-linux compose exec -T db psql -U quickflow -d quickflow
   -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
 # 新規の空DBと照合した場合だけ、明示的にschemaを作る。
 docker --context desktop-linux compose run --rm --no-deps --entrypoint bin/rails web db:prepare
-docker --context desktop-linux compose up -d
+docker --context desktop-linux compose up -d --wait --wait-timeout 120
 ```
 
 起動自体に`db:prepare`は含めない。既存本番DockerfileのentrypointはCompose側で無効化し、Thrust→Railsを明示する。将来migrationが増えた場合は、対象DB・変更内容・バックアップを確認して別工程で適用する。単なる再起動にDB変更を混ぜない。
@@ -83,16 +91,16 @@ docker --context desktop-linux compose up -d
 code .
 # VS Codeでコードを編集・保存
 docker --context desktop-linux compose build web
-docker --context desktop-linux compose up -d
-# ブラウザ確認。入口は https://localhost:<.envのQF_HTTPS_PORT> 。
+docker --context desktop-linux compose up -d --wait --wait-timeout 120
+# ブラウザ確認。入口は https://localhost:<.envのQF_HTTPS_BIND末尾のport> 。
 docker --context desktop-linux compose ps
 # 作業後は停止だけ。volumeやPDFは残す。
 docker --context desktop-linux compose stop
 # 次回
-docker --context desktop-linux compose up -d
+docker --context desktop-linux compose up -d --wait --wait-timeout 120
 ```
 
-再ビルドしてもDB/PDFはexternal volumeを継続使用する。Compose名やvolume名を変更すると別データを指し得るので、更新時に勝手に変えない。`down -v`、volume prune、DB drop/resetを日常手順にしない。ソースはimageへ取り込むため、編集直後の自動反映ではない。
+再ビルドしてもDB/PDFはexternal volumeを継続使用する。Caddyだけが2本のnetworkへ接続し、web/dbはapp networkだけを使う。Macは`QF_CADDY_EXTRA_CONFIG=/dev/null`のままにする。Compose名やvolume名を変更すると別データを指し得るので、更新時に勝手に変えない。`down -v`、volume prune、DB drop/resetを日常手順にしない。ソースはimageへ取り込むため、編集直後の自動反映ではない。
 
 ## RSpec・品質検査
 
@@ -109,7 +117,7 @@ READMEの括弧付きテストブロックを**全体で**実行する。新規�
 - Macも`https://localhost`を使う。本番のSecure session設定ではHTTPでsessionが発行されずCSRF検証が通らないため、cookie設定を弱めずHTTPSへ揃える。MacはCaddy内蔵CA、AWSの公開hostnameは公開CAを使う。ローカルCAは通常ブラウザから未信頼なので、初回の信頼方法は利用者の判断・明示承認が必要。OSの信頼ストアや通常Chromeは自動変更しない。API/通信検証はCaddyの公開CAだけを指定した専用クライアントで行う。検証専用Chromeの公開鍵限定例外も、対象証明書を照合して別承認後だけ使用する。HTTPの/up成功はログイン成功ではない。
 - Mac/AWSとも調査時x86_64だが、Docker VM/Linux、EBS/ローカル保存、ネットワーク、資源、実データ量は異なる。
 - 現AWS通常版と最新mainには既存Gem差がある。今回Gemを更新していないことと、現本番と全依存が同一であることは別。
-- AWSは通常版とguestが共有Caddyを使う。今回の通常専用Caddyfileで置換するとguest経路を失うため、**このファイル一式をAWSで無条件にupしない**。入口・ネットワーク引継ぎは[AWS計画](aws_compose_migration_plan.md)の別承認ゲート。
+- AWSは通常版とguestが共有Caddyを使う。共通Caddyfileは通常HTTPSと引数付きimportを持ち、AWSは固定 `/etc/caddy/aws-shared.caddy` で現通常HTTP301・guest経路を引き継ぐ。Macは `/dev/null` を選びguestを作らない。Caddyだけがappとguest_routeの両external networkへ接続する。AWS既存経路の意味同値と隔離mock検証は実施したが、実ACME更新・AWS切替は未実施。**ファイル一式をAWSで無条件にupしない**。固定import/引数/CA/host/upstream/ファイルhash/validateを確認し、[AWS計画](aws_compose_migration_plan.md)と[切替計画](aws_backup_cutover_plan.md)の条件を満たす。
 
 ## GitHubからAWSへ進める条件
 
@@ -117,13 +125,13 @@ READMEの括弧付きテストブロックを**全体で**実行する。新規�
 2. 最新PRのRSpec/system/監査/lint・共通image検証と差分レビューを確認する。PRの仮merge commitと、承認後に確定するmain commitは区別する。
 3. ユーザーの別承認後にmainへマージし、確定main commitのCIを確認する。普段のquickflowへの取り込みも別承認。
 4. 配備候補は確定mainの追跡ファイルだけから、未コミット・未追跡・無視対象のローカルファイルを混入させない新しいbuild場所で作る。配備commit、Dockerfile/Compose/Caddyfile/lockのhash、CPU、生成image IDを記録する。本番の秘密やDB/PDFはbuild contextへ入れない。
-5. 候補imageを検証後、承認済みの配布先registryに保存し、その**同じ成果物**の `repository@sha256:...` という配備用digestを確定する。この段階ではAWSへの転送・取得・切替を行わない。AWSで再buildしたり、可変タグだけで選んだりしない。別imageを作った場合は再検証する。
-6. 同じcommitのCompose/Caddyfileを使用し、AWSとの差は承認済みの環境値・秘密情報・保存先・公開先に限定する。秘密値はGitへ入れず、非秘密の設定仕様はGitで管理する。配備前後にimage digestと実image ID、構成ファイルhash、起動コマンド、networkと保存先を記録・照合する。不一致や由来不明があれば自動修正せず停止して調査する。
+5. その候補image自体を検証し、固有commit tagとimage IDを記録する。基本案は `docker save` → 既存のホスト鍵照合済みSSH → tar SHA-256照合 → AWSでload → image ID照合。新規registryや常設credentialは必須にしない。最終配布imageの保存・転送は未実施（旧検証imageのMac内save/loadリハーサルは成功）。tar hash/image IDはregistry digestとは区別する。AWSで再buildしたり可変タグだけで選んだりせず、別imageを作ったら再検証する。
+6. 同じcommitのCompose/Caddyfileを使用し、AWSとの差は承認済みの環境値・秘密情報・保存先・公開先に限定する。秘密値はGitへ入れず、非秘密の設定仕様はGitで管理する。配備前後にtar SHA-256・固有tagと実image ID、構成ファイルhash、起動コマンド、networkと保存先を記録・照合する。不一致や由来不明があれば自動修正せず停止して調査する。
 7. AWSのDB/PDF/queue、backup隔離復元、必要migration、共有Caddyとguest影響、切戻しを確認し、具体的な本番変更の承認を得る。既存共有Caddyの引継ぎが未解決なら配備へ進まない。
-8. 具体的な本番変更の承認後、その範囲だけAWSで検証済みimageをdigest指定で取得・配備し、本番で機能・保存・jobと版の一致を確認する。
+8. 前提条件と具体的な通常停止時間・共有Caddyの短時間guest影響を承認後、検証済みの同一imageを保存・転送・照合・loadする。確定project/envを使い `--pull never` / `--no-build` を基本として[切替計画](aws_backup_cutover_plan.md)の個別手順で配備し、本番で機能・保存・job・guest経路と版の一致を確認する。
 
-`QF_SOURCE_REVISION`のimageラベルは識別の補助であり、設定者の自己申告である。ラベル一致だけではソースのclean状態やimage内容の一致を保証しない。ソースからの生成記録、内容hash、配布digestと組み合わせる。
+`QF_SOURCE_REVISION`のimageラベルは識別の補助であり、設定者の自己申告である。ラベル一致だけではソースのclean状態やimage内容の一致を保証しない。ソースからの生成記録、内容hash、tar SHA-256、実image IDと組み合わせる。
 
-**現在のCIは検査と一時的なimage buildまでで、imageの永続保存・registryへの配布・AWS適用は未実装。** 上記は目標の配備手順であり、配布先・アクセス権・秘密情報の供給と具体的な切替手順は次工程で確定する。AWSの稼働構成もまだ移行していないため、ローカルから本番までの一貫運用が完成したとは扱わない。
+**現在のCIは検査と一時的なimage buildまで。配備候補の永続保存・SSH転送・AWS load/適用は未実施。** 2026-11-10の候補Caddy設定は、現AWS原本とのadapt JSON完全同値（Caddy2.11.7）と独立mock HTTPS16項目を確認した。CA欠落はadaptだけでは受理され得るためvalidateと固定import/hash/期待JSON照合が必要。Mac通常HTTPSはHTTP/2 health 200を確認し、web healthcheckと検証コマンドの準備完了待ちを追加した。共有Caddyの起動はwebの健康判定へ依存させないが、変更後の最終QA/CIはこれから。実ACME更新やAWS guest切替疎通は未確認であり、ローカルから本番までの一貫運用完了とは扱わない。
 
 「ローカル簡素化」「main統合」「普段のフォルダ同期」「AWS適用・稼働確認」は別々に報告する。未確認や保留を残したまま全完了とはしない。

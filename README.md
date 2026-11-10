@@ -119,7 +119,7 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 code .
 # VS Codeで編集・保存した後
 docker --context desktop-linux compose build web
-docker --context desktop-linux compose up -d
+docker --context desktop-linux compose up -d --wait --wait-timeout 120
 # https://localhost:18443 で確認（.envのHTTPSポート。証明書の信頼方法は手順書参照）
 docker --context desktop-linux compose stop
 ```

@@ -40,27 +40,47 @@ services:
     networks: [app]
     depends_on:
       db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --show-error, http://localhost/up]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
     restart: unless-stopped
   caddy:
     image: ${QF_CADDY_IMAGE:-caddy:2@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af}
     environment:
       QF_SITE_ADDRESS: ${QF_SITE_ADDRESS:-https://localhost}
+      QF_CADDY_EXTRA_CONFIG: ${QF_CADDY_EXTRA_CONFIG:-/dev/null}
+      QF_SHARED_NORMAL_HOST: ${QF_SHARED_NORMAL_HOST:-}
+      QF_GUEST_HOST: ${QF_GUEST_HOST:-}
+      QF_GUEST_UPSTREAM: ${QF_GUEST_UPSTREAM:-}
+      QF_GUEST_CA_FILE: ${QF_GUEST_CA_FILE:-}
     volumes:
       - type: bind
         source: ./docker/Caddyfile
         target: /etc/caddy/Caddyfile
         read_only: true
         bind: {create_host_path: false}
+      - type: bind
+        source: ./docker/aws-shared.caddy
+        target: /etc/caddy/aws-shared.caddy
+        read_only: true
+        bind: {create_host_path: false}
       - caddy_data:/data
       - caddy_config:/config
     ports:
-      - '${QF_BIND_ADDRESS:-127.0.0.1}:${QF_HTTP_PORT:-18080}:80'
-      - '${QF_BIND_ADDRESS:-127.0.0.1}:${QF_HTTPS_PORT:-18444}:443'
-    networks: [app]
-    depends_on: [web]
+      - '${QF_HTTP_BIND:-127.0.0.1:18080}:80'
+      - '${QF_HTTPS_BIND:-127.0.0.1:18443}:443'
+    networks: [app, guest_route]
     restart: unless-stopped
 networks:
-  app: {}
+  app:
+    external: true
+    name: ${QF_APP_NETWORK:?Select the existing or explicitly created app network}
+  guest_route:
+    external: true
+    name: ${QF_GUEST_NETWORK:?Select the existing guest network or an empty local internal network}
 volumes:
   db_data:
     external: true
