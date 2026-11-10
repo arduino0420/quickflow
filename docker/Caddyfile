@@ -1,0 +1,8 @@
+# Local localhost uses Caddy internal TLS; public hostnames use public certificates.
+# The normal HTTPS route is common. Existing AWS-only routes are imported explicitly.
+{$QF_SITE_ADDRESS} {
+	reverse_proxy web:80
+}
+
+# Compose supplies /dev/null locally; AWS must select the fixed mounted file.
+import {$QF_CADDY_EXTRA_CONFIG} {$QF_SHARED_NORMAL_HOST} {$QF_GUEST_HOST} {$QF_GUEST_UPSTREAM} {$QF_GUEST_CA_FILE}

@@ -1,15 +1,17 @@
 # syntax=docker/dockerfile:1
 # check=error=true
 
-# This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
+# Shared Mac/AWS release image. Edit in the local VS Code checkout, then rebuild.
+# Native Ruby/CI runs RSpec; no separate test/development Dockerfile is needed.
+# For standalone Docker use:
 # docker build -t quickflow .
 # docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name quickflow quickflow
 
-# For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
+# compose.yaml uses this image for normal operation and bypasses automatic db:prepare.
 
 # Make sure RUBY_VERSION matches the Ruby version in .ruby-version
 ARG RUBY_VERSION=4.0.6
-FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
+FROM docker.io/library/ruby:$RUBY_VERSION-slim@sha256:58479f164d5947f852da27a4436c89bb986a811f959c40552bc7f6ccaabcc9c9 AS base
 
 # Rails app lives here
 WORKDIR /rails
@@ -24,7 +26,7 @@ RUN apt-get update -qq && \
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development" \
+    BUNDLE_WITHOUT="development:test" \
     LD_PRELOAD="/usr/local/lib/libjemalloc.so"
 
 # Throw-away build stage to reduce size of final image

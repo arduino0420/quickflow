@@ -1,103 +1,96 @@
-# Local only. Use bin/local; never combine these standalone Compose files.
-# The wrapper fixes the local Docker endpoint, project, env file and DB guards.
+# One normal-application topology for Mac and AWS. Guest migration is deferred.
+# Provision new local data explicitly. AWS migration requires separate approval.
 services:
   db:
-    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    image: ${QF_POSTGRES_IMAGE:-postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336}
     environment:
       POSTGRES_USER: quickflow
-      POSTGRES_PASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
-      POSTGRES_DB: quickflow_development
+      POSTGRES_PASSWORD: ${QF_DB_PASSWORD:?Set an independent database password}
+      POSTGRES_DB: quickflow_production
     volumes:
       - db_data:/var/lib/postgresql
-    networks: [isolated]
+    networks: [app]
     healthcheck:
-      test: [CMD-SHELL, "pg_isready -U quickflow -d quickflow_development"]
+      test: [CMD-SHELL, "pg_isready -U quickflow -d quickflow_production"]
       interval: 3s
       timeout: 3s
-      retries: 20
+      retries: 30
+    restart: unless-stopped
   web:
-    image: ${QF_DEV_IMAGE:-quickflow-local-dev:a3acc0f6}
+    image: ${QF_IMAGE:?Set the immutable release image reference}
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
       labels:
-        io.quickflow.local.mode: ${QF_LOCAL_MODE:?Use bin/local}
-        io.quickflow.local.source: ${QF_SOURCE_SHA:?Use bin/local}
-        io.quickflow.local.dependencies: ${QF_DEPS_SHA:?Use bin/local}
-        io.quickflow.local.lock: ${QF_LOCK_SHA:?Use bin/local}
+        org.opencontainers.image.revision: ${QF_SOURCE_REVISION:?Set the source revision}
     init: true
-    # No implicit db:prepare. bin/local init/migrate is the explicit DB step.
+    # Do not inherit the Dockerfile entrypoint's automatic db:prepare.
     entrypoint: []
-    command: ["./bin/rails", "server", "-b", "0.0.0.0"]
+    command: [./bin/thrust, ./bin/rails, server]
+    env_file: ['${QF_APP_ENV_FILE:?Set the app-only private environment file}']
     environment:
-      RAILS_ENV: development
+      RAILS_ENV: production
       PGHOST: db
-      PGUSER: quickflow
-      PGPASSWORD: ${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}
-      DATABASE_URL: postgresql://quickflow:${QF_LOCAL_DB_PASSWORD:?Run bin/local setup first}@db/quickflow_development
-      SECRET_KEY_BASE: ${QF_LOCAL_SECRET_KEY_BASE:?Run bin/local setup first}
-      QF_LOCAL_ONLY: "1"
-      QF_LOCAL_STACK: quickflow-local-v1
-      QF_LOCAL_MODE: dev
+      QUICKFLOW_DATABASE_PASSWORD: ${QF_DB_PASSWORD:?Set the database password}
+      SECRET_KEY_BASE: ${QF_SECRET_KEY_BASE:?Set an independent session secret}
+      SOLID_QUEUE_IN_PUMA: 'true'
+      QUICKFLOW_GRADING_RECOVERY_ENABLED: 'true'
     volumes:
-      # Read-only code mounts still reflect edits made by the host editor.
-      # Never mount the repository/config root: it may contain master.key.
-      - ./app:/rails/app:ro
-      - ./lib:/rails/lib:ro
-      - ./db:/rails/db:ro
-      - ./public:/rails/public:ro
-      - ./spec:/rails/spec:ro
-      - ./config/environments:/rails/config/environments:ro
-      - ./config/locales:/rails/config/locales:ro
-      - ./config/application.rb:/rails/config/application.rb:ro
-      - ./config/boot.rb:/rails/config/boot.rb:ro
-      - ./config/environment.rb:/rails/config/environment.rb:ro
-      - ./config/routes.rb:/rails/config/routes.rb:ro
-      - ./config/database.yml:/rails/config/database.yml:ro
-      - ./config/puma.rb:/rails/config/puma.rb:ro
-      - ./config/queue.yml:/rails/config/queue.yml:ro
-      - ./config/recurring.yml:/rails/config/recurring.yml:ro
-      - ./config/storage.yml:/rails/config/storage.yml:ro
-      - ./config/cache.yml:/rails/config/cache.yml:ro
-      - ./config/cable.yml:/rails/config/cable.yml:ro
-      - ./config/importmap.rb:/rails/config/importmap.rb:ro
-      - ./config/javascript_dependencies.json:/rails/config/javascript_dependencies.json:ro
-      - ./config/initializers/answer_draft_request_limit.rb:/rails/config/initializers/answer_draft_request_limit.rb:ro
-      - ./config/initializers/assets.rb:/rails/config/initializers/assets.rb:ro
-      - ./config/initializers/content_security_policy.rb:/rails/config/initializers/content_security_policy.rb:ro
-      - ./config/initializers/filter_parameter_logging.rb:/rails/config/initializers/filter_parameter_logging.rb:ro
-      - ./config/initializers/http_load_test.rb:/rails/config/initializers/http_load_test.rb:ro
-      - ./config/initializers/inflections.rb:/rails/config/initializers/inflections.rb:ro
-      - ./config/initializers/production_demo.rb:/rails/config/initializers/production_demo.rb:ro
-      - ./config/initializers/submission_request_body_limit.rb:/rails/config/initializers/submission_request_body_limit.rb:ro
-      # Initializers are individually allowlisted; add new ones explicitly.
-      - ./docker/local:/local:ro
-      - ./docker/local/fake_ai_initializer.rb:/rails/config/initializers/zz_local_fake_ai.rb:ro
-      - app_tmp:/rails/tmp
-      - app_log:/rails/log
       - storage:/rails/storage
-    networks: [isolated]
+    networks: [app]
     depends_on:
-      db:
-        condition: service_healthy
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --show-error, http://localhost/up]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
   caddy:
-    image: caddy:2@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
+    image: ${QF_CADDY_IMAGE:-caddy:2@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af}
+    environment:
+      QF_SITE_ADDRESS: ${QF_SITE_ADDRESS:-https://localhost}
+      QF_CADDY_EXTRA_CONFIG: ${QF_CADDY_EXTRA_CONFIG:-/dev/null}
+      QF_SHARED_NORMAL_HOST: ${QF_SHARED_NORMAL_HOST:-}
+      QF_GUEST_HOST: ${QF_GUEST_HOST:-}
+      QF_GUEST_UPSTREAM: ${QF_GUEST_UPSTREAM:-}
+      QF_GUEST_CA_FILE: ${QF_GUEST_CA_FILE:-}
     volumes:
-      - ./docker/local/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - type: bind
+        source: ./docker/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./docker/aws-shared.caddy
+        target: /etc/caddy/aws-shared.caddy
+        read_only: true
+        bind: {create_host_path: false}
       - caddy_data:/data
       - caddy_config:/config
     ports:
-      - "127.0.0.1:18080:80"
-    networks: [isolated, ingress]
-    depends_on: [web]
+      - '${QF_HTTP_BIND:-127.0.0.1:18080}:80'
+      - '${QF_HTTPS_BIND:-127.0.0.1:18443}:443'
+    networks: [app, guest_route]
+    restart: unless-stopped
 networks:
-  isolated:
-    internal: true
-  ingress: {}
+  app:
+    external: true
+    name: ${QF_APP_NETWORK:?Select the existing or explicitly created app network}
+  guest_route:
+    external: true
+    name: ${QF_GUEST_NETWORK:?Select the existing guest network or an empty local internal network}
 volumes:
   db_data:
-  app_tmp:
-  app_log:
+    external: true
+    name: ${QF_DB_VOLUME:?Select the existing or explicitly created DB volume}
   storage:
+    external: true
+    name: ${QF_STORAGE_VOLUME:?Select the existing or explicitly created PDF volume}
   caddy_data:
+    external: true
+    name: ${QF_CADDY_DATA_VOLUME:?Select the certificate volume}
   caddy_config:
+    external: true
+    name: ${QF_CADDY_CONFIG_VOLUME:?Select the Caddy configuration volume}

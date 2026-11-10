@@ -110,78 +110,189 @@ jobs:
           # REDIS_URL: redis://localhost:6379/0
         run: bin/rails db:test:prepare && bundle exec rspec
 
-  docker_check:
-    name: Production-image isolated HTTP check
+  docker_image:
+    name: Shared Compose image and runtime smoke
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      # No production credentials, external AI key, registry push or deployment.
-      # The wrapper fixes the Compose file/project/connection and accepts only
-      # a local Unix Docker endpoint. Build and smoke use the same image.
-      - name: Build the production application image
-        run: bin/local check build
-
-      - name: Prepare a new isolated database and storage
-        run: bin/local check init
-
-      - name: Start the prepared stack without implicit migrations
-        run: bin/local check up
-
-      - name: Verify runtime identity and isolation
-        run: bin/local check verify
-
-      - name: Check actual HTTPS flows with synthetic AI responses
-        run: bin/local check smoke
-
-      # Never print raw Rails logs, fixture credentials, runtime.env or private JSON.
-      - name: Show allowlisted failure diagnostics
-        if: failure()
+      # The same three ordinary services are used; no test Dockerfile/mode,
+      # production credentials, fake AI initializer, registry push or deployment.
+      - name: Prepare new CI-only settings and external volumes
         run: |
-          python3 - <<'PYDIAG'
-          import json
-          import re
-          from pathlib import Path
-          root = Path('.local/check/evidence')
-          fields = {
-              'build.json': ('image', 'source', 'lock'),
-              'isolation.json': ('mode', 'project', 'containers', 'network_configuration_observed', 'required_services_verified'),
-              'smoke.json': ('mode', 'image', 'passed', 'inprocess_checked', 'real_http_checked', 'real_ai', 'browser_canvas'),
+          python3 - <<'PYSETUP'
+          import os, pathlib, secrets, subprocess
+          root = pathlib.Path.cwd()
+          project = 'quickflow-ci-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          settings = {
+              'COMPOSE_PROJECT_NAME': project,
+              'QF_IMAGE': 'quickflow:' + os.environ['GITHUB_SHA'],
+              'QF_SOURCE_REVISION': os.environ['GITHUB_SHA'],
+              'QF_DB_PASSWORD': secrets.token_hex(32),
+              'QF_SECRET_KEY_BASE': secrets.token_hex(64),
+              'QF_APP_ENV_FILE': '.local/app.env',
+              'QF_SITE_ADDRESS': 'https://localhost',
+              'QF_HTTP_BIND': '127.0.0.1:18080',
+              'QF_HTTPS_BIND': '127.0.0.1:18443',
+              'QF_DB_VOLUME': project + '-db',
+              'QF_STORAGE_VOLUME': project + '-storage',
+              'QF_CADDY_DATA_VOLUME': project + '-caddy-data',
+              'QF_CADDY_CONFIG_VOLUME': project + '-caddy-config',
+              'QF_APP_NETWORK': project + '-app',
+              'QF_GUEST_NETWORK': project + '-guest-routing',
+              'QF_CADDY_EXTRA_CONFIG': '/dev/null',
           }
-          for name, keys in fields.items():
-              path = root / name
-              if not path.is_file():
-                  print(name + ': not produced')
-                  continue
-              try:
-                  data = json.loads(path.read_text())
-                  safe = {k: v for k in keys if (v := data.get(k)) is not None and
-                          (isinstance(v, (bool, int)) or
-                           isinstance(v, str) and re.fullmatch(r'[a-z0-9:_-]{1,128}', v))}
-                  print(name + ': ' + json.dumps(safe))
-              except (ValueError, OSError, AttributeError):
-                  print(name + ': unreadable summary')
-          for name in ('inprocess.log', 'http-smoke.log'):
-              path = root / name
-              checks = []
-              if path.is_file():
-                  for line in path.read_text(errors='replace').splitlines():
-                      try:
-                          data = json.loads(line)
-                          if isinstance(data, dict) and isinstance(data.get('check'), str) and re.fullmatch(r'[a-z0-9_]{1,100}', data['check']) and isinstance(data.get('passed'), bool):
-                              checks.append({'check': data['check'], 'passed': data['passed']})
-                      except ValueError:
-                          pass
-              print(name + ': structured check results only')
-              for check in checks[-40:]:
-                  print(json.dumps(check))
-          PYDIAG
+          volumes = [settings[key] for key in ('QF_DB_VOLUME', 'QF_STORAGE_VOLUME', 'QF_CADDY_DATA_VOLUME', 'QF_CADDY_CONFIG_VOLUME')]
+          for volume in volumes:
+              result = subprocess.run(['docker', 'volume', 'inspect', volume], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              if result.returncode == 0:
+                  raise SystemExit('Refusing an existing CI volume')
+          for key in ('QF_APP_NETWORK', 'QF_GUEST_NETWORK'):
+              result = subprocess.run(['docker', 'network', 'inspect', settings[key]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              if result.returncode == 0:
+                  raise SystemExit('Refusing an existing CI network')
+          (root / '.local').mkdir(mode=0o700, exist_ok=True)
+          with open(root / '.env', 'x') as stream:
+              stream.write(''.join(key + '=' + value + '\n' for key, value in settings.items()))
+          (root / '.env').chmod(0o600)
+          with open(root / '.local/app.env', 'x') as stream:
+              stream.write('# No production keys or external AI credentials.\n')
+          (root / '.local/app.env').chmod(0o600)
+          for volume in volumes:
+              subprocess.run(['docker', 'volume', 'create', '--label', 'io.quickflow.ci=' + project, volume], check=True, stdout=subprocess.DEVNULL)
+          subprocess.run(['docker', 'network', 'create', '--label', 'io.quickflow.ci=' + project, settings['QF_APP_NETWORK']], check=True, stdout=subprocess.DEVNULL)
+          subprocess.run(['docker', 'network', 'create', '--internal', '--opt', 'com.docker.network.bridge.inhibit_ipv4=true', '--label', 'io.quickflow.ci=' + project, settings['QF_GUEST_NETWORK']], check=True, stdout=subprocess.DEVNULL)
+          PYSETUP
+          docker compose config --quiet
 
-      - name: Stop only this isolated stack, retaining evidence
+      - name: Build the shared application image
+        run: docker compose build web
+
+      - name: Verify the release image identity and excluded local tooling
+        run: |
+          test "$(docker image inspect "quickflow:$GITHUB_SHA" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
+          expected_lock="$(sha256sum Gemfile.lock | cut -d ' ' -f 1)"
+          actual_lock="$(docker run --rm --network none --entrypoint ruby "quickflow:$GITHUB_SHA" -rdigest -e 'puts Digest::SHA256.file("Gemfile.lock").hexdigest')"
+          test "$expected_lock" = "$actual_lock"
+          docker run --rm --network none --entrypoint ruby "quickflow:$GITHUB_SHA" -e '
+            abort "Ruby mismatch" unless RUBY_VERSION == File.read(".ruby-version").strip
+            abort "Unexpected test tools" unless %w[rspec-core capybara selenium-webdriver].all? { |name| Gem::Specification.find_all_by_name(name).empty? }
+            abort "Unexpected private/local files" if %w[config/master.key .env .local docker/local bin/local].any? { |path| File.exist?(path) }
+            puts "Image identity and exclusion checks passed"
+          '
+
+      - name: Prepare only the new empty CI database
+        run: |
+          docker compose up -d --wait db
+          test "$(docker compose exec -T db psql -U quickflow -d quickflow_production -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';")" = 0
+          docker compose run --rm --no-deps --entrypoint bin/rails web db:prepare > .local/db-prepare.log 2>&1
+
+      - name: Start the ordinary app and verify real HTTPS and Solid Queue
+        run: |
+          docker compose up -d --wait --wait-timeout 120 web caddy
+          # Export only Caddy's public local CA, never its private key.
+          for attempt in $(seq 1 30); do
+            if docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .local/ca.crt > /dev/null 2>&1; then
+              break
+            fi
+            test "$attempt" != 30
+            sleep 2
+          done
+          test -s .local/ca.crt
+          curl --fail --silent --show-error --cacert .local/ca.crt --retry 30 --retry-all-errors --retry-delay 1 --max-time 10 https://localhost:18443/up -o /dev/null
+          for attempt in $(seq 1 30); do
+            if docker compose exec -T web bin/rails runner 'abort "Wrong adapter" unless Rails.application.config.active_job.queue_adapter == :solid_queue; abort "No recent supervisor" unless SolidQueue::Process.where(kind: ["Supervisor", "Supervisor(fork)"]).where("last_heartbeat_at > ?", 1.minute.ago).exists?; puts "Solid Queue supervisor is live"' > .local/worker-check.log 2>&1; then
+              break
+            fi
+            test "$attempt" != 30
+            sleep 2
+          done
+          docker compose exec -T web ruby -e 'File.write("/rails/storage/.ci-persistence-check", "shared-compose-storage")'
+          docker compose stop
+          docker compose up -d --wait --wait-timeout 120 db web caddy
+          curl --fail --silent --show-error --cacert .local/ca.crt --retry 30 --retry-all-errors --retry-delay 1 --max-time 10 https://localhost:18443/up -o /dev/null
+          docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .local/ca-after-restart.crt > /dev/null
+          cmp .local/ca.crt .local/ca-after-restart.crt
+          docker compose exec -T web ruby -e 'abort "Storage was not retained" unless File.read("/rails/storage/.ci-persistence-check") == "shared-compose-storage"'
+          test "$(docker compose exec -T db psql -U quickflow -d quickflow_production -Atc 'SELECT count(*) FROM schema_migrations;')" -gt 0
+
+      - name: Verify shared ingress config without a guest app
+        run: |
+          # Validate the same Caddy files using reserved test names and the public local CA.
+          # This separate CLI process does not reload the running server or issue certificates.
+          shared=(
+            -e QF_SITE_ADDRESS=https://normal.invalid
+            -e QF_CADDY_EXTRA_CONFIG=/etc/caddy/aws-shared.caddy
+            -e QF_SHARED_NORMAL_HOST=normal.invalid
+            -e QF_GUEST_HOST=guest.invalid
+            -e QF_GUEST_UPSTREAM=192.0.2.3:18443
+            -e QF_GUEST_CA_FILE=/data/caddy/pki/authorities/local/root.crt
+          )
+          docker compose exec -T "${shared[@]}" caddy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > .local/shared-caddy.json
+          docker compose exec -T "${shared[@]}" caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile > .local/shared-validation.log 2>&1
+          python3 - <<'PYINGRESS'
+          import json
+          j=json.load(open('.local/shared-caddy.json'))
+          normal='normal.invalid'; guest='guest.invalid'
+          servers=j['apps']['http']['servers'].values()
+          https=next(s for s in servers if s['listen']==[':443'])
+          http=next(s for s in servers if s['listen']==[':80'])
+          assert len(https['routes'])==2 and len(http['routes'])==1
+
+          def route(server,host):
+              return next(r for r in server['routes'] if r.get('match')==[{'host':[host]}])['handle'][0]['routes']
+          ng=route(https,normal)
+          assert ng==[{'handle':[{'handler':'reverse_proxy','upstreams':[{'dial':'web:80'}]}]}]
+          redirect=route(http,normal)[0]['handle'][0]
+          assert redirect['status_code']==301 and redirect['headers']['Location']==['https://'+normal+'{http.request.uri}']
+          g=route(https,guest)
+          assert g[0]['handle']==[{'handler':'request_body','max_size':64000}]
+          expected=['Forwarded','X-Forwarded-For','X-Forwarded-Proto','X-Forwarded-Host','X-Real-Ip','X-Url-Scheme','Front-End-Https']
+          assert len(g)==9
+          for r,key in zip(g[1:8],expected):
+              assert r['match']==[{'header':{key:['*']}}]
+              assert r['handle']==[{'handler':'static_response','body':'Untrusted forwarding header','status_code':400}]
+          p=g[8]['handle'][0]
+          assert p['handler']=='reverse_proxy' and p['upstreams']==[{'dial':'192.0.2.3:18443'}]
+          assert p['headers']['request']=={'delete':['Forwarded','X-Forwarded-*','X-Real-IP','X-Url-Scheme','Front-End-Https'],'set':{'Host':[guest]}}
+          assert p['transport']=={'protocol':'http','dial_timeout':2000000000,'response_header_timeout':10000000000,'max_conns_per_host':2,'tls':{'server_name':guest,'ca':{'provider':'file','pem_files':['/data/caddy/pki/authorities/local/root.crt']}}}
+          assert next(p for p in j['apps']['tls']['automation']['policies'] if p.get('subjects')==[guest])=={'subjects':[guest],'issuers':[{'module':'acme','ca':'https://acme-v02.api.letsencrypt.org/directory'}]}
+          print('Shared ingress structure verified (no network requests).')
+          PYINGRESS
+          # Missing values must not silently produce a partial shared ingress.
+          for key in QF_SHARED_NORMAL_HOST QF_GUEST_HOST QF_GUEST_UPSTREAM QF_GUEST_CA_FILE; do
+            if docker compose exec -T "${shared[@]}" -e "$key=" caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile > .local/shared-missing.log 2>&1; then
+              echo "Unexpected success with missing $key" >&2
+              exit 1
+            fi
+          done
+          python3 - <<'PYNETWORK'
+          import json, pathlib, subprocess
+          values = dict(line.split('=', 1) for line in pathlib.Path('.env').read_text().splitlines() if line and not line.startswith('#'))
+          for service in ('db', 'web', 'caddy'):
+              cid = subprocess.check_output(['docker', 'compose', 'ps', '-q', service], text=True).strip()
+              data = json.loads(subprocess.check_output(['docker', 'inspect', cid]))[0]
+              expected = {values['QF_APP_NETWORK']}
+              if service == 'caddy':
+                  expected.add(values['QF_GUEST_NETWORK'])
+              assert set(data['NetworkSettings']['Networks']) == expected, service
+          network = json.loads(subprocess.check_output(['docker', 'network', 'inspect', values['QF_GUEST_NETWORK']]))[0]
+          assert network['Internal'] and len(network['Containers']) == 1
+          print('Only Caddy joins the empty internal guest-routing network.')
+          PYNETWORK
+
+      # Never dump docker compose config, runtime env, Rails logs or fixture secrets.
+      - name: Show only service names and states on failure
+        if: failure()
+        run: docker compose ps --format '{{.Service}} {{.State}}'
+
+      - name: Stop this CI project and retain its volumes
         if: always()
-        run: bin/local check stop
+        run: |
+          if test -f .env; then
+            docker compose stop
+          fi

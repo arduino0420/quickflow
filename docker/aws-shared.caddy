@@ -1,0 +1,45 @@
+# Preserve the existing shared AWS ingress without starting a guest app locally.
+# Import only as /etc/caddy/aws-shared.caddy with normal host, guest host, upstream, public CA path.
+http://{args[0]} {
+	redir https://{args[0]}{uri} permanent
+}
+
+https://{args[1]} {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+		}
+	}
+	request_body {
+		max_size 64KB
+	}
+	@qff0 header Forwarded *
+	respond @qff0 "Untrusted forwarding header" 400
+	@qff1 header X-Forwarded-For *
+	respond @qff1 "Untrusted forwarding header" 400
+	@qff2 header X-Forwarded-Proto *
+	respond @qff2 "Untrusted forwarding header" 400
+	@qff3 header X-Forwarded-Host *
+	respond @qff3 "Untrusted forwarding header" 400
+	@qff4 header X-Real-IP *
+	respond @qff4 "Untrusted forwarding header" 400
+	@qff5 header X-Url-Scheme *
+	respond @qff5 "Untrusted forwarding header" 400
+	@qff6 header Front-End-Https *
+	respond @qff6 "Untrusted forwarding header" 400
+	reverse_proxy https://{args[2]} {
+		header_up Host {args[1]}
+		header_up -Forwarded
+		header_up -X-Forwarded-*
+		header_up -X-Real-IP
+		header_up -X-Url-Scheme
+		header_up -Front-End-Https
+		transport http {
+			tls_server_name {args[1]}
+			tls_trust_pool file {args[3]}
+			dial_timeout 2s
+			response_header_timeout 10s
+			max_conns_per_host 2
+		}
+	}
+}

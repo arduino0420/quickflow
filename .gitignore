@@ -44,3 +44,6 @@
 
 **/__pycache__/
 *.pyc
+
+# Keep only variable names and safe examples, never private runtime values.
+!/.env.example
