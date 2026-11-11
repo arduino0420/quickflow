@@ -50,7 +50,7 @@ gem "image_processing", "~> 1.2"
 gem "fiddle", "~> 1.1", require: false
 
 group :development, :test do
-  gem "rspec-rails", "~> 8.0.4"
+  gem "rspec-rails", "~> 8.1.0"
 
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
