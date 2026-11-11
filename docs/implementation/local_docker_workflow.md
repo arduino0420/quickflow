@@ -10,12 +10,12 @@
 
 ## 初回のMac準備
 
-既存作業を保護した新しいcheckoutで実行する。今回の作業先は`~/workspace/quickflow-single-compose-20261109`。普段の`~/workspace/quickflow`への取り込みは別承認であり、まだ行わない。
+[READMEのセットアップ手順](../../README.md#セットアップ手順)で取得した、新しいcheckoutの中で実行する。過去の検証先は`~/workspace/quickflow-single-compose-20261109`だったが、以下は新規clone用の手順。既存の`.env`・`.local`・DB・PDFを上書きしない。
 
 Docker Desktop、Docker Compose、MacのRuby/PostgreSQL等の既存テスト環境を使う。`docker --context desktop-linux info`で接続先が自分のMacのDocker Desktopであることを確認する。AWSやremote contextで以下を実行しない。
 
 ```sh
-cd ~/workspace/quickflow-single-compose-20261109
+# READMEで作成したquickflow-localフォルダ内で実行
 code .
 cp .env.example .env
 mkdir -p .local
@@ -104,9 +104,9 @@ docker --context desktop-linux compose up -d --wait --wait-timeout 120
 
 ## RSpec・品質検査
 
-RSpecはMacのRubyで実行し、専用Dockerfile・Compose・アプリコンテナを作らない。[READMEの分離テスト手順](../../README.md#ローカル起動とテスト)で新規PostgreSQLクラスタと`quickflow_test`を用意し、接続先・クラスタ実体を照合してから実行する。保存先は当該checkoutの`tmp/storage`であり、Docker通常アプリの`/rails/storage`volumeとは別。
+RSpecはMacのRubyで実行し、専用Dockerfile・Compose・アプリコンテナを作らない。[分離テスト手順](readme_details.md#ローカル起動とテスト)で新規PostgreSQLクラスタと`quickflow_test`を用意し、接続先・クラスタ実体を照合してから実行する。保存先は当該checkoutの`tmp/storage`であり、Docker通常アプリの`/rails/storage`volumeとは別。
 
-READMEの括弧付きテストブロックを**全体で**実行する。新規クラスタ作成 → 実接続照合 → RSpec/品質検査 → 専用クラスタ停止が同じsubshell内で完結する。ブロック外へRSpecコマンドだけを抜き出すと接続URLが引き継がれず、既存の同名DBへ接続し得るため実行しない。再試験も同じ完全な隔離手順から開始する。
+上記の分離テスト手順にある括弧付きテストブロックを**全体で**実行する。新規クラスタ作成 → 実接続照合 → RSpec/品質検査 → 専用クラスタ停止が同じsubshell内で完結する。ブロック外へRSpecコマンドだけを抜き出すと接続URLが引き継がれず、既存の同名DBへ接続し得るため実行しない。再試験も同じ完全な隔離手順から開始する。
 
 実OpenAI clientは禁止した既存RSpec stubを維持する。systemテストのChrome sandboxや証明書検査を弱めない。systemを実行できない場合は非system成功とは分けて報告する。既存GitHub ActionsのRSpec/system、Ruby・JavaScript監査、lintを維持し、Docker確認は同じ通常Composeを使う。旧構成の過去テスト成功を新構成の結果へ流用しない。
 
