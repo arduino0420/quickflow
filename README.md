@@ -1,6 +1,6 @@
 # QuickFlow
 
-[公開アプリ](https://13-231-93-159.sslip.io/)
+[公開アプリ](https://13-231-93-159.sslip.io/)　[紹介動画](https://youtu.be/QXBPQ1iQGF4)
 
 ## プロジェクト概要
 
@@ -21,7 +21,7 @@ AIは採点を補助し、読みにくい答案などは「要確認」にしま
 | 開発・配備 | Docker / Caddy / AWS EC2 |
 | テスト・CI | RSpec Rails 8.1.0 / GitHub Actions |
 
-バージョンの詳細は [.ruby-version](.ruby-version)、[Gemfile.lock](Gemfile.lock)、[compose.yaml](compose.yaml) を参照してください。
+![QuickFlow構成図](docs/images/quickflow-architecture.png)
 
 ## 主な機能
 
@@ -36,10 +36,6 @@ AIは採点を補助し、読みにくい答案などは「要確認」にしま
 2. 教師が教材・1問の点数・配信先クラスを指定して小テストを配信します。
 3. 生徒が画面に対して直接解答を手書きし、「提出する」を押します。AIによる採点が完了したら、結果を確認します。
 4. 教師が答案とAI判定を見比べ、必要に応じて判定を修正し、成績をExcel形式で出力します
-
-**自動保存だけでは正式提出されません。また、提出後の答案の差し替えはできません。** 未保存のまま画面を閉じず、提出・採点に問題がある場合は教師へ確認してください。
-
-[画面付きの操作説明](docs/implementation/readme_details.md#使い方と画面) / [登録方法・利用上の注意](docs/implementation/operations_details.md)
 
 ## セットアップ手順
 
