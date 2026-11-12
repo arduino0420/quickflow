@@ -39,31 +39,62 @@ AIは採点を補助し、読みにくい答案などは「要確認」にしま
 
 ## セットアップ手順
 
-Macでの基本手順です。Git、Docker Desktop（Docker Compose）、初回設定用のRuby・Python 3を用意し、既存の環境とは別の新しいフォルダを使います。
+Mac向けの手順です。初めて使うときは、1〜3の順に進めます。
 
-1. リポジトリを取得します。
+### 用意するもの
 
-   ```bash
-   git clone https://github.com/arduino0420/quickflow.git quickflow-local
-   cd quickflow-local
-   ```
+- Git（アプリをダウンロードする道具）
+- Docker Desktop（アプリを動かす道具。先に起動しておきます）
+- Ruby・Python 3（初回の準備で使います）
 
-2. [初回のMac準備](docs/implementation/local_docker_workflow.md#初回のmac準備)に従い、`.env`、専用のDB・PDF保存領域、ネットワーク、新規DBのスキーマを準備します。既存の設定やデータを上書きせず、本番の鍵・実生徒データを持ち込まないでください。
+### 1. アプリをダウンロードする
 
-3. 初回準備の完了後、アプリを起動します。コードを編集したときも再ビルドします。
+Macのターミナルで実行します。保存先は新しいフォルダにします。
 
-   ```bash
-   docker --context desktop-linux compose build web
-   docker --context desktop-linux compose up -d --wait --wait-timeout 120
-   ```
+```bash
+git clone https://github.com/arduino0420/quickflow.git quickflow-local
+cd quickflow-local
+```
 
-4. `https://localhost:18443` を開きます。ポートを変更した場合は `.env` の設定に合わせてください。ローカル証明書の信頼方法は[HTTPSの注意事項](docs/implementation/local_docker_workflow.md#aihttps本番との差)を確認します。
+### 2. 初回の準備をする
 
-終了時は `docker --context desktop-linux compose stop` で停止します。DB・PDFは残ります。
+リンク先の[「初回のMac準備」](docs/implementation/local_docker_workflow.md#初回のmac準備)の項目を順に実行します。**設定と専用のデータ保存場所を作り、アプリを起動**します。この準備は初回だけです。
 
-**ここまでの手順は起動確認までです。** 新規DBは空なので、ログインして使うには運用担当者が同じDocker内のDBへ学校を用意し、初期管理者・利用者を登録する必要があります。[アカウント運用の詳細](docs/implementation/operations_details.md#アカウント登録mvp)にある登録タスクも、学校が存在することが前提です。実AIには別途APIキー設定と利用料金が必要です。
+既存の設定・データは上書きせず、本番用の鍵や実際の生徒データは使わないでください。
 
-[Dockerを使わない起動・隔離したRSpecの手順](docs/implementation/readme_details.md#ローカル起動とテスト)も用意しています。テストは専用DB・保存先で実行し、既存DBの `drop` / `reset` は行わないでください。
+### 3. ブラウザで開く
+
+[https://localhost:18443](https://localhost:18443) を開きます。接続ポートを変えた場合は、`.env` の `QF_HTTPS_BIND` の末尾にある番号を使います。
+
+証明書の警告が出たら、[HTTPSの注意事項](docs/implementation/local_docker_workflow.md#aihttps本番との差)を確認してください。
+
+### 次回からの起動・停止
+
+`quickflow-local` フォルダ内で実行します。
+
+**起動・再開**
+
+```bash
+docker --context desktop-linux compose up -d --wait --wait-timeout 120
+```
+
+**停止**（データやPDFは残ります）
+
+```bash
+docker --context desktop-linux compose stop
+```
+
+**コードを編集したとき**は、起動前に変更を反映します。
+
+```bash
+docker --context desktop-linux compose build web
+```
+
+### 使い始める前に
+
+- **ログイン**：新しいDB（データ保存場所）は空です。運用担当者が同じDocker内のDBに学校を用意し、[初期管理者・利用者を登録](docs/implementation/operations_details.md#アカウント登録mvp)してから使います。
+- **AI採点**：別途APIキーの設定と利用料金が必要です。
+- **テスト・Dockerを使わない起動**：[詳しい手順](docs/implementation/readme_details.md#ローカル起動とテスト)を参照してください。テストは専用DB・保存先で行い、既存DBの削除・初期化（`drop` / `reset`）はしないでください。
 
 ## ディレクトリ構成
 
