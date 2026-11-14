@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 # check=error=true
 
-# Shared Mac/AWS release image. Edit in the local VS Code checkout, then rebuild.
-# Native Ruby/CI runs RSpec; no separate test/development Dockerfile is needed.
+# Default target remains the immutable Mac/AWS production image.
+# Local editing uses the explicit development target via bin/dev-docker.
 # For standalone Docker use:
 # docker build -t quickflow .
 # docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name quickflow quickflow
@@ -28,6 +28,23 @@ ENV RAILS_ENV="production" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_WITHOUT="development:test" \
     LD_PRELOAD="/usr/local/lib/libjemalloc.so"
+
+# Opt-in local development target. The final/default target below stays production.
+FROM base AS development
+ENV RAILS_ENV="development" BUNDLE_DEPLOYMENT="0" BUNDLE_WITHOUT=""
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential git libffi-dev libpq-dev libyaml-dev pkg-config unzip nodejs procps && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+COPY bin/install-qpdf bin/install-qpdf
+RUN bin/install-qpdf && cp -a vendor/qpdf /opt/quickflow-qpdf
+COPY Gemfile Gemfile.lock ./
+RUN bundle install
+RUN groupadd --system --gid 1000 rails && \
+    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash
+RUN mkdir -p /rails/tmp /rails/log /rails/storage /rails/public/assets /rails/vendor/qpdf && \
+    chown -R rails:rails /rails
+USER 1000:1000
+EXPOSE 80
 
 # Throw-away build stage to reduce size of final image
 FROM base AS build

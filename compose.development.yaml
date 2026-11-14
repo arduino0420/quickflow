@@ -1,0 +1,64 @@
+# Explicitly selected by bin/dev-docker; never auto-loaded by AWS docker compose.
+services:
+  db:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: quickflow
+      POSTGRES_PASSWORD: quickflow-local-only
+      POSTGRES_DB: quickflow_development
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U quickflow -d quickflow_development"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  web:
+    build:
+      context: .
+      target: development
+    init: true
+    entrypoint: [./bin/docker-development-entrypoint]
+    command: [./bin/rails, server, -b, 0.0.0.0, -p, '80']
+    environment:
+      RAILS_ENV: development
+      BUNDLE_IGNORE_CONFIG: '1'
+      QUICKFLOW_DOCKER_DEVELOPMENT: '1'
+      PGHOST: db
+      PGUSER: quickflow
+      PGPASSWORD: quickflow-local-only
+      SOLID_QUEUE_IN_PUMA: 'true'
+      QUICKFLOW_GRADING_RECOVERY_ENABLED: 'true'
+    volumes:
+      - .:/rails
+      - storage:/rails/storage
+      - runtime_tmp:/rails/tmp
+      - runtime_log:/rails/log
+    # Hide host production assets and native macOS qpdf without deleting them.
+    tmpfs:
+      - /rails/public/assets:uid=1000,gid=1000,mode=0755
+      - /rails/vendor/qpdf:uid=1000,gid=1000,mode=0755
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://localhost/up]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+  caddy:
+    image: caddy:2@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
+    environment:
+      QF_SITE_ADDRESS: http://localhost
+      QF_CADDY_EXTRA_CONFIG: /dev/null
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - '127.0.0.1:${QF_DEV_PORT:-13000}:80'
+    depends_on:
+      web: {condition: service_healthy}
+volumes:
+  db_data:
+  storage:
+  runtime_tmp:
+  runtime_log:

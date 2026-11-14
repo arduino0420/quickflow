@@ -6,6 +6,16 @@ Rails.application.configure do
   # Make code changes take effect immediately without server restart.
   config.enable_reloading = true
 
+  if ENV["QUICKFLOW_DOCKER_DEVELOPMENT"] == "1"
+    # Poll the Mac bind mount; filesystem notifications may not cross Docker VM.
+    config.file_watcher = ActiveSupport::FileUpdateChecker
+    config.active_job.queue_adapter = :solid_queue
+    config.solid_queue.connects_to = { database: { writing: :queue } }
+    # Never read the host checkout's production API key/master key by accident.
+    config.credentials.content_path = Pathname.new("/nonexistent/quickflow-development.yml.enc")
+    config.credentials.key_path = Pathname.new("/nonexistent/quickflow-development.key")
+  end
+
   # Do not eager load code on boot.
   config.eager_load = false
 

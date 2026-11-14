@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+if [ "${RAILS_ENV:-}" != development ] || [ "${QUICKFLOW_DOCKER_DEVELOPMENT:-}" != 1 ]; then
+  echo 'Development entrypoint requires the explicit local configuration.' >&2
+  exit 1
+fi
+# Only these isolated mounts are written. No database preparation on startup.
+mkdir -p tmp/pids
+if [ "${1:-}" = "./bin/rails" ] && [ "${2:-}" = server ]; then
+  rm -f tmp/pids/server.pid
+fi
+for path in /opt/quickflow-qpdf/*; do
+  ln -sfn "$path" "vendor/qpdf/$(basename "$path")"
+done
+exec "$@"

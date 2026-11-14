@@ -91,15 +91,19 @@ RSpec.describe "Normal account read-only answer PDFs", type: :system do
     expect(page).to have_css("[data-answer-pdf-target='status']", text: "答案PDFを表示しました（1 / 1ページ）。")
     expect(page).to have_css("canvas[data-rendered='true']", count: 1)
     expect(page).not_to have_css("iframe.teacher-answer-pdf, [data-controller='pdf-preview']")
-    expect(page.evaluate_script(<<~JS)).to be(true)
-      (() => {
-        const canvas=document.querySelector('.answer-pdf canvas');
-        const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
-        let ink=0;
-        for(let i=0;i<pixels.length;i+=16) if(pixels[i+3]>0 && pixels[i]<200 && pixels[i+1]<200 && pixels[i+2]<200) ink++;
-        return ink>50 && document.documentElement.scrollWidth<=innerWidth;
-      })()
-    JS
+    # ResizeObserver rendering is asynchronous; keep polling the same visual
+    # requirements instead of sampling a stale canvas immediately after resize.
+    expect(page).to have_css(".answer-pdf canvas[data-rendered='true']", count: 1) do |canvas|
+      canvas.evaluate_script(<<~JS)
+        (() => {
+          const canvas=this;
+          const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+          let ink=0;
+          for(let i=0;i<pixels.length;i+=16) if(pixels[i+3]>0 && pixels[i]<200 && pixels[i+1]<200 && pixels[i+2]<200) ink++;
+          return ink>50 && document.documentElement.scrollWidth<=innerWidth;
+        })()
+      JS
+    end
     expect(page).not_to have_css('.answer-pdf a, .answer-pdf [target="_blank"]', visible: :all)
     expect(page.html).not_to include("PDFを別タブで開く")
   end

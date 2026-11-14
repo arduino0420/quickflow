@@ -75,12 +75,6 @@ docker --context desktop-linux compose up -d --wait --wait-timeout 120
 docker --context desktop-linux compose stop
 ```
 
-**コードを編集したとき**は、起動前に変更を反映します。
-
-```bash
-docker --context desktop-linux compose build web
-```
-
 ## ディレクトリ構成
 
 ```text
