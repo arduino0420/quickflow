@@ -18,6 +18,12 @@ default: &default
   # For details on connection pooling, see Rails configuration guide
   # https://guides.rubyonrails.org/configuring.html#database-pooling
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+<% if ENV["QUICKFLOW_DOCKER_DEVELOPMENT"] == "1" %>
+  # Keep connection metadata complete for secondary connections in tests.
+  host: <%= ENV.fetch("PGHOST").inspect %>
+  username: <%= ENV.fetch("PGUSER").inspect %>
+  password: <%= ENV.fetch("PGPASSWORD").inspect %>
+<% end %>
 
 
 <% if ENV["QUICKFLOW_DOCKER_DEVELOPMENT"] == "1" %>
