@@ -20,6 +20,17 @@ default: &default
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 
+<% if ENV["QUICKFLOW_DOCKER_DEVELOPMENT"] == "1" %>
+development:
+  primary:
+    <<: *default
+    database: quickflow_development
+  queue:
+    <<: *default
+    database: quickflow_development_queue
+    migrations_paths: db/queue_migrate
+    schema_dump: queue_schema.rb
+<% else %>
 development:
   <<: *default
   database: quickflow_development
@@ -50,6 +61,8 @@ development:
   #   log, notice, warning, error, fatal, and panic
   # Defaults to warning.
   #min_messages: notice
+
+<% end %>
 
 # Warning: The database defined as "test" will be erased and
 # re-generated from your development database when you run "rake".

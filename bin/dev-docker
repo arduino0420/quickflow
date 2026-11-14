@@ -1,0 +1,8 @@
+#!/bin/sh
+# This explicit local-only entry point cannot select the AWS production Compose.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+project="quickflow-dev-$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-10)"
+unset DOCKER_HOST DOCKER_CONTEXT COMPOSE_FILE COMPOSE_PROJECT_NAME
+exec docker --context desktop-linux compose --env-file /dev/null \
+  --project-name "$project" -f compose.development.yaml "$@"
