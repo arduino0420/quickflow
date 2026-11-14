@@ -77,11 +77,14 @@ bin/dev-docker exec web bin/rails db:migrate
 
 ## テスト
 
-開発コンテナには既存のdevelopment/test Gemと、JavaScriptの自動テスト用Node.jsが入ります。テスト用DBは同じ**開発専用PostgreSQLコンテナ**内の`quickflow_test`です。本番に向けないでください。既存テストの安全確認がこのDB名を検査するため、別名へ変更しません。RSpec時の回復機能フラグはCIと同じ既定の無効状態にします（必要なテスト内で個別に有効化します）。
+開発コンテナには既存のdevelopment/test Gemと、JavaScriptの自動テスト用Node.js、プロセス検査用psが入ります。テスト用DBは同じ**開発専用PostgreSQLコンテナ**内の`quickflow_test`です。本番に向けないでください。既存テストの安全確認がこのDB名を検査するため、別名へ変更しません。RSpec時の回復機能フラグはCIと同じ既定の無効状態にします（必要なテスト内で個別に有効化します）。
 
 ```sh
 bin/dev-docker exec -e RAILS_ENV=test web bin/rails db:test:prepare
-bin/dev-docker exec -e RAILS_ENV=test -e QUICKFLOW_GRADING_RECOVERY_ENABLED=false web bundle exec rspec --exclude-pattern 'spec/system/**/*'
+bin/dev-docker exec -e RAILS_ENV=test \
+  -e DATABASE_URL=postgres://quickflow:quickflow-local-only@db/quickflow_test \
+  -e QUICKFLOW_GRADING_RECOVERY_ENABLED=false \
+  web bundle exec rspec --exclude-pattern 'spec/system/**/*'
 bin/dev-docker exec web bin/rubocop
 ```
 

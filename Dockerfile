@@ -33,7 +33,7 @@ ENV RAILS_ENV="production" \
 FROM base AS development
 ENV RAILS_ENV="development" BUNDLE_DEPLOYMENT="0" BUNDLE_WITHOUT=""
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libffi-dev libpq-dev libyaml-dev pkg-config unzip nodejs && \
+    apt-get install --no-install-recommends -y build-essential git libffi-dev libpq-dev libyaml-dev pkg-config unzip nodejs procps && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 COPY bin/install-qpdf bin/install-qpdf
 RUN bin/install-qpdf && cp -a vendor/qpdf /opt/quickflow-qpdf
