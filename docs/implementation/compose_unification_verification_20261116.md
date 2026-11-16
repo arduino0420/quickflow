@@ -1,6 +1,6 @@
 # Compose一本化：PR作成前のローカル検証記録（2026-11-16）
 
-通常版は `compose.yaml` 1ファイルの `db`・`web`・`caddy` へ統一した。別Compose生成、重ね合わせ、同役割サービスのprofilesは使わない。旧開発Composeと旧entrypointは、共通構成のdevelopment/production起動確認後に削除した。ゲストサービスやDB schema・依存バージョンは変更していない。
+通常版は `compose.yaml` 1ファイルの `db`・`web`・`caddy` へ統一した。別Compose生成、重ね合わせ、同役割サービスのprofilesは使わない。旧開発Composeと旧entrypointは、共通構成のdevelopment/production起動確認後に削除した。ゲストサービスやDB schemaは変更していない。依存は、後述の明示承認に基づくPumaのセキュリティパッチだけを更新した。
 
 ## 反映と安全性
 
@@ -33,3 +33,7 @@
 証跡は実行環境の `/tmp/qf-compose-20261116/` の個別result/logに保存した。同じ領域の検証用.envなどは秘密として扱い、ディレクトリ全体を共有しない。
 
 普段の操作・再起動/再作成/build/migration・AWS手順は[ローカルDockerワークフロー](local_docker_workflow.md)を参照。
+
+## PR検査と承認されたPumaパッチ
+
+初回head `852bf9c` のGitHub CIは全RSpec 2,269件・失敗0、lint、JS監査、本番Compose image/runtime smokeが成功した。一方、最新の監査DBが既存Puma 8.0.2の7件のadvisoryを検出してRuby監査が失敗した。所有者の明示承認後、Puma 8.0.3と対応checksumだけの2行をGemfile.lockで更新した。他gem・Gemfile・Ruby/Rails/PostgreSQLは変更していない。監査のignoreや検査無効化は追加していない。パッチ後の確定headで必須CIを再確認し、成功後にマージ・配備する。
