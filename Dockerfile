@@ -31,18 +31,21 @@ ENV RAILS_ENV="production" \
 
 # Opt-in local development target. The final/default target below stays production.
 FROM base AS development
-ENV RAILS_ENV="development" BUNDLE_DEPLOYMENT="0" BUNDLE_WITHOUT=""
+ENV RAILS_ENV="development" BUNDLE_DEPLOYMENT="0" BUNDLE_WITHOUT="" BUNDLE_IGNORE_CONFIG="1"
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libffi-dev libpq-dev libyaml-dev pkg-config unzip nodejs procps && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 COPY bin/install-qpdf bin/install-qpdf
-RUN bin/install-qpdf && cp -a vendor/qpdf /opt/quickflow-qpdf
+RUN bin/install-qpdf
 COPY Gemfile Gemfile.lock ./
 RUN bundle install
+COPY . .
 RUN groupadd --system --gid 1000 rails && \
     useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash
 RUN mkdir -p /rails/tmp /rails/log /rails/storage /rails/public/assets /rails/vendor/qpdf && \
     chown -R rails:rails /rails
+COPY bin/docker-compose-entrypoint /usr/local/bin/quickflow-compose-entrypoint
+RUN echo development > /usr/local/share/quickflow-runtime
 USER 1000:1000
 EXPOSE 80
 
@@ -79,7 +82,9 @@ RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
 
 # Final stage for app image
-FROM base
+FROM base AS production
+COPY bin/docker-compose-entrypoint /usr/local/bin/quickflow-compose-entrypoint
+RUN echo production > /usr/local/share/quickflow-runtime
 
 # Run and own only the runtime files as a non-root user for security
 RUN groupadd --system --gid 1000 rails && \

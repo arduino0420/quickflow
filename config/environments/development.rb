@@ -7,8 +7,10 @@ Rails.application.configure do
   config.enable_reloading = true
 
   if ENV["QUICKFLOW_DOCKER_DEVELOPMENT"] == "1"
-    # Poll the Mac bind mount; filesystem notifications may not cross Docker VM.
+    # Check synced files on each request; Compose Watch copies changed source here.
     config.file_watcher = ActiveSupport::FileUpdateChecker
+    # Rails persists an independent development session secret in this project's tmp volume.
+    config.secret_key_base = nil
     config.active_job.queue_adapter = :solid_queue
     config.solid_queue.connects_to = { database: { writing: :queue } }
     # Never read the host checkout's production API key/master key by accident.

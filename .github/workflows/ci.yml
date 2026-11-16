@@ -211,6 +211,20 @@ jobs:
             test "$attempt" != 30
             sleep 2
           done
+          docker compose exec -T web ruby -rtmpdir -e '
+            abort "Code filesystem must be read-only" if File.writable?("/rails/app")
+            abort "Wrong runtime image" unless File.read("/usr/local/share/quickflow-runtime").strip == "production"
+            %w[/tmp /rails/tmp /rails/log /rails/storage].each do |root|
+              Dir.mktmpdir("ci-writable-", root) { |dir| File.write(File.join(dir, "probe"), "ok") }
+            end
+            Dir.mktmpdir("ci-executable-") do |dir|
+              path = File.join(dir, "probe")
+              File.write(path, "#!/bin/sh\nexit 0\n")
+              File.chmod(0o700, path)
+              abort "Temporary subprocess execution failed" unless system(path)
+            end
+            puts "Production code is read-only; runtime paths support writes and subprocesses"
+          '
           docker compose exec -T web ruby -e 'File.write("/rails/storage/.ci-persistence-check", "shared-compose-storage")'
           docker compose stop
           docker compose up -d --wait --wait-timeout 120 db web caddy
