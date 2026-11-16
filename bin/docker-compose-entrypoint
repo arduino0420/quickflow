@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+# This marker is built into the image, outside any synced application directory.
+image_runtime=$(cat /usr/local/share/quickflow-runtime)
+case "${RAILS_ENV:-}:$image_runtime:${QUICKFLOW_DOCKER_DEVELOPMENT:-0}" in
+  production:production:0) ;;
+  development:development:1) ;;
+  *) echo 'Refusing mismatched image and runtime settings.' >&2; exit 1 ;;
+esac
+if [ "${1:-}" = server ]; then
+  shift
+  if [ "$image_runtime" = development ]; then
+    mkdir -p tmp/pids
+    rm -f tmp/pids/server.pid
+    exec ./bin/rails server -b 0.0.0.0 -p 80 "$@"
+  fi
+  exec ./bin/thrust ./bin/rails server "$@"
+fi
+exec "$@"

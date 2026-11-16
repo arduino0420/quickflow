@@ -1,8 +1,24 @@
 #!/bin/sh
-# This explicit local-only entry point cannot select the AWS production Compose.
+# Environment values only: all service/build/mount/watch definitions live in compose.yaml.
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
 project="quickflow-dev-$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-10)"
-unset DOCKER_HOST DOCKER_CONTEXT COMPOSE_FILE COMPOSE_PROJECT_NAME
+port=${QF_DEV_PORT:-13000}
+case "$port" in *[!0-9]*|'') echo 'QF_DEV_PORT must be a port number.' >&2; exit 1 ;; esac
+# Never inherit production resource names, app env files or ingress settings.
+for name in $(env | sed -n 's/^\(QF_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
+unset DOCKER_HOST DOCKER_CONTEXT COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES COMPOSE_ENV_FILES
+export COMPOSE_PROJECT_NAME="$project"
+export QF_IMAGE="$project-web" QF_SOURCE_REVISION="$(git rev-parse HEAD)"
+export QF_BUILD_TARGET=development QF_RAILS_ENV=development QF_DOCKER_DEVELOPMENT=1 QF_READ_ONLY=false
+export QF_EXTERNAL_RESOURCES=false QF_DATABASE_NAME=quickflow_development
+export QF_DB_PASSWORD=quickflow-local-only
+export QF_SECRET_KEY_BASE=unused-by-isolated-development
+export QF_APP_ENV_FILE=/dev/null QF_SITE_ADDRESS=http://localhost
+export QF_HTTP_BIND="127.0.0.1:$port" QF_HTTPS_BIND=127.0.0.1:13443 QF_CADDY_EXTRA_CONFIG=/dev/null
+# Preserve names from the previous development Compose in this exact folder.
+export QF_DB_VOLUME="${project}_db_data" QF_STORAGE_VOLUME="${project}_storage"
+export QF_CADDY_DATA_VOLUME="${project}_caddy_data" QF_CADDY_CONFIG_VOLUME="${project}_caddy_config"
+export QF_APP_NETWORK="${project}_default" QF_GUEST_NETWORK="${project}_guest_routing"
 exec docker --context desktop-linux compose --env-file /dev/null \
-  --project-name "$project" -f compose.development.yaml "$@"
+  --project-name "$project" -f compose.yaml "$@"

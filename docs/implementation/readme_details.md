@@ -115,22 +115,12 @@ PDFの事前確認にはqpdf 12.4.2を使います。ローカル起動・テス
 
 ## MacのVS Codeから開発・検証する
 
-編集の出発点はMacのローカルcheckoutです。VS Codeで編集し、同じフォルダの`Dockerfile`と`compose.yaml`で通常版を再ビルドします。Caddy → Thrust → Puma/Rails production＋Solid Queue → PostgreSQLの3役構成を使い、RSpecはMacの別テストDB・保存先で実行します。
+編集の出発点はMacの `~/workspace/quickflow` です。通常版は `compose.yaml` 1つの共通3サービス（Caddy・web・PostgreSQL）です。普段は `bin/dev-docker up --watch` の端末を開いたまま編集し、保存・同期後にブラウザを再読み込みします。Controller・Model・View・JS・CSSの編集は再ビルド不要です。Watchが終了すると同期が止まり、`up -d` だけでは動きません。Job・採点Serviceは保存・同期後にwebとSolid Queueを再起動します。
 
-[初回準備](../implementation/local_docker_workflow.md)が終わった後の日常操作:
+初回準備、毎日の起動停止、再起動・再作成・rebuild・migrationの違いは[ローカル手順](local_docker_workflow.md)を参照してください。コードの同期対象にMac版qpdf・gems・古いcompiled assetsや本番キーを含めません。本番は同じComposeのproduction既定値、固定image、読み取り専用コードを使い、書込み領域だけを別volumeにします。
 
-```sh
-code .
-# VS Codeで編集・保存した後
-docker --context desktop-linux compose build web
-docker --context desktop-linux compose up -d --wait --wait-timeout 120
-# https://localhost:18443 で確認（.envのHTTPSポート。証明書の信頼方法は手順書参照）
-docker --context desktop-linux compose stop
-```
+Macでの検証 → GitHub PRと最終headのCI → 確定main → AWS既存配備手順 → 本番確認 → MacのFF更新の順で進めます。通常の起動で本番にWatchは入りません。ゲスト版は別管理を維持し、共有Caddyと既存networkの経路を保存します。DB/PDF/証明書のvolume名を照合し、`git pull`だけで配備完了と扱いません。実AIは専用データでの最小限の確認とし、模擬採点と区別します。
 
-停止してもDB/PDFを残します。再開は`docker --context desktop-linux compose up -d`です。編集は再ビルド後に反映され、ホットリロード用の別環境はありません。通常アプリへfake AIを差し込みません。実AI確認は検証用キー・架空教材・費用上限・範囲の別承認が必要です。
-
-**MacのVS Code → Docker確認 → 分離したRSpec → GitHub PR/CI → 別承認でmain → 別承認でAWS** の順に進めます。ゲスト版のローカル作成・共通化は今回は延期し、AWSのゲスト版をそのまま維持します。通常専用のCaddyfileでAWSの共有Caddyを置き換えてはいけません。[AWS移行計画](../implementation/aws_compose_migration_plan.md)の入口・ネットワーク引継ぎは別途確認が必要です。
 
 ## ローカル起動とテスト
 

@@ -68,3 +68,7 @@
 
 # Host-only common Caddy configuration.
 /docker/
+
+# Safe source definitions are needed by configuration specs in the development image.
+!/Dockerfile
+!/compose.yaml

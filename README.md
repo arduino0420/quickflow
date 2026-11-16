@@ -59,20 +59,20 @@ cd quickflow-local
 
 ### 3. ブラウザで開く
 
-[https://localhost:18443](https://localhost:18443) を開きます。接続ポートを変えた場合は、`.env` の `QF_HTTPS_BIND` の末尾にある番号を使います。
+[http://localhost:13000](http://localhost:13000) を開きます。`bin/dev-docker up --watch` の端末を開いたまま編集し、保存・同期後にブラウザを再読み込みします。`up -d` だけでは保存後の同期は動きません。
 
 最初にログインが必要になりますが、DBは空です。運用担当者が同じDocker内のDBに学校を用意し、[初期管理者・利用者を登録](docs/implementation/operations_details.md#アカウント登録mvp)してから使います。
 
 **起動・再開**
 
 ```bash
-docker --context desktop-linux compose up -d --wait --wait-timeout 120
+bin/dev-docker up --watch
 ```
 
 **停止**（データやPDFは残ります）
 
 ```bash
-docker --context desktop-linux compose stop
+bin/dev-docker stop
 ```
 
 ## ディレクトリ構成
