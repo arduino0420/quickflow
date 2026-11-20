@@ -10,7 +10,7 @@ Do not add features or requirements that have not been explicitly approved.
 
 ## Development Environment
 
-- Ruby 4.0.6
+- Ruby 4.0.10
 - Ruby on Rails 8.1.4
 - PostgreSQL 18.6
 - RSpec Rails 8.0.4

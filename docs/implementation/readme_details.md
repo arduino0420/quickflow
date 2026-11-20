@@ -81,7 +81,7 @@ READMEの整理に伴い、既存の画面説明・構成図・起動／テス�
 
 | 領域 | 使用技術 |
 | --- | --- |
-| アプリケーション | Ruby 4.0.6 / Rails 8.1.4.1 / Puma / Hotwire・Importmap |
+| アプリケーション | Ruby 4.0.10 / Rails 8.1.4.1 / Puma / Hotwire・Importmap |
 | データ・非同期処理 | PostgreSQL（開発基準18.6）、Active Record・Active Storage、Solid Queue・Cache・Cable |
 | PDF・成績 | PDF.js / pdf-lib / qpdf 12.4.2 / caxlsx |
 | AI連携 | OpenAI SDK（読取・正答生成・判定支援） |
@@ -124,7 +124,7 @@ Macでの検証 → GitHub PRと最終headのCI → 確定main → AWS既存配�
 
 ## ローカル起動とテスト
 
-Ruby 4.0.6、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意します。Linuxではgemのビルド用にlibffiの開発ヘッダー（CIでは `libffi-dev`）も必要です。JavaScriptのRSpecは `node` コマンドを直接使うため、テスト用にNode.jsも用意してください。System SpecにはChrome/Chromiumと対応Selenium driver（Selenium Manager利用時は取得可能なネットワーク）が必要です。既存DBと共有しない新しいclone・専用DB/Storageを使ってください。通常の開発は`storage/`、テストはclone内`tmp/storage/`です。
+Ruby 4.0.10、Bundler、PostgreSQLと開発ヘッダー、libvipsを用意します。Linuxではgemのビルド用にlibffiの開発ヘッダー（CIでは `libffi-dev`）も必要です。JavaScriptのRSpecは `node` コマンドを直接使うため、テスト用にNode.jsも用意してください。System SpecにはChrome/Chromiumと対応Selenium driver（Selenium Manager利用時は取得可能なネットワーク）が必要です。既存DBと共有しない新しいclone・専用DB/Storageを使ってください。通常の開発は`storage/`、テストはclone内`tmp/storage/`です。
 
 ```bash
 git clone https://github.com/arduino0420/quickflow.git

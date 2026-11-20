@@ -15,7 +15,7 @@ AIは採点を補助し、読みにくい答案などは「要確認」にしま
 
 | 分野 | 技術 |
 | --- | --- |
-| 言語・フレームワーク | Ruby 4.0.6 / Ruby on Rails 8.1.4.1 |
+| 言語・フレームワーク | Ruby 4.0.10 / Ruby on Rails 8.1.4.1 |
 | データベース・非同期処理 | PostgreSQL 18.6 / Solid Queue |
 | フロントエンド | Hotwire（Turbo・Stimulus）/ Importmap |
 | PDF・成績出力 | Active Storage / PDF.js / pdf-lib / qpdf / caxlsx |
