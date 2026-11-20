@@ -1,4 +1,4 @@
-FROM ruby:4.0.6
+FROM ruby:4.0.10
 
 RUN apt-get update -qq && apt-get install --no-install-recommends -y libpq-dev libvips postgresql-client nodejs chromium chromium-driver && rm -rf /var/lib/apt/lists/*
 WORKDIR /rails

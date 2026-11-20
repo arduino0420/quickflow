@@ -10,8 +10,8 @@
 # compose.yaml uses this image for normal operation and bypasses automatic db:prepare.
 
 # Make sure RUBY_VERSION matches the Ruby version in .ruby-version
-ARG RUBY_VERSION=4.0.6
-FROM docker.io/library/ruby:$RUBY_VERSION-slim@sha256:58479f164d5947f852da27a4436c89bb986a811f959c40552bc7f6ccaabcc9c9 AS base
+ARG RUBY_VERSION=4.0.10
+FROM docker.io/library/ruby:$RUBY_VERSION-slim@sha256:a4b3e62bfe56bd267a3aeacc1b89aea96be919faa0c7d77c6346e2ac14f6c175 AS base
 
 # Rails app lives here
 WORKDIR /rails
